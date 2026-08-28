@@ -1,0 +1,45 @@
+.alarm-page .el-tab-pane { overflow-y: auto; scrollbar-width: thin; }
+.alarm-overview, .legacy-alarm-panel { padding: 14px; color: var(--text-main); font-size: 12px; }
+.alarm-overview h2, .legacy-alarm-panel h2 { font-size: 20px; margin: 0 0 8px; }
+.alarm-overview h3, .legacy-alarm-panel h3 { font-size: 14px; }
+.alarm-overview p, .legacy-alarm-panel p { line-height: 1.7; }
+.alarm-overview-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.alarm-overview-heading p, .legacy-alarm-panel header p { color: var(--text-muted); margin: 0 0 15px; font-size: 11px; }
+.alarm-overview button, .legacy-alarm-panel button, .alarm-overview select, .legacy-alarm-panel select, .legacy-alarm-panel input { color: var(--text-main); background: var(--surface); border: 1px solid var(--glass-border); padding: 7px 10px; border-radius: 5px; font: inherit; min-width: 0; }
+.alarm-overview button, .legacy-alarm-panel button { cursor: pointer; white-space: nowrap; }
+.alarm-overview button:disabled, .legacy-alarm-panel button:disabled { opacity: .45; cursor: default; }
+.alarm-overview button:not(:disabled):hover, .legacy-alarm-panel button:not(:disabled):hover { border-color: #50d8cb; }
+.legacy-alarm-panel input { color-scheme: dark; width: 100%; }
+.light-theme .legacy-alarm-panel input { color-scheme: light; }
+.alarm-source-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+.alarm-source-cards article { border: 1px solid var(--glass-border); border-radius: 8px; padding: 16px; background: var(--glass-card); min-width: 0; }
+.alarm-source-cards article > span { color: var(--text-soft); font-size: 12px; }
+.alarm-source-cards strong { display: block; font-size: 27px; font-weight: 500; margin: 10px 0; color: var(--text-main); }
+.alarm-source-cards strong small { font-size: 11px; color: var(--text-muted); }
+.alarm-source-cards p { color: var(--text-muted); font-size: 10px; margin: 4px 0; overflow-wrap: anywhere; }
+.alarm-source-cards b { font-size: 11px; }
+.alarm-page .alarm-error { color: #ffad66; border: 1px solid #ffad6638; background: #ffad6609; padding: 10px 12px; border-radius: 5px; font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.alarm-page .alarm-error-text { color: #ffad66; }
+.light-theme .alarm-page .alarm-error, .light-theme .alarm-page .alarm-error-text { color: #ab4a13; }
+.alarm-muted { color: var(--text-muted); font-size: 11px; }
+.alarm-source-filter { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+.alarm-source-badge { display: inline-block; color: #50d8cb; border: 1px solid #50d8cb60; padding: 3px 6px; border-radius: 4px; font-size: 10px; }
+.alarm-source-badge.external { color: #82b6ff; border-color: #82b6ff60; }
+.light-theme .alarm-source-badge { color: #237f76; }.light-theme .alarm-source-badge.external { color: #276cb2; }
+.alarm-table-scroll { overflow: auto; max-height: 480px; scrollbar-width: thin; border: 1px solid var(--glass-border); border-radius: 6px; }
+.alarm-table-scroll::-webkit-scrollbar { display: block; height: 7px; width: 7px; }.alarm-table-scroll::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 4px; }
+.alarm-data-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11px; }
+.alarm-data-table th, .alarm-data-table td { text-align: left; padding: 11px; border-bottom: 1px solid var(--glass-border); white-space: nowrap; }
+.alarm-data-table th { position: sticky; top: 0; z-index: 1; background: var(--surface); color: var(--text-muted); font-weight: 500; }
+.alarm-data-table small { display: block; color: var(--text-muted); font-size: 10px; margin-top: 6px; }
+.alarm-data-table .alarm-reason { white-space: normal; min-width: 180px; max-width: 330px; overflow-wrap: anywhere; line-height: 1.6; }
+.alarm-data-table .alarm-empty { text-align: center; color: var(--text-muted); padding: 32px; }
+.alarm-data-table tr.selected-alarm { background: #50d8cb09; }
+.alarm-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin: 12px 0; font-size: 11px; color: var(--text-muted); }
+.alarm-pagination > span:first-child { margin-right: auto; }
+.legacy-alarm-filters { display: grid; grid-template-columns: minmax(160px,1fr) minmax(250px,2fr) minmax(130px,1fr); gap: 12px; align-items: end; }
+.legacy-alarm-filters label { display: grid; gap: 7px; font-size: 11px; color: var(--text-muted); min-width: 0; }
+.legacy-alarm-filters select { width: 100%; }
+.alarm-detail-card, .alarm-worker { padding: 14px; border: 1px solid var(--glass-border); border-radius: 6px; margin-top: 16px; background: var(--glass-card); }
+.alarm-detail-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }.alarm-detail-card dt { color: var(--text-muted); font-size: 10px; }.alarm-detail-card dd { margin: 6px 0 0; overflow-wrap: anywhere; }.alarm-worker summary { cursor: pointer; margin-bottom: 12px; }.alarm-worker p { overflow-wrap: anywhere; }
+@media (max-width: 1300px) { .alarm-page .external-filter-grid { grid-template-columns: 130px minmax(300px,1fr) 110px; }.alarm-page .external-alarm-layout { grid-template-columns: minmax(0,1fr) 300px; } }

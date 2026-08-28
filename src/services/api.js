@@ -1,4 +1,5 @@
 import { auth } from './auth'
+import { healthApi } from './health'
 
 const LEGACY_API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 const NEW_API_BASE = import.meta.env.VITE_NEW_API_BASE_URL || 'http://192.168.31.158:18080'
@@ -43,6 +44,7 @@ async function request(path, params, options = {}) {
     method: options.method || 'GET',
     headers,
     body: options.body,
+    ...(options.signal ? { signal: options.signal } : {}),
   })
   const contentType = response.headers.get('content-type') || ''
   const body = contentType.includes('application/json') ? await response.json() : await response.text()
@@ -108,7 +110,9 @@ export const api = {
 
     return normalizeLoginResponse(body)
   },
-  getHealthDetail: () => request('/api/health/detail', undefined, { allowErrorBody: true }),
+  getHealth: healthApi.getHealth,
+  getHealthDetail: healthApi.getHealthDetail,
+  getTableMaintenance: healthApi.getTableMaintenance,
   getModules: () => request('/api/configuration/modules'),
   getEnabledModules: (recentCount = 60) => request('/api/configuration/enabled-modules', { recentCount }),
   getModulePoints: (moduleId, includeLatest = true) =>
@@ -123,7 +127,7 @@ export const api = {
   getSpectrum: (params) => request('/api/acoustic/spectrum', params),
   getWaveform: (params) => request('/api/acoustic/realtime-waveform', params),
   getAlarmSegments: (params = {}) => request('/api/acoustic/alarm-segments', params),
-  getMonitorDevices: () => newApiRequest('/monitor/devices'),
+  getMonitorDevices: (options = {}) => newApiRequest('/monitor/devices', undefined, { signal: options.signal }),
   createMonitorSession: (payload) => newApiRequest('/monitor/sessions', undefined, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

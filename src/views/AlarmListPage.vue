@@ -1,19 +1,31 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { CalendarDays, FileAudio, Search } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
-import { useDashboardStore } from '../stores/dashboard'
+import { useAlarmStore } from '../stores/alarms.js'
+import LegacyAlarmPanel from '../components/LegacyAlarmPanel.vue'
+import AlarmOverview from '../components/AlarmOverview.vue'
+import '../styles/alarms.css'
 import { api } from '../services/api'
 
-const dashboard = useDashboardStore()
-const activePane = ref('legacy')
-
-const alarmModules = computed(() => dashboard.modules.filter((module) => module.channels?.length))
-const alarmChannels = computed(() => {
-  const module = dashboard.modules.find((item) => item.moduleId === dashboard.alarmModuleId)
-  return module?.channels || []
-})
-
+const legacyAlarms = useAlarmStore()
+const activePane = ref('overview')
+const overviewController = new AbortController()
+const externalSnapshot = reactive({ updatedAt: null, error: '', queryLabel: '尚未获取 18080 告警' })
+function refreshOverview() {
+  if (!legacyAlarms.loading) legacyAlarms.load(legacyAlarms.requested || {}, { signal: overviewController.signal })
+  if (!externalAlarms.loading) loadExternalAlarms()
+}
+function inspectAlarm(entry) {
+  if (entry.source === '5158') {
+    legacyAlarms.selected = entry.raw
+    activePane.value = 'legacy'
+  } else {
+    activePane.value = 'external'
+    loadExternalAudioFiles(entry.raw)
+  }
+}
+onBeforeUnmount(() => overviewController.abort())
 const externalFilters = reactive({
   status: '',
   range: [],
@@ -62,39 +74,28 @@ const formatStatus = (value) => {
 
 const chartMax = computed(() => Math.max(...chartState.rows.map((item) => Number(item.count || item.value || 0)), 1))
 
-const onModuleChange = (moduleId) => {
-  const module = dashboard.modules.find((item) => item.moduleId === moduleId)
-  dashboard.setAlarmFilter({
-    moduleId,
-    channelId: module?.channels?.[0]?.channelId || '',
-  })
-}
-
-const onChannelChange = (channelId) => {
-  dashboard.setAlarmFilter({ channelId })
-}
-
-const onStatusChange = (value) => {
-  dashboard.setAlarmFilter({ isActive: value === 'true' })
-}
-
 const loadExternalAlarms = async () => {
   externalAlarms.loading = true
+  externalSnapshot.error = ''
   try {
     const [beginTime, endTime] = externalFilters.range || []
+    const { currentPage, pageSize, status } = externalFilters
     const data = await api.getExternalAlarmPage({
-      currentPage: externalFilters.currentPage,
-      pageSize: externalFilters.pageSize,
-      status: externalFilters.status,
+      currentPage,
+      pageSize,
+      status,
       beginTime,
       endTime,
     })
     const rows = pageRows(data)
     externalAlarms.rows = rows
     externalAlarms.total = pageTotal(data, rows)
+    externalSnapshot.updatedAt = new Date().toISOString()
+    externalSnapshot.queryLabel = `第 ${currentPage} 页 · 每页 ${pageSize} 条 · 状态 ${status || '全部'} · ${beginTime || '不限'} → ${endTime || '不限'}`
     externalAlarms.selected = rows[0] || null
     if (externalAlarms.selected) await loadExternalAudioFiles(externalAlarms.selected)
   } catch (error) {
+    externalSnapshot.error = error?.message || '18080 告警列表加载失败'
     ElMessage.error(error?.message || '外部告警列表加载失败')
   } finally {
     externalAlarms.loading = false
@@ -163,58 +164,16 @@ onMounted(() => {
 <template>
   <section class="page single-page alarm-page">
     <el-tabs v-model="activePane" class="alarm-tabs">
-      <el-tab-pane label="原系统告警" name="legacy">
-        <article class="panel alarm-list">
-          <h2>原系统告警 / 保留旧后端</h2>
-          <div class="filter-grid">
-            <el-select :model-value="dashboard.alarmModuleId" disabled placeholder="选择模块" @change="onModuleChange">
-              <el-option v-for="module in alarmModules" :key="module.moduleId" :label="module.moduleName || module.moduleId" :value="module.moduleId" />
-            </el-select>
-            <el-select :model-value="dashboard.alarmChannelId" disabled placeholder="选择通道" @change="onChannelChange">
-              <el-option v-for="channel in alarmChannels" :key="channel.channelId" :label="channel.name || channel.channelId" :value="channel.channelId" />
-            </el-select>
-            <el-select :model-value="String(dashboard.alarmIsActive)" disabled placeholder="告警状态" @change="onStatusChange">
-              <el-option label="当前告警" value="true" />
-              <el-option label="历史恢复" value="false" />
-            </el-select>
-            <el-button type="primary" disabled><Search :size="15" />原接口已停止</el-button>
-          </div>
-          <div v-if="!dashboard.alarmListRows.length" class="empty-state">暂无旧接口告警数据</div>
-          <el-table :data="dashboard.alarmListRows" class="dark-table legacy-alarm-table">
-            <el-table-column prop="time" label="告警时间" width="170" />
-            <el-table-column prop="device" label="设备名称" min-width="170" />
-            <el-table-column prop="type" label="告警类型" width="130" />
-            <el-table-column prop="source" label="来源" width="90" />
-            <el-table-column label="级别" width="80">
-              <template #default="scope">
-                <el-tag :type="scope?.row?.level === '重要' ? 'danger' : 'warning'" effect="dark">{{ scope?.row?.level || '-' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="85">
-              <template #default="scope">
-                <span class="state" :class="scope?.row?.status === '未处理' ? 'pending' : 'done'">{{ scope?.row?.status || '-' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="声纹文件" width="300">
-              <template #default="scope">
-                <audio v-if="scope?.row?.audioUrl" controls preload="none" :src="scope.row.audioUrl" class="alarm-audio" />
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="90">
-              <template #default="scope">
-                <el-button v-if="scope?.row?.audioUrl" size="small" link type="primary" tag="a" :href="scope.row.audioUrl" target="_blank">下载</el-button>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-          </el-table>
-          <footer class="pager"><span>共 {{ dashboard.alarmListRows.length }} 条</span><el-pagination small layout="prev, pager, next, sizes" :total="dashboard.alarmListRows.length" :page-size="5" /></footer>
-        </article>
+      <el-tab-pane label="双源告警总览" name="overview">
+        <AlarmOverview :legacy="legacyAlarms" :external="externalAlarms" :external-snapshot="externalSnapshot" @refresh="refreshOverview" @inspect="inspectAlarm" />
       </el-tab-pane>
-
-      <el-tab-pane label="外部接口告警" name="external">
+      <el-tab-pane label="5158 采集报警" name="legacy">
+        <LegacyAlarmPanel />
+      </el-tab-pane>
+      <el-tab-pane label="18080 设备告警" name="external">
         <article class="panel external-alarm-panel">
-          <h2>外部接口告警 / 新后端</h2>
+          <h2>18080 设备告警 / 原有接口</h2>
+          <p v-if="externalSnapshot.error" class="alarm-error" role="alert">{{ externalSnapshot.error }}。5158 报警仍可单独查询。</p>
           <div class="external-filter-grid">
             <el-select v-model="externalFilters.status" clearable placeholder="状态">
               <el-option label="未处理/活动" value="1" />

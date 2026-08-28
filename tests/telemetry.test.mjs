@@ -1,0 +1,120 @@
+import assert from 'node:assert/strict'
+import { test, afterEach } from 'node:test'
+import { createPinia, setActivePinia } from 'pinia'
+import { readFile } from 'node:fs/promises'
+import vm from 'node:vm'
+import { telemetryApi, validateHistoryQuery } from '../src/services/telemetry.js'
+import { useTelemetryStore } from '../src/stores/telemetry.js'
+import { appendSamples, localInputTime, numericValue, pointKey, seriesData, telemetryLine } from '../src/charts/telemetry.js'
+const originalFetch = globalThis.fetch
+afterEach(() => { globalThis.fetch = originalFetch })
+const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+const point = { pointId: 35, moduleId: 'PRESS01', channelId: 'AI01', pointCode: 'PRESS', name: '负压', unit: 'kPa' }
+const sample = (second, value = 0) => ({ ...point, collectedAt: `2026-08-28T10:00:${String(second).padStart(2,'0')}+08:00`, value })
+const query = { pointId: 35, start: '2026-08-28T10:00:00', end: '2026-08-28T10:10:00', limit: 5000 }
+
+test('four telemetry routes use 5158 without new service credentials; history only uses pointId', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options) => { calls.push({url,options}); return reply({}) }
+  await telemetryApi.getModules(); await telemetryApi.getModulePoints('PRESS01'); await telemetryApi.getLatest(); await telemetryApi.getHistory({ ...query, moduleId:'must-not-send', channelId:'ignore', pointCode:'ignore' })
+  assert.equal(calls[0].url,'http://localhost:5158/api/configuration/modules')
+  assert.equal(calls[1].url,'http://localhost:5158/api/configuration/modules/PRESS01/points?includeLatest=false')
+  assert.equal(calls[2].url,'http://localhost:5158/api/realtime/latest')
+  const url = new URL(calls[3].url)
+  assert.equal(url.pathname, '/api/telemetry/history')
+  assert.deepEqual([...url.searchParams.keys()], ['pointId','start','end','limit'])
+  assert.equal(url.searchParams.get('start'), query.start)
+  for (const call of calls) { assert.equal(call.options.headers.Authorization, undefined); assert.ok(call.options.signal instanceof AbortSignal) }
+})
+
+test('module route encodes IDs and HTTP errors are not accepted as samples', async () => {
+  globalThis.fetch = async (url) => { assert.ok(url.includes('/A%2FB%20%23/points?includeLatest=false')); return reply({},404) }
+  await assert.rejects(() => telemetryApi.getModulePoints('A/B #'), /404/)
+})
+
+test('history rejects invalid point IDs, times and limits before fetching', async () => {
+  globalThis.fetch = () => { throw new Error('Should not fetch') }
+  for (const invalid of [{pointId:0},{pointId:-1},{pointId:1.5},{start:'bad'}, {end:query.start},{limit:0},{limit:100001},{limit:2.5}]) assert.throws(()=>validateHistoryQuery({...query,...invalid}))
+  assert.deepEqual(validateHistoryQuery({...query, pointId:'35',limit:'100'}),{...query, pointId:35,limit:100})
+})
+
+test('development route uses dedicated telemetry prefix without widening health or 18080 proxies', async () => {
+  let url
+  const context = vm.createContext({ fetch: async (value)=>{url=value;return reply({})}, URLSearchParams, AbortSignal })
+  const module = new vm.SourceTextModule(await readFile(new URL('../src/services/telemetry.js',import.meta.url),'utf8'),{context,initializeImportMeta(meta){meta.env={DEV:true}}})
+  await module.link(()=>{throw new Error('No dependencies expected')}); await module.evaluate()
+  await module.namespace.telemetryApi.getLatest()
+  assert.equal(url,'/_telemetry-api/api/realtime/latest')
+  const { default: config } = await import('../vite.config.js')
+  const proxies=config({mode:'test'}).server.proxy
+  const pattern=new RegExp(Object.keys(proxies).find((key)=>key.startsWith('^/_telemetry-api/')))
+  for (const path of ['/configuration/modules','/configuration/modules/A/points?includeLatest=false','/realtime/latest','/telemetry/history?pointId=35']) assert.equal(pattern.test('/_telemetry-api/api'+path),true)
+  for (const path of ['/configuration/modbus','/realtime/latest/A/B/C','/analysis/alarms','/telemetry/history/aggregate']) assert.equal(pattern.test('/_telemetry-api/api'+path),false)
+  assert.equal(pattern.test('/monitor/devices'),false)
+})
+
+test('same value with new timestamps is retained; repeated cached sample is not duplicated', () => {
+  let buffers=appendSamples({},[sample(1),sample(2)])
+  buffers=appendSamples(buffers,[sample(2),sample(3)])
+  assert.equal(buffers[pointKey(point)].length,3)
+  assert.deepEqual(buffers[pointKey(point)].map(s=>s.value),[0,0,0])
+  assert.equal(appendSamples(buffers,[sample(4)],2)[pointKey(point)].length,2)
+})
+
+test('latest buffers isolate tuples, sort timestamps and release removed points', () => {
+  const other={...sample(1),moduleId:'OTHER'}
+  const buffers=appendSamples({},[sample(3),sample(1),other])
+  assert.equal(Object.keys(buffers).length,2)
+  assert.deepEqual(buffers[pointKey(point)].map(s=>s.collectedAt),[sample(1).collectedAt,sample(3).collectedAt])
+  assert.equal(Object.keys(appendSamples(buffers,[sample(4)])).length,1)
+})
+
+test('chart preserves zero, does not turn missing values into zero, and gaps real-time outages', () => {
+  assert.equal(numericValue(0),0); assert.equal(numericValue(null),null); assert.equal(numericValue(''),null)
+  const data=seriesData([sample(1,0),sample(30,2)],15000)
+  assert.equal(data.length,3); assert.equal(data[1][1],null)
+  assert.equal(seriesData([sample(1),sample(30)]).length,2)
+  const option=telemetryLine([sample(1,0)],point)
+  assert.equal(option.series[0].type,'line'); assert.equal(option.series[0].smooth,false)
+  assert.equal(option.series[0].data.length,1)
+  assert.equal(option.series[0].connectNulls,false)
+})
+
+test('datetime-local defaults use local calendar components', () => {
+  assert.equal(localInputTime(new Date(2026,7,28,12,34,56)), '2026-08-28T12:34:56')
+})
+
+test('point changes ignore late responses from previous module', async () => {
+  setActivePinia(createPinia()); const store=useTelemetryStore(); const releases={}
+  globalThis.fetch=async(url)=>{const id=url.includes('/A/')?'A':'B';await new Promise(resolve=>releases[id]=resolve);return reply({moduleId:id,points:[{...point,moduleId:id}]})}
+  const a=store.loadPoints('A');const b=store.loadPoints('B');releases.B();await b;releases.A();await a
+  assert.equal(store.pointModuleId,'B');assert.equal(store.points[0].moduleId,'B')
+})
+
+test('failed latest refresh keeps the real previous samples and marks error', async () => {
+  setActivePinia(createPinia());const store=useTelemetryStore()
+  globalThis.fetch=async()=>reply([sample(1)])
+  await store.refreshLatest();globalThis.fetch=async()=>{throw new Error('network down')};await store.refreshLatest()
+  assert.equal(store.latest.length,1);assert.equal(store.buffers[pointKey(point)].length,1);assert.match(store.errors.latest,/network/)
+})
+
+test('changing point invalidates old history requests and clears the old chart', async () => {
+  setActivePinia(createPinia());const store=useTelemetryStore();let release
+  globalThis.fetch=async()=>{await new Promise(r=>release=r);return reply({points:[sample(1)]})}
+  const pending=store.loadHistory(query);store.clearHistory();release();await pending
+  assert.equal(store.history,null);assert.equal(store.loadingHistory,false)
+})
+
+test('history records the executed range, not mutable form fields', async () => {
+  setActivePinia(createPinia());const store=useTelemetryStore()
+  globalThis.fetch=async()=>reply({points:[sample(1)]})
+  await store.loadHistory(query)
+  assert.deepEqual(store.history.requested,query);assert.equal(store.history.points.length,1)
+})
+
+test('unmount clear prevents late sample response contaminating the next visit', async () => {
+  setActivePinia(createPinia());const store=useTelemetryStore();let release
+  globalThis.fetch=async()=>{await new Promise(r=>release=r);return reply([sample(1)])}
+  const pending=store.refreshLatest();store.clear();release();await pending
+  assert.equal(store.latest.length,0);assert.deepEqual(store.buffers,{})
+})
