@@ -1,6 +1,6 @@
 <script setup>
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Activity, ArrowDown, ChevronRight, CircleCheck, Database, FileCheck2, Layers3, Radio, RefreshCw, Server, ShieldCheck, Sparkles, Wifi, WifiOff } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Activity, ArrowDown, CircleCheck, Database, FileCheck2, Layers3, Radio, RefreshCw, Server, ShieldCheck, Wifi, WifiOff } from 'lucide-vue-next'
 import EChart from '../components/EChart.vue'
 import { useHealthStore } from '../stores/health'
 import { useHomeDevicesStore } from '../stores/homeDevices'
@@ -8,12 +8,10 @@ import { mergeHomeDevices, deviceSourceSummary } from '../charts/homeDevices'
 import { countOnline } from '../charts/healthCharts'
 import { cacheDonut, checksBars, healthGauge, maintenanceBars, onlineDonut, partitionHeatmap } from '../charts/healthCharts'
 
-const HealthDiagnostics = defineAsyncComponent(() => import('../components/HealthDiagnostics.vue'))
 const health = useHealthStore()
 const homeDevices = useHomeDevicesStore()
 const deviceSource = ref('all')
 const autoRefresh = ref(true)
-const detailsOpen = ref(false)
 const partitionType = ref('moduleTables')
 const selectedModuleKey = ref('')
 const reducedMotion = ref(false)
@@ -53,8 +51,8 @@ const visibleStates = computed(() => countOnline(modules.value))
 const selectedModule = computed(() => modules.value.find((m) => m.key === selectedModuleKey.value) || modules.value[0])
 const sourceSummary = computed(() => deviceSourceSummary({ legacyLoaded: health.detail !== null, monitorLoaded: homeDevices.devices !== null, legacyError: health.errors.detail, monitorError: homeDevices.error }))
 const sourceStates = computed(() => [
-  { key: 'legacy', label: '5158 模块', count: health.detail ? health.modules.length : '—', error: health.errors.detail, loaded: health.detail !== null, time: health.detail?.generatedAt },
-  { key: 'monitor', label: '18080 设备', count: homeDevices.devices?.length ?? '—', error: homeDevices.error, loaded: homeDevices.devices !== null, time: homeDevices.refreshedAt },
+  { key: 'legacy', label: '采集模块', count: health.detail ? health.modules.length : '—', error: health.errors.detail, loaded: health.detail !== null, time: health.detail?.generatedAt },
+  { key: 'monitor', label: '声纹设备', count: homeDevices.devices?.length ?? '—', error: homeDevices.error, loaded: homeDevices.devices !== null, time: homeDevices.refreshedAt },
 ])
 const tables = computed(() => detail.value[partitionType.value] || [])
 const missingPartitions = computed(() => tables.value.reduce((sum, t) => sum + (t.missingPartitions?.length || 0), 0))
@@ -73,13 +71,13 @@ const dateTime = (value) => {
 const display = (value) => value ?? '—'
 const bytes = (value) => value == null ? '—' : value < 1024 ? `${value} B` : value < 1048576 ? `${(value / 1024).toFixed(1)} KB` : `${(value / 1048576).toFixed(1)} MB`
 const tone = (value) => value === true ? 'good' : value === false ? 'warn' : 'muted'
-const statusText = computed(() => health.errors.detail ? '数据待更新' : ({ Healthy: '5158 健康', Unhealthy: '5158 异常', Degraded: '5158 降级' }[detail.value.status] || '等待数据'))
+const statusText = computed(() => health.errors.detail ? '数据待更新' : ({ Healthy: '采集健康', Unhealthy: '采集异常', Degraded: '采集降级' }[detail.value.status] || '等待数据'))
 const errorLabels = { heartbeat: '基础心跳', detail: '健康详情', maintenance: '分区维护' }
 const metrics = computed(() => [
-  { label: '设备 / 模块总数', value: hasDeviceData.value ? allDevices.value.length : '—', unit: '个', icon: Server, color: 'cyan', note: '5158 模块 + 18080 设备' },
+  { label: '设备 / 模块总数', value: hasDeviceData.value ? allDevices.value.length : '—', unit: '个', icon: Server, color: 'cyan', note: '采集模块 + 声纹设备' },
   { label: '在线设备 / 模块', value: hasDeviceData.value ? totalStates.value.online : '—', unit: '个', icon: Wifi, color: 'green', note: '两套来源已获取的在线记录' },
   { label: '离线设备 / 模块', value: hasDeviceData.value ? totalStates.value.offline : '—', unit: '个', icon: WifiOff, color: 'orange', note: '未知状态 '+(hasDeviceData.value ? totalStates.value.unknown : '—')+' 个 · 不计为离线' },
-  { label: '5158 有效监测点', value: display(pointCount.value?.activePointCount), unit: '个', icon: Radio, color: 'purple', note: '预期点位 '+display(pointCount.value?.expectedPointCount)+' 个 · 不含新通道' },
+  { label: '有效监测点', value: display(pointCount.value?.activePointCount), unit: '个', icon: Radio, color: 'purple', note: '预期点位 '+display(pointCount.value?.expectedPointCount)+' 个 · 不含声纹通道' },
 ])
 const systemNodes = computed(() => [
   { label: '数据库连接', ok: detail.value.database?.isHealthy, icon: Database },
@@ -95,30 +93,30 @@ const maintenanceEvents = computed(() => [
 
 <template>
   <section class="page page-home health-cockpit" :aria-busy="refreshing">
-    <header class="cockpit-header">
-      <div><div class="eyebrow"><Sparkles :size="13" /> LIVE SYSTEM OBSERVATORY</div><h1>设备健康驾驶舱 <span class="live-pill" :class="{ warning: health.errors.detail || (detail.status && detail.status !== 'Healthy') }"><i></i>{{ statusText }}</span></h1><p>{{ health.heartbeat?.service || '等待服务响应' }}<span> / </span><b :class="tone(health.errors.heartbeat ? false : health.heartbeat ? health.heartbeat.status === 'ok' : undefined)">{{ health.errors.heartbeat ? '心跳连接失败' : health.heartbeat?.status === 'ok' ? '心跳运行中' : health.heartbeat?.status || '心跳待连接' }}</b><span> / </span>{{ dateTime(health.heartbeat?.time) }}</p></div>
+    <header class="cockpit-header content-page-header">
+      <div><h1 class="content-page-title">首页 <span class="live-pill" :class="{ warning: health.errors.detail || (detail.status && detail.status !== 'Healthy') }"><i></i>{{ statusText }}</span></h1><p><b :class="tone(health.errors.heartbeat ? false : health.heartbeat ? health.heartbeat.status === 'ok' : undefined)">{{ health.errors.heartbeat ? '心跳连接失败' : health.heartbeat?.status === 'ok' ? '心跳运行中' : health.heartbeat?.status || '心跳待连接' }}</b><span> / </span>{{ dateTime(health.heartbeat?.time) }}</p></div>
       <div class="cockpit-actions"><label><el-switch v-model="autoRefresh" aria-label="自动刷新" /><span>15 秒自动刷新</span></label><el-button :loading="refreshing" @click="refresh"><RefreshCw v-if="!refreshing" :size="14" />刷新状态</el-button><small>详情生成于 {{ dateTime(detail.generatedAt) }}</small></div>
     </header>
 
     <div v-for="(message, key) in health.errors" :key="key" class="cockpit-error" role="alert">{{ errorLabels[key] }}获取失败：{{ message }}。{{ health[key] ? '图表保留上次成功数据，请留意生成时间。' : '暂无可用数据。' }}</div>
 
-    <div v-if="homeDevices.error" class="cockpit-error" role="alert">18080 设备获取失败：{{ homeDevices.error }}。{{ homeDevices.devices !== null ? '设备汇总保留上次成功数据，请留意更新时间。' : '当前汇总尚不包含新接口设备。' }}</div>
+    <div v-if="homeDevices.error" class="cockpit-error" role="alert">声纹设备获取失败：{{ homeDevices.error }}。{{ homeDevices.devices !== null ? '设备汇总保留上次成功数据，请留意更新时间。' : '当前汇总尚不包含声纹设备。' }}</div>
     <div class="device-source-status"><div v-for="source in sourceStates" :key="source.key" :class="source.error ? 'warn' : source.loaded ? 'good' : 'muted'" :title="'更新时间 '+dateTime(source.time)"><i></i><b>{{ source.label }}</b><span>{{ source.count }} 个 · {{ source.error ? source.loaded ? '数据过期' : '获取失败' : source.loaded ? '已更新' : '等待数据' }}</span><time>{{ dateTime(source.time) }}</time></div><p>{{ sourceSummary }}</p></div>
 
     <div class="metric-strip"><article v-for="(metric, index) in metrics" :key="metric.label" class="metric-tile" :class="metric.color"><div class="metric-icon"><component :is="metric.icon" :size="21" /></div><div><span>{{ metric.label }}</span><strong>{{ metric.value }}<small>{{ metric.unit }}</small></strong><p>{{ metric.note }}</p></div><span class="metric-index">0{{ index + 1 }}</span><div class="tile-trace"></div></article></div>
 
     <div class="cockpit-grid">
       <article class="viz-panel module-panel"><header><div><span class="section-no">01</span><h2>设备 / 模块在线分布</h2></div><small>{{ modules.length }} 个状态</small></header>
-        <div class="device-source-filter segmented" role="group" aria-label="设备来源"><button type="button" :class="{ active: deviceSource === 'all' }" :aria-pressed="deviceSource === 'all'" @click="deviceSource = 'all'">全部</button><button type="button" :class="{ active: deviceSource === 'legacy' }" :aria-pressed="deviceSource === 'legacy'" @click="deviceSource = 'legacy'">5158 模块</button><button type="button" :class="{ active: deviceSource === 'monitor' }" :aria-pressed="deviceSource === 'monitor'" @click="deviceSource = 'monitor'">18080 设备</button></div>
+        <div class="device-source-filter segmented" role="group" aria-label="设备来源"><button type="button" :class="{ active: deviceSource === 'all' }" :aria-pressed="deviceSource === 'all'" @click="deviceSource = 'all'">全部</button><button type="button" :class="{ active: deviceSource === 'legacy' }" :aria-pressed="deviceSource === 'legacy'" @click="deviceSource = 'legacy'">采集模块</button><button type="button" :class="{ active: deviceSource === 'monitor' }" :aria-pressed="deviceSource === 'monitor'" @click="deviceSource = 'monitor'">声纹设备</button></div>
         <div class="module-summary"><div class="online-chart" role="img" :aria-label="'当前来源：在线 '+visibleStates.online+'，离线 '+visibleStates.offline+'，未知 '+visibleStates.unknown"><EChart :option="onlineOption" /></div><div class="module-legend"><span><i class="green-dot"></i>在线 <b>{{ filteredLoaded ? visibleStates.online : '—' }}</b></span><span><i class="orange-dot"></i>离线 <b>{{ filteredLoaded ? visibleStates.offline : '—' }}</b></span><span><i class="gray-dot"></i>未知 <b>{{ filteredLoaded ? visibleStates.unknown : '—' }}</b></span></div></div>
         <div class="module-matrix"><button v-for="module in modules" :key="module.key" type="button" :class="[tone(module.isOnline), { selected: selectedModule?.key === module.key, 'new-device': module.source === 'monitor' }]" :aria-pressed="selectedModule?.key === module.key" :aria-label="module.sourceLabel+' '+module.name+' '+(module.isOnline === true ? '在线' : module.isOnline === false ? '离线' : '未知')" :title="module.sourceLabel+' · '+module.name+' · '+module.id" @click="selectedModuleKey = module.key"><i></i><span>{{ module.name }}</span><small>{{ module.sourceLabel }}</small></button><p v-if="!modules.length" class="muted">{{ filteredLoaded ? '当前来源暂无设备 / 模块' : '当前来源尚未返回数据' }}</p></div>
         <div v-if="selectedModule" class="module-insight"><b :class="tone(selectedModule.isOnline)">{{ selectedModule.name }} · {{ selectedModule.isOnline === true ? '在线' : selectedModule.isOnline === false ? '离线' : '未知' }}</b><small>{{ selectedModule.sourceLabel }} · {{ selectedModule.kind }} · {{ selectedModule.id }}</small><p v-if="selectedModule.source === 'monitor'">网关连接 {{ display(selectedModule.connectedCollectors) }}/{{ display(selectedModule.collectorCount) }} · 通道在线 {{ display(selectedModule.onlineChannels) }}/{{ display(selectedModule.channelCount) }}</p><p :title="selectedModule.offlineReason || selectedModule.updatedAtLabel+' '+dateTime(selectedModule.updatedAt)">{{ selectedModule.offlineReason || selectedModule.updatedAtLabel+' '+dateTime(selectedModule.updatedAt) }}</p></div>
         <p class="micro-note">按模块 isOnline / 设备 online 统计；网关不重复计入设备数。</p>
       </article>
 
-      <article class="viz-panel core-panel"><header><div><span class="section-no">02</span><h2>健康检查核心</h2></div><ShieldCheck :size="17" /></header><div class="core-orbit" aria-hidden="true"></div><div class="core-gauge" role="img" :aria-label="`健康检查 ${passedChecks} 项通过，共 ${health.checks.length} 项`"><EChart :option="gaugeOption" /></div><div class="core-summary"><span><b class="good">{{ health.detail ? passedChecks : '—' }}</b>项通过</span><i></i><span><b :class="health.failedChecks.length ? 'warn' : ''">{{ health.detail ? health.failedChecks.length : '—' }}</b>项异常</span></div><div class="core-nodes"><div v-for="node in systemNodes" :key="node.label" :class="tone(node.ok)"><component :is="node.icon" :size="17" /><span>{{ node.label }}</span><b>{{ node.ok === true ? '正常' : node.ok === false ? '异常' : '未知' }}</b></div></div><p class="micro-note">仅 5158 健康检查 · 不代表 18080 服务健康</p></article>
+      <article class="viz-panel core-panel"><header><div><span class="section-no">02</span><h2>健康检查核心</h2></div><ShieldCheck :size="17" /></header><div class="core-orbit" aria-hidden="true"></div><div class="core-gauge" role="img" :aria-label="`健康检查 ${passedChecks} 项通过，共 ${health.checks.length} 项`"><EChart :option="gaugeOption" /></div><div class="core-summary"><span><b class="good">{{ health.detail ? passedChecks : '—' }}</b>项通过</span><i></i><span><b :class="health.failedChecks.length ? 'warn' : ''">{{ health.detail ? health.failedChecks.length : '—' }}</b>项异常</span></div><div class="core-nodes"><div v-for="node in systemNodes" :key="node.label" :class="tone(node.ok)"><component :is="node.icon" :size="17" /><span>{{ node.label }}</span><b>{{ node.ok === true ? '正常' : node.ok === false ? '异常' : '未知' }}</b></div></div><p class="micro-note">采集健康检查 · 不代表声纹服务健康</p></article>
 
-      <article class="viz-panel checks-panel"><header><div><span class="section-no">03</span><h2>检查项覆盖</h2></div><span class="mini-tag">{{ health.checks.length }} CHECKS</span></header><div class="mini-legend"><span><i class="cyan-dot"></i>通过</span><span><i class="orange-dot"></i>异常</span><small>单位：项</small></div><div class="checks-chart" role="img" aria-label="按数据库、历史表、聚合表、配置、缓存队列、运行时分类的检查结果"><EChart :option="checksOption" /></div><div class="check-message" :class="{ warning: health.failedChecks.length }"><CircleCheck :size="16" /><span>{{ !health.detail ? '等待检查结果' : health.failedChecks.length ? `${health.failedChecks.length} 项检查需要关注` : '全部已上报检查项通过' }}</span></div><p class="micro-note">5158 检查项 · 异常详情见底部诊断区</p></article>
+      <article class="viz-panel checks-panel"><header><div><span class="section-no">03</span><h2>检查项覆盖</h2></div><span class="mini-tag">{{ health.checks.length }} CHECKS</span></header><div class="mini-legend"><span><i class="cyan-dot"></i>通过</span><span><i class="orange-dot"></i>异常</span><small>单位：项</small></div><div class="checks-chart" role="img" aria-label="按数据库、历史表、聚合表、配置、缓存队列、运行时分类的检查结果"><EChart :option="checksOption" /></div><div class="check-message" :class="{ warning: health.failedChecks.length }"><CircleCheck :size="16" /><span>{{ !health.detail ? '等待检查结果' : health.failedChecks.length ? `${health.failedChecks.length} 项检查需要关注` : '全部已上报检查项通过' }}</span></div><p class="micro-note">采集检查项 · 按类别展示当前检查结果</p></article>
 
       <article class="viz-panel partition-panel"><header><div><span class="section-no">04</span><h2>数据分区覆盖矩阵</h2></div><div class="segmented" role="group" aria-label="分区表类型"><button type="button" :class="{ active: partitionType === 'moduleTables' }" :aria-pressed="partitionType === 'moduleTables'" @click="partitionType = 'moduleTables'">原始历史表</button><button type="button" :class="{ active: partitionType === 'aggregationTables' }" :aria-pressed="partitionType === 'aggregationTables'" @click="partitionType = 'aggregationTables'">聚合表</button></div></header><div class="partition-stats"><span><b>{{ tables.length }}</b> 张表</span><span :class="missingPartitions ? 'warn' : 'good'"><b>{{ health.detail ? missingPartitions : '—' }}</b> 缺失分区</span><div class="mini-legend"><span><i class="green-dot"></i>覆盖</span><span><i class="orange-dot"></i>缺失</span><span><i class="gray-dot"></i>未知 / 不要求</span></div></div><div class="partition-chart" :style="{ height: `${Math.max(225, Math.min(tables.length, 20) * 23 + 42)}px` }" role="img" :aria-label="`${tables.length} 张表的预期分区覆盖矩阵，缺失 ${missingPartitions} 个分区`"><EChart :option="partitionOption" /></div><p class="micro-note">横轴为预期分区月份与 pmax；悬停查看每个模块的覆盖状态。</p></article>
 
@@ -126,11 +124,10 @@ const maintenanceEvents = computed(() => [
 
       <article class="viz-panel maintenance-panel"><header><div><span class="section-no">06</span><h2>分区维护观测</h2></div><small>分区数 / 个</small></header><div class="maintenance-policies"><span>预建 <b>{{ display(options.futurePartitionMonths) }}</b> 个月</span><span>保留 <b>{{ display(options.dataRetentionMonths) }}</b> 个月</span><span>周期 <b>{{ display(options.checkIntervalHours) }}</b> 小时</span></div><div class="maintenance-chart" role="img" aria-label="最近一次维护前后，各模块分区数量对比"><EChart :option="maintenanceOption" /></div><div class="maintenance-timeline"><div v-for="event in maintenanceEvents" :key="event.label"><i :class="`${event.type}-dot`"></i><span>{{ event.label }}</span><time>{{ dateTime(event.time) }}</time></div></div><p v-if="maintenance.lastError" class="maintenance-error warn">{{ maintenance.lastError }}</p></article>
 
-      <article class="viz-panel pipeline-panel"><header><div><span class="section-no">07</span><h2>数据管道与配置</h2></div><Activity :size="16" /></header><div class="pipeline-flow"><div class="flow-source"><Radio :size="15" /><span>模块采集</span><b>{{ display(runtime.statusCount) }}</b></div><div class="flow-connector" aria-hidden="true"><ArrowDown :size="15" /></div><div class="flow-queues"><div><span>持久化待处理</span><strong>{{ display(detail.queues?.persistencePending) }}</strong></div><div><span>分析待处理</span><strong>{{ display(detail.queues?.analysisPending) }}</strong></div></div><div class="flow-connector" aria-hidden="true"><ArrowDown :size="15" /></div><div class="flow-database" :class="tone(detail.database?.isHealthy)"><Database :size="15" />数据库<span>{{ detail.database?.isHealthy === true ? '连接正常' : detail.database?.isHealthy === false ? '连接异常' : '状态未知' }}</span></div></div><div class="config-chips"><div v-for="file in detail.configFiles || []" :key="file.file" :title="`${file.file}\n${file.path || ''}`"><FileCheck2 :size="13" /><span>{{ file.file.split('/').pop() }}</span><i :class="file.exists === true ? 'green-dot' : 'orange-dot'"></i></div></div><p class="micro-note">5158 管道示意 · 不含 18080 网关队列</p></article>
+      <article class="viz-panel pipeline-panel"><header><div><span class="section-no">07</span><h2>数据管道与配置</h2></div><Activity :size="16" /></header><div class="pipeline-flow"><div class="flow-source"><Radio :size="15" /><span>模块采集</span><b>{{ display(runtime.statusCount) }}</b></div><div class="flow-connector" aria-hidden="true"><ArrowDown :size="15" /></div><div class="flow-queues"><div><span>持久化待处理</span><strong>{{ display(detail.queues?.persistencePending) }}</strong></div><div><span>分析待处理</span><strong>{{ display(detail.queues?.analysisPending) }}</strong></div></div><div class="flow-connector" aria-hidden="true"><ArrowDown :size="15" /></div><div class="flow-database" :class="tone(detail.database?.isHealthy)"><Database :size="15" />数据库<span>{{ detail.database?.isHealthy === true ? '连接正常' : detail.database?.isHealthy === false ? '连接异常' : '状态未知' }}</span></div></div><div class="config-chips"><div v-for="file in detail.configFiles || []" :key="file.file" :title="`${file.file}\n${file.path || ''}`"><FileCheck2 :size="13" /><span>{{ file.file.split('/').pop() }}</span><i :class="file.exists === true ? 'green-dot' : 'orange-dot'"></i></div></div><p class="micro-note">采集管道示意 · 不含声纹网关队列</p></article>
     </div>
 
-    <details class="diagnostics-drawer" @toggle="detailsOpen = $event.target.open"><summary><span><Layers3 :size="16" />5158 完整诊断明细</span><span>模块原因 · 检查结果 · 分区与维护记录 <ChevronRight :size="16" /></span></summary><HealthDiagnostics v-if="detailsOpen" /></details>
-    <footer class="cockpit-footer"><span><i class="cyan-dot"></i>5158 健康 + 18080 设备 · 双来源数据</span><span>最近请求 {{ dateTime(health.lastAttemptAt) }} · {{ autoRefresh ? '自动刷新开启' : '自动刷新暂停' }}</span></footer>
+    <footer class="cockpit-footer"><span><i class="cyan-dot"></i>采集健康 + 声纹设备 · 多业务数据</span><span>最近请求 {{ dateTime(health.lastAttemptAt) }} · {{ autoRefresh ? '自动刷新开启' : '自动刷新暂停' }}</span></footer>
   </section>
 </template>
 
@@ -138,8 +135,7 @@ const maintenanceEvents = computed(() => [
 .health-cockpit { --glow: #8ee6a8; --aqua: #50d8cb; --warm: #ffad66; --violet: #ab9ff2; --muted: var(--text-muted); --card-fill: rgba(18, 32, 29, .82); display: block; overflow-y: auto; overflow-x: hidden; padding: 20px; scrollbar-width: thin; color: var(--text-main); background: radial-gradient(ellipse at 50% 5%, #46907c14, transparent 55%), var(--page-bg); }
 .health-cockpit * { box-sizing: border-box; }
 .cockpit-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
-.eyebrow { display: flex; align-items: center; gap: 7px; font-size: 9px; letter-spacing: 2.8px; color: var(--aqua); }
-.cockpit-header h1 { display: flex; align-items: center; gap: 13px; font-size: 25px; letter-spacing: 1px; font-weight: 600; margin: 8px 0; }
+.cockpit-header h1 { display: flex; align-items: center; gap: 13px; margin-bottom: 8px; }
 .cockpit-header p { font-size: 10px; color: var(--muted); margin: 0; line-height: 1.7; }
 .cockpit-header p > span { margin: 0 9px; opacity: .4; }
 .live-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 10px; color: var(--glow); background: #8ee6a810; border: 1px solid #8ee6a82b; border-radius: 20px; letter-spacing: 0; white-space: nowrap; }
@@ -198,13 +194,14 @@ i.green-dot, i.cyan-dot, i.orange-dot, i.gray-dot, i.purple-dot { display: inlin
 .pipeline-flow { padding: 15px 18px 0; }.flow-source, .flow-database { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--aqua); border: 1px solid #50d8cb29; border-radius: 4px; padding: 8px 11px; background: #50d8cb08; }.flow-source b { margin-left: auto; font-size: 14px; font-weight: 500; }.flow-database span { margin-left: auto; font-size: 9px; }
 .flow-connector { color: #50d8cb77; display: grid; place-items: center; height: 23px; }.flow-queues { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }.flow-queues > div { text-align: center; border: 1px solid #50d8cb25; background: #50d8cb08; padding: 9px 3px; border-radius: 5px; }.flow-queues span { font-size: 9px; color: var(--muted); }.flow-queues strong { display: block; font-size: 23px; font-weight: 500; color: var(--aqua); margin-top: 4px; }
 .config-chips { display: grid; gap: 7px; margin: 13px 18px 0; }.config-chips > div { display: flex; align-items: center; gap: 6px; font-size: 9px; color: var(--muted); }.config-chips i { margin-left: auto; }.config-chips span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.diagnostics-drawer { margin-top: 16px; border: 1px solid var(--glass-border); border-radius: 8px; background: var(--card-fill); }.diagnostics-drawer > summary { display: flex; justify-content: space-between; align-items: center; padding: 15px 18px; cursor: pointer; font-size: 11px; color: var(--text-soft); list-style: none; }.diagnostics-drawer > summary::-webkit-details-marker { display: none; }.diagnostics-drawer > summary > span { display: flex; align-items: center; gap: 8px; }.diagnostics-drawer > summary > span:last-child { font-size: 10px; color: var(--muted); }.diagnostics-drawer[open] > summary > span:last-child svg { transform: rotate(90deg); }.diagnostics-drawer :deep(.health-grid) { margin: 0 12px 12px; }
 .cockpit-footer { display: flex; justify-content: space-between; align-items: center; padding: 16px 0 0; font-size: 9px; color: var(--muted); }.cockpit-footer > span:first-child { display: flex; align-items: center; gap: 6px; }
 .health-cockpit .good { color: var(--glow); }.health-cockpit .warn { color: var(--warm); }.health-cockpit .muted { color: var(--muted); }
 @keyframes orbit { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .core-orbit { animation: none; }.module-matrix button { transition: none; } }
-:global(.light-theme .health-cockpit) { --glow: #287452; --aqua: #237f76; --warm: #b65015; --violet: #7360b2; --card-fill: rgba(255,255,255,.94); }
-@media (max-width: 1300px) { .health-cockpit { padding: 14px; }.cockpit-header h1 { font-size: 21px; }.cockpit-header p { max-width: 430px; }.metric-tile { padding: 13px 11px; gap: 10px; }.metric-icon { width: 33px; height: 38px; }.metric-tile p { font-size: 8px; }.cockpit-grid { gap: 12px; }.viz-panel > header { margin: 0 12px; }.module-summary { gap: 12px; }.online-chart { width: 116px; height: 123px; }.cache-visual { gap: 0; }.cache-chart { width: 137px; height: 152px; }.cache-amount strong { font-size: 20px; }.partition-stats { gap: 10px; }.partition-stats .mini-legend { gap: 5px; font-size: 8px; }.mini-tag { font-size: 7px; } }
+:global(.light-theme .health-cockpit) { --glow: #246947; --aqua: #1f7168; --warm: #a94713; --violet: #6553a7; --muted: #516a62; --card-fill: rgba(255,255,255,.96); }
+:global(.light-theme .health-cockpit .metric-tile),
+:global(.light-theme .health-cockpit .viz-panel) { border-color: rgba(31,73,63,.2); box-shadow: inset 0 1px 0 #fff, 0 7px 18px rgba(31,73,63,.07); }
+@media (max-width: 1300px) { .health-cockpit { padding: 14px; }.cockpit-header p { max-width: 430px; }.metric-tile { padding: 13px 11px; gap: 10px; }.metric-icon { width: 33px; height: 38px; }.metric-tile p { font-size: 8px; }.cockpit-grid { gap: 12px; }.viz-panel > header { margin: 0 12px; }.module-summary { gap: 12px; }.online-chart { width: 116px; height: 123px; }.cache-visual { gap: 0; }.cache-chart { width: 137px; height: 152px; }.cache-amount strong { font-size: 20px; }.partition-stats { gap: 10px; }.partition-stats .mini-legend { gap: 5px; font-size: 8px; }.mini-tag { font-size: 7px; } }
 .device-source-status { display: flex; flex-wrap: wrap; gap: 7px 18px; margin: -5px 0 14px; font-size: 10px; }
 .device-source-status > div { display: flex; align-items: center; gap: 6px; }
 .device-source-status > div > i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }

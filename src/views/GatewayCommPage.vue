@@ -259,10 +259,9 @@ onMounted(loadAll)
 
 <template>
   <section class="page gateway-page">
-    <header class="monitor-toolbar gateway-toolbar">
+    <header class="monitor-toolbar gateway-toolbar content-page-header">
       <div>
-        <span>Collector Communication</span>
-        <strong>网关通讯</strong>
+        <h1 class="content-page-title">网关通讯</h1>
       </div>
       <div class="monitor-actions gateway-filter-actions">
         <label>历史范围 <el-input-number v-model="historyFilter.hours" :min="1" :max="720" /> 小时</label>

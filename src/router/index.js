@@ -17,7 +17,7 @@ export const routes = [
   { path: '/recordings', name: 'recordings', component: RecordingManagementPage, meta: { title: '录音管理' } },
   { path: '/analysis/trend', name: 'trend', component: TrendPage, meta: { title: '趋势分析' } },
   { path: '/analysis/spectrum', name: 'spectrum', component: SpectrumPage, meta: { title: '频谱分析' } },
-  { path: '/alarm/list', name: 'alarm-list', component: AlarmListPage, meta: { title: '告警列表' } },
+  { path: '/alarm/list', name: 'alarm-list', component: AlarmListPage, meta: { title: '告警管理' } },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 

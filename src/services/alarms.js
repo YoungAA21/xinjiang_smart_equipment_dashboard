@@ -1,5 +1,7 @@
+import { resolveServiceBase } from './endpoints.js'
+
 // Dedicated read-only 5158 transport. Never attach the 18080 authentication token.
-const BASE = import.meta.env?.DEV ? '/_alarm-api' : (import.meta.env?.VITE_API_BASE_URL || 'http://localhost:5158').replace(/\/+$/, '')
+const BASE = import.meta.env?.DEV ? '/_alarm-api' : resolveServiceBase(import.meta.env?.VITE_API_BASE_URL, 5158)
 const present = (value) => value !== undefined && value !== null && value !== ''
 
 export function validateAlarmQuery(query = {}) {
@@ -30,7 +32,7 @@ async function get(path, query, { signal } = {}) {
     headers: { Accept: 'application/json' },
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000),
   })
-  if (!response.ok) throw new Error(`5158 告警接口请求失败（HTTP ${response.status}）`)
+  if (!response.ok) throw new Error(`采集报警接口请求失败（HTTP ${response.status}）`)
   return response.json()
 }
 

@@ -1,5 +1,7 @@
+import { resolveServiceBase } from './endpoints.js'
+
 // This migration is scoped to monitoring and history. It never uses the 18080 token.
-const BASE = import.meta.env?.DEV ? '/_telemetry-api' : (import.meta.env?.VITE_API_BASE_URL || 'http://localhost:5158').replace(/\/+$/, '')
+const BASE = import.meta.env?.DEV ? '/_telemetry-api' : resolveServiceBase(import.meta.env?.VITE_API_BASE_URL, 5158)
 
 async function get(path, params = {}, { signal } = {}) {
   const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))

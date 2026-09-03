@@ -62,8 +62,9 @@ select, button { background: var(--surface); color: var(--text-main); border: 1p
 button { cursor: pointer; } button:disabled { opacity: .4; cursor: default; }
 button:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
 .history-table-scroll { max-height: 410px; overflow: auto; scrollbar-width: thin; margin: 12px 0; border: 1px solid var(--glass-border); border-radius: 5px; }
-.history-table-scroll::-webkit-scrollbar { display: block; width: 7px; height: 7px; }
-.history-table-scroll::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 4px; }
+.history-table-scroll::-webkit-scrollbar { display: block; width: 8px; height: 8px; }
+.history-table-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); background-clip: padding-box; border: 2px solid transparent; border-radius: 6px; }
+.history-table-scroll::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
 caption { text-align: left; padding: 9px 12px; font-size: 10px; color: var(--text-muted); }
 th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--glass-border); white-space: nowrap; }

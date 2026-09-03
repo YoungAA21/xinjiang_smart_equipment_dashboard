@@ -449,6 +449,7 @@ onBeforeUnmount(stopSession)
 
 <template>
   <section class="page single-page spectrum-live-page">
+    <header class="spectrum-page-header content-page-header"><h1 class="content-page-title">频谱分析</h1></header>
     <article class="panel spectrum-live-panel">
       <h2>实时频谱分析 / 监听会话</h2>
 

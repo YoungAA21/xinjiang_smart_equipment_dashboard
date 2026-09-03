@@ -7,15 +7,15 @@ export function mergeHomeDevices(legacy = [], monitor = []) {
   return [
     ...legacy.map((module) => ({
       key: JSON.stringify(['legacy', module.protocol || '', String(module.moduleId)]),
-      source: 'legacy', sourceLabel: '5158', id: String(module.moduleId), name: module.moduleId,
+      source: 'legacy', sourceLabel: '采集模块', id: String(module.moduleId), name: module.moduleId,
       kind: '采集模块', protocol: module.protocol, isOnline: onlineState(module.isOnline),
       offlineReason: module.offlineReason || '', updatedAt: module.lastUpdatedAt,
       updatedAtLabel: '模块更新',
     })),
     ...monitor.map((device) => ({
       key: JSON.stringify(['monitor', String(device.deviceId)]),
-      source: 'monitor', sourceLabel: '18080', id: String(device.deviceId), name: device.deviceName || String(device.deviceId),
-      kind: '监控设备', isOnline: onlineState(device.online),
+      source: 'monitor', sourceLabel: '声纹设备', id: String(device.deviceId), name: device.deviceName || String(device.deviceId),
+      kind: '声纹设备', isOnline: onlineState(device.online),
       // Device online is authoritative; a connecting collector does not make
       // the whole device offline. Show child connectivity separately.
       offlineReason: device.offlineReason || '',
@@ -32,5 +32,5 @@ export function mergeHomeDevices(legacy = [], monitor = []) {
 export function deviceSourceSummary({ legacyLoaded, monitorLoaded, legacyError, monitorError }) {
   if (!legacyLoaded || !monitorLoaded) return '部分来源未返回，当前为已获取数量'
   if (legacyError || monitorError) return '含上次成功数据，请留意来源更新时间'
-  return '按来源独立计数，不跨系统去重'
+  return '按业务类型独立计数，不跨系统去重'
 }

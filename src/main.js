@@ -2,6 +2,8 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import {
   ElButton,
+  ElConfigProvider,
+  ElDatePicker,
   ElDropdown,
   ElDropdownItem,
   ElDropdownMenu,
@@ -26,6 +28,8 @@ const app = createApp(App)
 
 ;[
   ElButton,
+  ElConfigProvider,
+  ElDatePicker,
   ElDropdown,
   ElDropdownItem,
   ElDropdownMenu,

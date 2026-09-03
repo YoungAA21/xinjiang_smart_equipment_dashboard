@@ -2,13 +2,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ChevronDown, Fan, Maximize2, Minimize2, Moon, PanelLeftClose, PanelLeftOpen, Sun, UserRound } from 'lucide-vue-next'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useDashboardStore } from './stores/dashboard'
 import { auth } from './services/auth'
 
 const route = useRoute()
 const router = useRouter()
 const dashboard = useDashboardStore()
-const sidebarCollapsed = ref(false)
+const sidebarCollapsed = ref(localStorage.getItem('dashboard-sidebar') === 'collapsed')
 const isLightTheme = ref(localStorage.getItem('dashboard-theme') === 'light')
 const isFullscreen = ref(false)
 
@@ -55,6 +56,10 @@ watch(isLightTheme, (value) => {
   document.documentElement.classList.toggle('light-theme', value)
 }, { immediate: true })
 
+watch(sidebarCollapsed, (value) => {
+  localStorage.setItem('dashboard-sidebar', value ? 'collapsed' : 'expanded')
+})
+
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', syncFullscreen)
   dashboard.stopRealtimePolling()
@@ -62,15 +67,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <router-view v-if="isLoginPage" />
+  <el-config-provider :locale="zhCn">
+    <router-view v-if="isLoginPage" />
 
-  <main v-else class="dashboard-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed, 'light-theme': isLightTheme }">
+    <main v-else class="dashboard-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed, 'light-theme': isLightTheme }">
     <aside class="side-nav">
       <div class="brand">
         <span class="brand-mark"><Fan :size="23" /></span>
-        <button class="nav-collapse" type="button" :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'" @click="sidebarCollapsed = !sidebarCollapsed">
-          <component :is="sidebarCollapsed ? PanelLeftOpen : PanelLeftClose" :size="17" />
-        </button>
         <strong>智能设备健康管理平台</strong>
       </div>
       <nav>
@@ -83,10 +86,13 @@ onBeforeUnmount(() => {
           @click="router.push(item.path)"
         >
           <component :is="item.icon" :size="17" />
-          <span>{{ item.label }}</span>
+          <span class="menu-label">{{ item.label }}</span>
           <ChevronDown v-if="item.path !== '/'" :size="14" class="menu-chevron" />
         </el-button>
       </nav>
+      <button class="nav-collapse" type="button" :aria-expanded="!sidebarCollapsed" :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'" @click="sidebarCollapsed = !sidebarCollapsed">
+        <component :is="sidebarCollapsed ? PanelLeftOpen : PanelLeftClose" :size="18" />
+      </button>
     </aside>
 
     <section class="screen">
@@ -94,7 +100,6 @@ onBeforeUnmount(() => {
         <div class="top-title">
           <span class="title-glow"></span>
           <strong>{{ pageTitle }}</strong>
-          <em>Equipment Health Command Center</em>
         </div>
         <div class="top-actions">
           <button class="top-icon-btn" type="button" :title="isLightTheme ? '切换当前主题色' : '切换亮色主题'" @click="toggleTheme">
@@ -108,7 +113,6 @@ onBeforeUnmount(() => {
             <span class="admin-entry">{{ currentUser }} <ChevronDown :size="13" /></span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item>个人中心</el-dropdown-item>
                 <el-dropdown-item @click="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -120,5 +124,6 @@ onBeforeUnmount(() => {
         <router-view />
       </section>
     </section>
-  </main>
+    </main>
+  </el-config-provider>
 </template>

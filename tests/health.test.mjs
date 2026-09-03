@@ -18,14 +18,16 @@ const maintenance = { options: { futurePartitionMonths: 3, dataRetentionMonths: 
 const reply = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 const sampleFetch = async (url) => reply(url.endsWith('/detail') ? healthy : url.endsWith('/table-maintenance') ? maintenance : heartbeat)
 
-async function loadApi(fetch, env = {}) {
-  const context = vm.createContext({ fetch, AbortSignal, URL, URLSearchParams })
+async function loadApi(fetch, env = {}, location) {
+  const context = vm.createContext({ fetch, AbortSignal, URL, URLSearchParams, ...(location ? { location } : {}) })
   const makeModule = async (file) => new vm.SourceTextModule(await readFile(new URL(file, import.meta.url), 'utf8'), { context, initializeImportMeta(meta) { meta.env = env } })
+  const endpoints = await makeModule('../src/services/endpoints.js')
   const health = await makeModule('../src/services/health.js')
-  await health.link(() => { throw new Error('Unexpected health dependency') })
+  await endpoints.link(() => { throw new Error('Unexpected endpoint dependency') })
+  await health.link((specifier) => specifier === './endpoints.js' ? endpoints : Promise.reject(new Error(`Unexpected health dependency: ${specifier}`)))
   const auth = new vm.SyntheticModule(['auth'], function () { this.setExport('auth', { getToken: () => 'test-token' }) }, { context })
   const api = await makeModule('../src/services/api.js')
-  await api.link((specifier) => specifier === './auth' ? auth : health)
+  await api.link((specifier) => specifier === './auth' ? auth : specifier === './health' ? health : endpoints)
   await api.evaluate()
   return api.namespace.api
 }
@@ -35,7 +37,7 @@ test('only three migrated health routes are enabled; no 18080 token is sent', as
   const api = await loadApi(async (url, options) => { calls.push({ url, options }); return sampleFetch(url) })
   await api.getHealth(); await api.getHealthDetail(); await api.getTableMaintenance()
   assert.deepEqual(calls.map((c) => c.url), [
-    'http://localhost:5158/api/health', 'http://localhost:5158/api/health/detail', 'http://localhost:5158/api/health/table-maintenance',
+    'http://192.168.31.158:5158/api/health', 'http://192.168.31.158:5158/api/health/detail', 'http://192.168.31.158:5158/api/health/table-maintenance',
   ])
   for (const { options } of calls) {
     assert.equal(options.headers.Authorization, undefined)
@@ -61,6 +63,15 @@ test('development health calls use scoped same-origin proxy, new API still goes 
   await api.getHealth()
   assert.equal(calls[0], '/_health-api/api/health')
   assert.equal(api.getNewApiBaseUrl(), 'http://192.168.31.158:18080')
+})
+
+test('production defaults follow the frontend host while preserving service ports', async () => {
+  const calls = []
+  const location = { origin: 'http://equipment.example:8080' }
+  const api = await loadApi(async (url) => { calls.push(url); return reply(heartbeat) }, {}, location)
+  await api.getHealth()
+  assert.equal(calls[0], 'http://equipment.example:5158/api/health')
+  assert.equal(api.getNewApiBaseUrl(), 'http://equipment.example:18080')
 })
 
 test('proxy allowlist excludes unmigrated legacy routes and all new API routes', async () => {

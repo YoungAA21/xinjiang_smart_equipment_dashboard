@@ -122,21 +122,21 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="page unified-monitor">
-    <header class="device-toolbar"><div><span>DEVICE MONITORING</span><h1>设备监控 <small>5158 采集模块 / 18080 监控设备</small></h1></div><el-button :icon="RefreshCcw" :loading="refreshing" @click="refreshAll">刷新设备</el-button></header>
-    <div class="source-summary"><span :class="telemetry.errors.modules ? 'warn' : ''">5158 · {{ telemetry.modules?.length ?? '—' }} 个模块 · {{ dateTime(telemetry.moduleTime) }}</span><span :class="monitorError ? 'warn' : ''">18080 · {{ monitorDevices?.length ?? '—' }} 台设备 · {{ dateTime(monitorTime) }}</span></div>
-    <div v-if="telemetry.errors.modules" class="monitor-error" role="alert">5158 模块获取失败：{{ telemetry.errors.modules }}。{{ telemetry.modules ? '当前保留上次模块列表。' : '新接口设备仍可使用。' }}</div>
-    <div v-if="monitorError" class="monitor-error" role="alert">18080 设备获取失败：{{ monitorError }}。{{ monitorDevices ? '当前保留上次设备列表。' : '5158 模块仍可使用。' }}</div>
+    <header class="device-toolbar content-page-header"><div><h1 class="content-page-title">设备监控 <small>采集模块 / 声纹设备</small></h1></div><el-button :icon="RefreshCcw" :loading="refreshing" @click="refreshAll">刷新设备</el-button></header>
+    <div class="source-summary"><span :class="telemetry.errors.modules ? 'warn' : ''">采集模块 · {{ telemetry.modules?.length ?? '—' }} 个 · {{ dateTime(telemetry.moduleTime) }}</span><span :class="monitorError ? 'warn' : ''">声纹设备 · {{ monitorDevices?.length ?? '—' }} 台 · {{ dateTime(monitorTime) }}</span></div>
+    <div v-if="telemetry.errors.modules" class="monitor-error" role="alert">采集模块获取失败：{{ telemetry.errors.modules }}。{{ telemetry.modules ? '当前保留上次模块列表。' : '声纹设备仍可使用。' }}</div>
+    <div v-if="monitorError" class="monitor-error" role="alert">声纹设备获取失败：{{ monitorError }}。{{ monitorDevices ? '当前保留上次设备列表。' : '采集模块仍可使用。' }}</div>
 
     <div class="device-workspace">
       <aside class="device-directory">
-        <div class="source-filter" role="group" aria-label="设备来源"><button :class="{active: source === 'all'}" :aria-pressed="source === 'all'" @click="source = 'all'">全部</button><button :class="{active: source === 'legacy'}" :aria-pressed="source === 'legacy'" @click="source = 'legacy'">5158</button><button :class="{active: source === 'monitor'}" :aria-pressed="source === 'monitor'" @click="source = 'monitor'">18080</button></div>
-        <div class="device-list"><button v-for="entry in visibleEntries" :key="entry.key" class="device-entry" :class="{selected: selected?.key === entry.key}" :aria-pressed="selected?.key === entry.key" :aria-label="(entry.source === 'legacy' ? '5158 ' : '18080 ')+entry.id+' '+entry.name" @click="selectedKey = entry.key"><div><component :is="entry.source === 'legacy' ? Server : Fan" :size="17" /><strong>{{ entry.name }}</strong><i :class="tone(entry.online)">{{ status(entry.online) }}</i></div><p>{{ entry.id }}</p><small>{{ entry.source === 'legacy' ? '5158 · '+entry.raw.protocol : '18080 · '+(entry.raw.collectors?.length || 0)+' 网关 / '+(entry.raw.channels?.length || 0)+' 通道' }}</small></button><p v-if="!visibleEntries.length" class="empty-copy">当前来源暂无设备数据</p></div>
+        <div class="source-filter" role="group" aria-label="设备来源"><button :class="{active: source === 'all'}" :aria-pressed="source === 'all'" @click="source = 'all'">全部</button><button :class="{active: source === 'legacy'}" :aria-pressed="source === 'legacy'" @click="source = 'legacy'">采集模块</button><button :class="{active: source === 'monitor'}" :aria-pressed="source === 'monitor'" @click="source = 'monitor'">声纹设备</button></div>
+        <div class="device-list"><button v-for="entry in visibleEntries" :key="entry.key" class="device-entry" :class="{selected: selected?.key === entry.key}" :aria-pressed="selected?.key === entry.key" :aria-label="(entry.source === 'legacy' ? '采集模块 ' : '声纹设备 ')+entry.id+' '+entry.name" @click="selectedKey = entry.key"><div><component :is="entry.source === 'legacy' ? Server : Fan" :size="17" /><strong>{{ entry.name }}</strong><i :class="tone(entry.online)">{{ status(entry.online) }}</i></div><p>{{ entry.id }}</p><small>{{ entry.source === 'legacy' ? '采集模块 · '+entry.raw.protocol : '声纹设备 · '+(entry.raw.collectors?.length || 0)+' 网关 / '+(entry.raw.channels?.length || 0)+' 通道' }}</small></button><p v-if="!visibleEntries.length" class="empty-copy">当前来源暂无设备数据</p></div>
       </aside>
 
       <main class="device-detail">
         <div v-if="!selected" class="device-empty"><Server :size="38" /><p>选择设备或等待接口返回</p></div>
         <template v-else>
-          <header class="selection-summary"><div><h2>{{ selected.name }} <span :class="tone(selected.online)">{{ status(selected.online) }}</span></h2><p>{{ selected.id }} · {{ isLegacy ? selected.raw.host+':'+selected.raw.port : '18080 监控设备' }}</p></div><span class="source-tag">{{ isLegacy ? '5158 / '+selected.raw.protocol : '18080' }}</span></header>
+          <header class="selection-summary"><div><h2>{{ selected.name }} <span :class="tone(selected.online)">{{ status(selected.online) }}</span></h2><p>{{ selected.id }} · {{ isLegacy ? selected.raw.protocol || '采集模块' : '声纹设备' }}</p></div><span class="source-tag">{{ isLegacy ? '采集模块' : '声纹设备' }}</span></header>
 
           <template v-if="isLegacy">
             <div v-if="selected.raw.runtimeStatus?.offlineReason" class="monitor-error">{{ selected.raw.runtimeStatus.offlineReason }}</div>
@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
               </article>
             </template>
           </template>
-          <template v-else><p class="external-note">18080 原有网关与通道信息。声纹实时波形继续在“频谱分析”使用，不自动创建监听会话。</p><MonitorDeviceDetails :device="selected.raw" /></template>
+          <template v-else><p class="external-note">声纹网关与通道信息。声纹实时波形继续在“频谱分析”使用，不自动创建监听会话。</p><MonitorDeviceDetails :device="selected.raw" /></template>
         </template>
       </main>
     </div>
@@ -176,7 +176,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .unified-monitor { display: flex; flex-direction: column; padding: 16px; overflow-y: auto; color: var(--text-main); background: var(--page-bg); gap: 12px; --accent: #50d8cb; --warning: #ffad66; scrollbar-width: thin; }
-.device-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 20px; }.device-toolbar > div > span { color: var(--accent); font-size: 9px; letter-spacing: 2px; }.device-toolbar h1 { font-size: 22px; margin: 7px 0 0; font-weight: 600; }.device-toolbar h1 small { color: var(--text-muted); font-size: 11px; font-weight: 400; margin-left: 10px; }
+.device-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 20px; }.device-toolbar h1 small { color: var(--text-muted); font-size: 11px; font-weight: 400; margin-left: 10px; }
 .source-summary { display: flex; gap: 24px; font-size: 10px; color: var(--text-muted); }.monitor-error { color: var(--warning); font-size: 11px; padding: 10px 12px; border: 1px solid #ffad6635; border-radius: 5px; background: #ffad6608; line-height: 1.6; overflow-wrap: anywhere; }.monitor-error button { border: 0; background: none; color: inherit; text-decoration: underline; }
 .device-workspace { display: grid; grid-template-columns: 240px minmax(0,1fr); gap: 14px; flex: 1; min-height: 560px; }.device-directory { border: 1px solid var(--glass-border); background: var(--glass-card); border-radius: 8px; padding: 10px; align-self: start; position: sticky; top: 0; }.source-filter { display: flex; gap: 4px; padding-bottom: 10px; }.source-filter button { flex: 1; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-radius: 4px; padding: 6px; font-size: 10px; }.source-filter button.active { color: var(--accent); background: #50d8cb14; border-color: #50d8cb25; }
 .device-list { display: grid; gap: 7px; max-height: 580px; overflow-y: auto; scrollbar-width: thin; }.device-entry { text-align: left; width: 100%; padding: 12px 10px; border: 1px solid var(--glass-border); border-radius: 6px; background: transparent; color: var(--text-main); }.device-entry.selected { border-color: #50d8cb80; background: #50d8cb0b; }.device-entry > div { display: flex; align-items: center; gap: 7px; }.device-entry strong { font-size: 11px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.device-entry i { margin-left: auto; font-size: 9px; white-space: nowrap; font-style: normal; }.device-entry svg { color: var(--accent); flex-shrink: 0; }.device-entry p { margin: 7px 0 4px; color: var(--text-soft); font-size: 10px; overflow-wrap: anywhere; }.device-entry small { font-size: 9px; color: var(--text-muted); }

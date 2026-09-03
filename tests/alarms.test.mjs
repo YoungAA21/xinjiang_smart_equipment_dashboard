@@ -5,7 +5,7 @@ import vm from 'node:vm'
 import { createPinia, setActivePinia } from 'pinia'
 import { alarmApi, validateAlarmQuery } from '../src/services/alarms.js'
 import { useAlarmStore, alarmEvents } from '../src/stores/alarms.js'
-import { alarmValue, legacyAlarmStatus, mergeAlarmSnapshots } from '../src/charts/alarms.js'
+import { alarmValue, legacyAlarmStatus } from '../src/charts/alarms.js'
 
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
@@ -17,16 +17,16 @@ test('5158 alarm routes are isolated and only send supported pointId filters wit
   globalThis.fetch = async (url, options) => { calls.push({ url, options }); return reply({ events: [] }) }
   await alarmApi.getAlarms({ pointId: 28, isActive: false, moduleId: 'ignore', channelId: 'ignore', start: '2026-08-28T00:00:00', end: '2026-08-29T00:00:00', limit: 1000 })
   const url = new URL(calls[0].url)
-  assert.equal(url.origin, 'http://localhost:5158')
+  assert.equal(url.origin, 'http://192.168.31.158:5158')
   assert.equal(url.pathname, '/api/analysis/alarms')
   assert.deepEqual([...url.searchParams.keys()], ['pointId', 'isActive', 'start', 'end', 'limit'])
   assert.equal(url.searchParams.get('isActive'), 'false')
   assert.equal(calls[0].options.headers.Authorization, undefined)
   assert.ok(calls[0].options.signal instanceof AbortSignal)
   await alarmApi.getAlarms()
-  assert.equal(calls[1].url, 'http://localhost:5158/api/analysis/alarms?limit=200')
+  assert.equal(calls[1].url, 'http://192.168.31.158:5158/api/analysis/alarms?limit=200')
   await alarmApi.getStatus()
-  assert.equal(calls[2].url, 'http://localhost:5158/api/analysis/status')
+  assert.equal(calls[2].url, 'http://192.168.31.158:5158/api/analysis/status')
 })
 
 test('alarm filters reject invalid input and retain false, zero-free IDs and optional times', () => {
@@ -82,7 +82,7 @@ test('new query results win races and clearing invalidates outstanding requests'
   assert.equal(store.rows, null)
 })
 
-test('event parsing rejects unknown envelopes; snapshot merging preserves sources, IDs, states and zero values', () => {
+test('event parsing rejects unknown envelopes and preserves alarm display helpers', () => {
   assert.equal(alarmEvents([event]).length, 1)
   assert.equal(alarmEvents({ events: [event] }).length, 1)
   assert.throws(() => alarmEvents({ wrong: [] }))
@@ -90,21 +90,15 @@ test('event parsing rejects unknown envelopes; snapshot merging preserves source
   assert.equal(legacyAlarmStatus('Unexpected'), 'Unexpected')
   assert.equal(alarmValue(0, 'kPa'), '0 kPa')
   assert.equal(alarmValue(null), '—')
-  const external = { id: event.alarmId, status: 0, alarmAt: '2026-08-28T11:00:00+08:00' }
-  const rows = mergeAlarmSnapshots([event], [external])
-  assert.equal(rows.length, 2)
-  assert.notEqual(rows[0].key, rows[1].key)
-  assert.equal(rows[0].id, event.alarmId)
-  assert.equal(rows[0].status, '已处理')
-  assert.equal(rows[1].status, '当前告警')
-  assert.equal(rows[0].source, '18080')
 })
 
 test('development alarm proxy only permits two read-only endpoints', async () => {
   let url
   const context = vm.createContext({ URLSearchParams, AbortSignal, fetch: async (value) => { url = value; return reply({ events: [] }) } })
+  const endpointModule = new vm.SourceTextModule(await readFile(new URL('../src/services/endpoints.js', import.meta.url), 'utf8'), { context })
   const module = new vm.SourceTextModule(await readFile(new URL('../src/services/alarms.js', import.meta.url), 'utf8'), { context, initializeImportMeta(meta) { meta.env = { DEV: true } } })
-  await module.link(() => { throw new Error('No dependencies expected') }); await module.evaluate()
+  await endpointModule.link(() => { throw new Error('No dependencies expected') })
+  await module.link((specifier) => specifier === './endpoints.js' ? endpointModule : Promise.reject(new Error(`Unexpected dependency: ${specifier}`))); await module.evaluate()
   await module.namespace.alarmApi.getAlarms()
   assert.equal(url, '/_alarm-api/api/analysis/alarms?limit=200')
   const { default: config } = await import('../vite.config.js')
@@ -113,4 +107,12 @@ test('development alarm proxy only permits two read-only endpoints', async () =>
   const pattern = new RegExp(key)
   for (const path of ['/_alarm-api/api/analysis/alarms?isActive=false', '/_alarm-api/api/analysis/status']) assert.ok(pattern.test(path))
   for (const path of ['/_alarm-api/api/analysis/alarms/confirm', '/_alarm-api/alarm/page', '/alarm/page', '/_alarm-api/api/modbus-writebacks/trigger']) assert.equal(pattern.test(path), false)
+})
+
+test('collection alarm panel defaults to the first module before querying alarms', async () => {
+  const source = await readFile(new URL('../src/components/LegacyAlarmPanel.vue', import.meta.url), 'utf8')
+  assert.match(source, /filters\.moduleId = modules\.value\[0\]\?\.moduleId \|\| ''/)
+  assert.match(source, /if \(filters\.moduleId\) await changeModule\(\)/)
+  assert.match(source, /async function handleModuleChange\(\) \{\s*await changeModule\(\)\s*await query\(\)\s*\}/)
+  assert.match(source, /onMounted\(async \(\) => \{ await loadModules\(\); await query\(\);/)
 })

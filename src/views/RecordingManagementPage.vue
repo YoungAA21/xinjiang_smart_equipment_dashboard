@@ -246,10 +246,9 @@ onMounted(() => {
 
 <template>
   <section class="page recording-page">
-    <header class="monitor-toolbar recording-toolbar">
+    <header class="monitor-toolbar recording-toolbar content-page-header">
       <div>
-        <span>Recording Archive</span>
-        <strong>录音管理</strong>
+        <h1 class="content-page-title">录音管理</h1>
       </div>
       <div class="monitor-actions recording-actions">
         <el-button :icon="Search" type="primary" :loading="loading" @click="loadRecordings(true)">查询</el-button>
@@ -311,7 +310,7 @@ onMounted(() => {
       <section class="panel recording-list-panel">
         <div class="recording-section-heading">
           <h2><FileAudio :size="16" />本地 FLAC 录音</h2>
-          <span>Range 播放 / 下载</span>
+          <span>分段播放 / 下载</span>
         </div>
         <el-table class="recording-table" :data="recordings" height="520" highlight-current-row @row-click="selectRecording">
           <el-table-column prop="fileName" label="文件名" min-width="330" show-overflow-tooltip />

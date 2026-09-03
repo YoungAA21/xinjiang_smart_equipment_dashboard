@@ -1,8 +1,15 @@
 import { auth } from './auth'
 import { healthApi } from './health'
+import { resolveServiceBase } from './endpoints.js'
 
-const LEGACY_API_BASE = import.meta.env.VITE_API_BASE_URL || ''
-const NEW_API_BASE = import.meta.env.VITE_NEW_API_BASE_URL || 'http://192.168.31.158:18080'
+const LEGACY_API_BASE = resolveServiceBase(import.meta.env?.VITE_API_BASE_URL, 5158, {
+  development: Boolean(import.meta.env?.DEV),
+  developmentUrl: import.meta.env?.VITE_DEV_API_BASE_URL,
+})
+const NEW_API_BASE = resolveServiceBase(import.meta.env?.VITE_NEW_API_BASE_URL, 18080, {
+  development: Boolean(import.meta.env?.DEV),
+  developmentUrl: import.meta.env?.VITE_DEV_NEW_API_BASE_URL,
+})
 const LEGACY_API_DISABLED = import.meta.env.VITE_LEGACY_API_DISABLED !== 'false'
 
 const toQuery = (params = {}) => {

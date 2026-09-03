@@ -17,9 +17,9 @@ test('four telemetry routes use 5158 without new service credentials; history on
   const calls = []
   globalThis.fetch = async (url, options) => { calls.push({url,options}); return reply({}) }
   await telemetryApi.getModules(); await telemetryApi.getModulePoints('PRESS01'); await telemetryApi.getLatest(); await telemetryApi.getHistory({ ...query, moduleId:'must-not-send', channelId:'ignore', pointCode:'ignore' })
-  assert.equal(calls[0].url,'http://localhost:5158/api/configuration/modules')
-  assert.equal(calls[1].url,'http://localhost:5158/api/configuration/modules/PRESS01/points?includeLatest=false')
-  assert.equal(calls[2].url,'http://localhost:5158/api/realtime/latest')
+  assert.equal(calls[0].url,'http://192.168.31.158:5158/api/configuration/modules')
+  assert.equal(calls[1].url,'http://192.168.31.158:5158/api/configuration/modules/PRESS01/points?includeLatest=false')
+  assert.equal(calls[2].url,'http://192.168.31.158:5158/api/realtime/latest')
   const url = new URL(calls[3].url)
   assert.equal(url.pathname, '/api/telemetry/history')
   assert.deepEqual([...url.searchParams.keys()], ['pointId','start','end','limit'])
@@ -41,8 +41,10 @@ test('history rejects invalid point IDs, times and limits before fetching', asyn
 test('development route uses dedicated telemetry prefix without widening health or 18080 proxies', async () => {
   let url
   const context = vm.createContext({ fetch: async (value)=>{url=value;return reply({})}, URLSearchParams, AbortSignal })
+  const endpointModule = new vm.SourceTextModule(await readFile(new URL('../src/services/endpoints.js',import.meta.url),'utf8'),{context})
   const module = new vm.SourceTextModule(await readFile(new URL('../src/services/telemetry.js',import.meta.url),'utf8'),{context,initializeImportMeta(meta){meta.env={DEV:true}}})
-  await module.link(()=>{throw new Error('No dependencies expected')}); await module.evaluate()
+  await endpointModule.link(()=>{throw new Error('No dependencies expected')})
+  await module.link((specifier)=>specifier === './endpoints.js' ? endpointModule : Promise.reject(new Error(`Unexpected dependency: ${specifier}`))); await module.evaluate()
   await module.namespace.telemetryApi.getLatest()
   assert.equal(url,'/_telemetry-api/api/realtime/latest')
   const { default: config } = await import('../vite.config.js')
