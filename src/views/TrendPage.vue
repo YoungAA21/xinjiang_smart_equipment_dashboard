@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Activity, CalendarRange, Gauge, RefreshCcw, TrendingUp } from 'lucide-vue-next'
 import EChart from '../components/EChart.vue'
 import { telemetryApi } from '../services/telemetry.js'
@@ -7,6 +7,11 @@ import { analysisApi } from '../services/analysis.js'
 import { dailyLimitTrendOption, percent, riskLabel, riskTone, valueText } from '../charts/analysis.js'
 import '../styles/analysis.css'
 
+const props = defineProps({
+  embedded: Boolean,
+  moduleId: { type: String, default: '' },
+  point: { type: Object, default: null },
+})
 const modules = ref([])
 const points = ref([])
 const selectedModuleId = ref('')
@@ -86,13 +91,15 @@ async function changePoint() {
 }
 
 async function loadAnalysis() {
-  if (!selectedPoint.value || dateRange.value.length !== 2) return
+  if (!selectedPoint.value || dateRange.value?.length !== 2) return
   analysisController?.abort()
   const controller = new AbortController()
   analysisController = controller
   const version = ++analysisVersion
   analysisLoading.value = true
   analysisError.value = ''
+  days.value = []
+  insight.value = null
   const query = { pointId: selectedPoint.value.pointId, start: dateRange.value[0], end: dateRange.value[1], bucketMinutes }
   try {
     const [dailyResult, insightResult] = await Promise.allSettled([
@@ -113,7 +120,20 @@ async function loadAnalysis() {
     if (version === analysisVersion) analysisLoading.value = false
   }
 }
-onMounted(loadModules)
+function syncSelection() {
+  analysisController?.abort()
+  analysisVersion += 1
+  analysisLoading.value = false
+  days.value = []
+  insight.value = null
+  analysisError.value = ''
+  points.value = props.point ? [props.point] : []
+  selectedModuleId.value = props.moduleId
+  selectedPointId.value = props.point?.pointId ?? null
+  if (props.point) loadAnalysis()
+}
+watch(() => [props.moduleId, props.point?.pointId], () => { if (props.embedded) syncSelection() })
+onMounted(() => props.embedded ? syncSelection() : loadModules())
 onBeforeUnmount(() => {
   pageController.abort()
   pointController?.abort()
@@ -123,15 +143,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page trend-analysis-page">
-    <header class="trend-toolbar content-page-header">
+  <section class="page trend-analysis-page" :class="{ 'embedded-analysis': embedded }">
+    <header v-if="!embedded" class="trend-toolbar content-page-header">
       <div><h1 class="content-page-title">趋势分析</h1></div>
       <el-button :icon="RefreshCcw" :loading="metadataLoading || analysisLoading" @click="loadModules">刷新数据</el-button>
     </header>
 
-    <section class="trend-filter-panel">
-      <label><span>采集模块</span><el-select v-model="selectedModuleId" filterable placeholder="选择模块" @change="loadPoints"><el-option v-for="module in modules" :key="module.moduleId" :label="`${module.moduleId} / ${module.moduleName}`" :value="module.moduleId" /></el-select></label>
-      <label><span>分析点位</span><el-select v-model="selectedPointId" filterable placeholder="选择点位" :loading="metadataLoading" @change="changePoint"><el-option v-for="point in points" :key="point.pointId" :label="`#${point.pointId} / ${point.channelId} / ${point.pointCode} / ${point.name}`" :value="point.pointId" /></el-select></label>
+    <section class="trend-filter-panel" :class="{ 'embedded-trend-filter': embedded }">
+      <label v-if="!embedded"><span>采集模块</span><el-select v-model="selectedModuleId" filterable placeholder="选择模块" @change="loadPoints"><el-option v-for="module in modules" :key="module.moduleId" :label="`${module.moduleId} / ${module.moduleName}`" :value="module.moduleId" /></el-select></label>
+      <label v-if="!embedded"><span>分析点位</span><el-select v-model="selectedPointId" filterable placeholder="选择点位" :loading="metadataLoading" @change="changePoint"><el-option v-for="point in points" :key="point.pointId" :label="`#${point.pointId} / ${point.channelId} / ${point.pointCode} / ${point.name}`" :value="point.pointId" /></el-select></label>
       <label class="trend-range-field"><span>分析时段</span><el-date-picker v-model="dateRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="开始时间" end-placeholder="结束时间" /></label>
       <el-button type="primary" :icon="TrendingUp" :loading="analysisLoading" :disabled="!selectedPointId" @click="loadAnalysis">开始分析</el-button>
     </section>
@@ -174,7 +194,7 @@ onBeforeUnmount(() => {
 
     <section class="trend-table-panel">
       <header><div><CalendarRange :size="15" /><h2>每日分析明细</h2></div><span>{{ days.length }} 天</span></header>
-      <el-table :data="days" class="dark-table trend-table" empty-text="暂无每日分析数据">
+      <el-table :data="days" :height="360" scrollbar-always-on class="dark-table trend-table" empty-text="暂无每日分析数据">
         <el-table-column label="日期" min-width="115"><template #default="{ row }">{{ String(row.date || '').slice(0, 10) }}</template></el-table-column>
         <el-table-column label="最小值" min-width="105"><template #default="{ row }">{{ valueText(row.minValue, row.unit) }}</template></el-table-column>
         <el-table-column label="平均值" min-width="105"><template #default="{ row }">{{ valueText(row.averageValue, row.unit) }}</template></el-table-column>
@@ -187,3 +207,13 @@ onBeforeUnmount(() => {
     </section>
   </section>
 </template>
+
+<style scoped>
+.embedded-analysis { height: auto; padding: 0; overflow: visible; background: transparent; }
+.embedded-trend-filter { grid-template-columns: minmax(0, 1fr) auto; }
+.embedded-trend-filter .trend-range-field { grid-column: auto; }
+.embedded-analysis .trend-workspace { grid-template-columns: minmax(0, 1fr); }
+.embedded-analysis .trend-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.embedded-analysis .insight-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (min-width: 1700px) { .embedded-analysis .trend-workspace { grid-template-columns: minmax(0, 1.8fr) minmax(280px, .8fr); } .embedded-analysis .insight-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>

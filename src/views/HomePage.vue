@@ -1,218 +1,236 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Activity, ArrowDown, CircleCheck, Database, FileCheck2, Layers3, Radio, RefreshCw, Server, ShieldCheck, Wifi, WifiOff } from 'lucide-vue-next'
-import EChart from '../components/EChart.vue'
-import { useHealthStore } from '../stores/health'
+import { Activity, Search, RefreshCw, Radio, Server, Wifi } from 'lucide-vue-next'
+import EquipmentVisual from '../components/EquipmentVisual.vue'
+import HomePointCard from '../components/HomePointCard.vue'
+import SpectrumPage from './SpectrumPage.vue'
+import { useTelemetryStore } from '../stores/telemetry'
 import { useHomeDevicesStore } from '../stores/homeDevices'
-import { mergeHomeDevices, deviceSourceSummary } from '../charts/homeDevices'
-import { countOnline } from '../charts/healthCharts'
-import { cacheDonut, checksBars, healthGauge, maintenanceBars, onlineDonut, partitionHeatmap } from '../charts/healthCharts'
+import { telemetryApi } from '../services/telemetry'
+import { pointKey } from '../charts/telemetry'
+import { isVibrationPoint, moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 
-const health = useHealthStore()
-const homeDevices = useHomeDevicesStore()
-const deviceSource = ref('all')
+const telemetry = useTelemetryStore()
+const monitor = useHomeDevicesStore()
+const pointMap = ref({})
+const pointErrors = ref({})
+const search = ref('')
+const source = ref('all')
 const autoRefresh = ref(true)
-const partitionType = ref('moduleTables')
-const selectedModuleKey = ref('')
-const reducedMotion = ref(false)
+const refreshing = ref(false)
+const now = ref(Date.now())
+const activeAcoustic = ref('')
+const switchingAcoustic = ref(false)
+const acousticPanel = ref(null)
 const controller = new AbortController()
-let timer, motionQuery
-const syncMotion = () => { reducedMotion.value = motionQuery.matches }
-const refreshing = computed(() => health.loading || homeDevices.loading)
-const refresh = () => Promise.all([health.refresh({ signal: controller.signal }), homeDevices.refresh({ signal: controller.signal })])
+let sampleTimer, metadataTimer
+const colors = ['#39a9ff', '#ff9800', '#00c875']
+const devices = computed(() => [
+  ...sortMonitoringModules(telemetry.modules || []).map(module => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', id: module.moduleId, name: moduleDisplayName(module), online: module.runtimeStatus?.isOnline, points: pointMap.value[module.moduleId] || [], raw: module })),
+  ...(monitor.devices || []).map(device => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', id: device.deviceId, name: device.deviceName || device.deviceId, online: device.online, points: device.channels || [], raw: device })),
+])
+const visibleDevices = computed(() => devices.value.filter(device => (source.value === 'all' || device.source === source.value) && `${device.name} ${device.id}`.toLowerCase().includes(search.value.trim().toLowerCase())))
+const onlineCount = computed(() => devices.value.filter(device => device.online === true).length)
+const offlineCount = computed(() => devices.value.filter(device => device.online === false).length)
+const unknownCount = computed(() => devices.value.filter(device => device.online !== true && device.online !== false).length)
+const pointCount = computed(() => devices.value.reduce((total, device) => total + device.points.length, 0))
+const hasData = computed(() => telemetry.modules !== null || monitor.devices !== null)
+const currentTime = computed(() => new Date(now.value).toLocaleString('zh-CN', { hour12: false }))
+const connectionKey = (device, channel) => JSON.stringify([device.id, channel.channelId])
+const pointGroups = points => {
+  if (points.length <= 1) return [{ points, offset: 0 }]
+  const midpoint = Math.ceil(points.length / 2)
+  return [{ points: points.slice(0, midpoint), offset: 0 }, { points: points.slice(midpoint), offset: midpoint }]
+}
+const stateText = online => online === true ? '在线' : online === false ? '离线' : '状态未知'
+
+async function refresh() {
+  if (refreshing.value || controller.signal.aborted) return
+  refreshing.value = true
+  try {
+    await Promise.all([telemetry.refreshModules({ signal: controller.signal }), monitor.refresh({ signal: controller.signal }), telemetry.refreshLatest({ signal: controller.signal })])
+    const modules = telemetry.modules || []
+    for (let offset = 0; offset < modules.length && !controller.signal.aborted; offset += 4) {
+      await Promise.all(modules.slice(offset, offset + 4).map(async module => {
+        try {
+          const result = await telemetryApi.getModulePoints(module.moduleId, { signal: controller.signal })
+          if (controller.signal.aborted) return
+          if (!Array.isArray(result?.points) || result.moduleId !== module.moduleId) throw new Error('点位返回格式不正确')
+          pointMap.value[module.moduleId] = sortMonitoringPoints(result.points)
+          delete pointErrors.value[module.moduleId]
+        } catch (error) {
+          if (!controller.signal.aborted) pointErrors.value[module.moduleId] = error.message || '点位获取失败'
+        }
+      }))
+    }
+  } finally { refreshing.value = false }
+}
+async function selectAcoustic(device, channel) {
+  if (switchingAcoustic.value || controller.signal.aborted) return
+  switchingAcoustic.value = true
+  try {
+    // The monitor service grants one session per user. Close it before switching.
+    await acousticPanel.value?.[0]?.stopSession()
+    if (!controller.signal.aborted) activeAcoustic.value = connectionKey(device, channel)
+  } finally { switchingAcoustic.value = false }
+}
+async function toggleLive(value) {
+  if (!value) {
+    await acousticPanel.value?.[0]?.stopSession()
+    activeAcoustic.value = ''
+  } else await telemetry.refreshLatest({ signal: controller.signal })
+}
 onMounted(() => {
   refresh()
-  timer = window.setInterval(() => { if (autoRefresh.value) refresh() }, 15000)
-  motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-  syncMotion()
-  motionQuery.addEventListener('change', syncMotion)
+  sampleTimer = window.setInterval(() => {
+    now.value = Date.now()
+    if (autoRefresh.value) telemetry.refreshLatest({ signal: controller.signal })
+  }, 2000)
+  metadataTimer = window.setInterval(() => { if (autoRefresh.value) refresh() }, 30000)
 })
 onBeforeUnmount(() => {
-  window.clearInterval(timer)
   controller.abort()
-  homeDevices.clear()
-  motionQuery?.removeEventListener('change', syncMotion)
+  window.clearInterval(sampleTimer)
+  window.clearInterval(metadataTimer)
+  telemetry.clear()
+  monitor.clear()
 })
-const chart = (option) => ({ ...option, animation: !reducedMotion.value })
-const detail = computed(() => health.detail || {})
-const runtime = computed(() => detail.value.runtimeModules || {})
-const cache = computed(() => detail.value.offlineCache)
-const maintenance = computed(() => health.maintenance?.runtimeStatus || detail.value.tableMaintenance || {})
-const options = computed(() => health.maintenance?.options || {})
-const passedChecks = computed(() => health.checks.length - health.failedChecks.length)
-const allDevices = computed(() => mergeHomeDevices(health.modules, homeDevices.devices || []))
-const totalStates = computed(() => countOnline(allDevices.value))
-const hasDeviceData = computed(() => health.detail !== null || homeDevices.devices !== null)
-const filteredLoaded = computed(() => deviceSource.value === 'legacy' ? health.detail !== null : deviceSource.value === 'monitor' ? homeDevices.devices !== null : hasDeviceData.value)
-const modules = computed(() => allDevices.value
-  .filter((device) => deviceSource.value === 'all' || device.source === deviceSource.value)
-  .sort((a, b) => Number(a.isOnline === true) - Number(b.isOnline === true) || Number(b.source === 'monitor') - Number(a.source === 'monitor')))
-const visibleStates = computed(() => countOnline(modules.value))
-const selectedModule = computed(() => modules.value.find((m) => m.key === selectedModuleKey.value) || modules.value[0])
-const sourceSummary = computed(() => deviceSourceSummary({ legacyLoaded: health.detail !== null, monitorLoaded: homeDevices.devices !== null, legacyError: health.errors.detail, monitorError: homeDevices.error }))
-const sourceStates = computed(() => [
-  { key: 'legacy', label: '采集模块', count: health.detail ? health.modules.length : '—', error: health.errors.detail, loaded: health.detail !== null, time: health.detail?.generatedAt },
-  { key: 'monitor', label: '声纹设备', count: homeDevices.devices?.length ?? '—', error: homeDevices.error, loaded: homeDevices.devices !== null, time: homeDevices.refreshedAt },
-])
-const tables = computed(() => detail.value[partitionType.value] || [])
-const missingPartitions = computed(() => tables.value.reduce((sum, t) => sum + (t.missingPartitions?.length || 0), 0))
-const pointCount = computed(() => detail.value.moduleChannelPointTable)
-const gaugeOption = computed(() => chart(healthGauge(health.checks)))
-const onlineOption = computed(() => chart(onlineDonut(modules.value)))
-const checksOption = computed(() => chart(checksBars(health.checks)))
-const partitionOption = computed(() => chart(partitionHeatmap(tables.value)))
-const maintenanceOption = computed(() => chart(maintenanceBars(maintenance.value.lastResults)))
-const cacheOption = computed(() => chart(cacheDonut(cache.value)))
-const dateTime = (value) => {
-  if (!value) return '—'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false })
-}
-const display = (value) => value ?? '—'
-const bytes = (value) => value == null ? '—' : value < 1024 ? `${value} B` : value < 1048576 ? `${(value / 1024).toFixed(1)} KB` : `${(value / 1048576).toFixed(1)} MB`
-const tone = (value) => value === true ? 'good' : value === false ? 'warn' : 'muted'
-const statusText = computed(() => health.errors.detail ? '数据待更新' : ({ Healthy: '采集健康', Unhealthy: '采集异常', Degraded: '采集降级' }[detail.value.status] || '等待数据'))
-const errorLabels = { heartbeat: '基础心跳', detail: '健康详情', maintenance: '分区维护' }
-const metrics = computed(() => [
-  { label: '设备 / 模块总数', value: hasDeviceData.value ? allDevices.value.length : '—', unit: '个', icon: Server, color: 'cyan', note: '采集模块 + 声纹设备' },
-  { label: '在线设备 / 模块', value: hasDeviceData.value ? totalStates.value.online : '—', unit: '个', icon: Wifi, color: 'green', note: '两套来源已获取的在线记录' },
-  { label: '离线设备 / 模块', value: hasDeviceData.value ? totalStates.value.offline : '—', unit: '个', icon: WifiOff, color: 'orange', note: '未知状态 '+(hasDeviceData.value ? totalStates.value.unknown : '—')+' 个 · 不计为离线' },
-  { label: '有效监测点', value: display(pointCount.value?.activePointCount), unit: '个', icon: Radio, color: 'purple', note: '预期点位 '+display(pointCount.value?.expectedPointCount)+' 个 · 不含声纹通道' },
-])
-const systemNodes = computed(() => [
-  { label: '数据库连接', ok: detail.value.database?.isHealthy, icon: Database },
-  { label: '模块配置表', ok: detail.value.collectorModuleTable?.exists, icon: Layers3 },
-  { label: '点位同步', ok: pointCount.value ? pointCount.value.exists && pointCount.value.activePointCount === pointCount.value.expectedPointCount : undefined, icon: Radio },
-])
-const maintenanceEvents = computed(() => [
-  { label: '最近启动', time: maintenance.value.lastStartedAt, type: 'cyan' },
-  { label: '最近成功', time: maintenance.value.lastSucceededAt, type: 'green' },
-  { label: '最近失败', time: maintenance.value.lastFailedAt, type: 'orange' },
-])
 </script>
 
 <template>
-  <section class="page page-home health-cockpit" :aria-busy="refreshing">
-    <header class="cockpit-header content-page-header">
-      <div><h1 class="content-page-title">首页 <span class="live-pill" :class="{ warning: health.errors.detail || (detail.status && detail.status !== 'Healthy') }"><i></i>{{ statusText }}</span></h1><p><b :class="tone(health.errors.heartbeat ? false : health.heartbeat ? health.heartbeat.status === 'ok' : undefined)">{{ health.errors.heartbeat ? '心跳连接失败' : health.heartbeat?.status === 'ok' ? '心跳运行中' : health.heartbeat?.status || '心跳待连接' }}</b><span> / </span>{{ dateTime(health.heartbeat?.time) }}</p></div>
-      <div class="cockpit-actions"><label><el-switch v-model="autoRefresh" aria-label="自动刷新" /><span>15 秒自动刷新</span></label><el-button :loading="refreshing" @click="refresh"><RefreshCw v-if="!refreshing" :size="14" />刷新状态</el-button><small>详情生成于 {{ dateTime(detail.generatedAt) }}</small></div>
+  <section class="page live-wall spatial-view" :class="{ 'is-paused': !autoRefresh }">
+    <header class="wall-heading">
+      <div><span class="wall-eyebrow">REALTIME EQUIPMENT CENTER</span><h1>设备实时监测中心 <span class="wall-live"><i></i>{{ autoRefresh ? 'LIVE' : 'PAUSED' }}</span></h1><p>全域设备 · 多点位感知 · 实时运行态势</p></div>
+      <div class="wall-actions"><time>{{ currentTime }}</time><div><el-switch v-model="autoRefresh" aria-label="首页实时刷新" @change="toggleLive" /><span>实时刷新</span><el-button :icon="RefreshCw" :loading="refreshing" @click="refresh">刷新数据</el-button></div></div>
     </header>
-
-    <div v-for="(message, key) in health.errors" :key="key" class="cockpit-error" role="alert">{{ errorLabels[key] }}获取失败：{{ message }}。{{ health[key] ? '图表保留上次成功数据，请留意生成时间。' : '暂无可用数据。' }}</div>
-
-    <div v-if="homeDevices.error" class="cockpit-error" role="alert">声纹设备获取失败：{{ homeDevices.error }}。{{ homeDevices.devices !== null ? '设备汇总保留上次成功数据，请留意更新时间。' : '当前汇总尚不包含声纹设备。' }}</div>
-    <div class="device-source-status"><div v-for="source in sourceStates" :key="source.key" :class="source.error ? 'warn' : source.loaded ? 'good' : 'muted'" :title="'更新时间 '+dateTime(source.time)"><i></i><b>{{ source.label }}</b><span>{{ source.count }} 个 · {{ source.error ? source.loaded ? '数据过期' : '获取失败' : source.loaded ? '已更新' : '等待数据' }}</span><time>{{ dateTime(source.time) }}</time></div><p>{{ sourceSummary }}</p></div>
-
-    <div class="metric-strip"><article v-for="(metric, index) in metrics" :key="metric.label" class="metric-tile" :class="metric.color"><div class="metric-icon"><component :is="metric.icon" :size="21" /></div><div><span>{{ metric.label }}</span><strong>{{ metric.value }}<small>{{ metric.unit }}</small></strong><p>{{ metric.note }}</p></div><span class="metric-index">0{{ index + 1 }}</span><div class="tile-trace"></div></article></div>
-
-    <div class="cockpit-grid">
-      <article class="viz-panel module-panel"><header><div><span class="section-no">01</span><h2>设备 / 模块在线分布</h2></div><small>{{ modules.length }} 个状态</small></header>
-        <div class="device-source-filter segmented" role="group" aria-label="设备来源"><button type="button" :class="{ active: deviceSource === 'all' }" :aria-pressed="deviceSource === 'all'" @click="deviceSource = 'all'">全部</button><button type="button" :class="{ active: deviceSource === 'legacy' }" :aria-pressed="deviceSource === 'legacy'" @click="deviceSource = 'legacy'">采集模块</button><button type="button" :class="{ active: deviceSource === 'monitor' }" :aria-pressed="deviceSource === 'monitor'" @click="deviceSource = 'monitor'">声纹设备</button></div>
-        <div class="module-summary"><div class="online-chart" role="img" :aria-label="'当前来源：在线 '+visibleStates.online+'，离线 '+visibleStates.offline+'，未知 '+visibleStates.unknown"><EChart :option="onlineOption" /></div><div class="module-legend"><span><i class="green-dot"></i>在线 <b>{{ filteredLoaded ? visibleStates.online : '—' }}</b></span><span><i class="orange-dot"></i>离线 <b>{{ filteredLoaded ? visibleStates.offline : '—' }}</b></span><span><i class="gray-dot"></i>未知 <b>{{ filteredLoaded ? visibleStates.unknown : '—' }}</b></span></div></div>
-        <div class="module-matrix"><button v-for="module in modules" :key="module.key" type="button" :class="[tone(module.isOnline), { selected: selectedModule?.key === module.key, 'new-device': module.source === 'monitor' }]" :aria-pressed="selectedModule?.key === module.key" :aria-label="module.sourceLabel+' '+module.name+' '+(module.isOnline === true ? '在线' : module.isOnline === false ? '离线' : '未知')" :title="module.sourceLabel+' · '+module.name+' · '+module.id" @click="selectedModuleKey = module.key"><i></i><span>{{ module.name }}</span><small>{{ module.sourceLabel }}</small></button><p v-if="!modules.length" class="muted">{{ filteredLoaded ? '当前来源暂无设备 / 模块' : '当前来源尚未返回数据' }}</p></div>
-        <div v-if="selectedModule" class="module-insight"><b :class="tone(selectedModule.isOnline)">{{ selectedModule.name }} · {{ selectedModule.isOnline === true ? '在线' : selectedModule.isOnline === false ? '离线' : '未知' }}</b><small>{{ selectedModule.sourceLabel }} · {{ selectedModule.kind }} · {{ selectedModule.id }}</small><p v-if="selectedModule.source === 'monitor'">网关连接 {{ display(selectedModule.connectedCollectors) }}/{{ display(selectedModule.collectorCount) }} · 通道在线 {{ display(selectedModule.onlineChannels) }}/{{ display(selectedModule.channelCount) }}</p><p :title="selectedModule.offlineReason || selectedModule.updatedAtLabel+' '+dateTime(selectedModule.updatedAt)">{{ selectedModule.offlineReason || selectedModule.updatedAtLabel+' '+dateTime(selectedModule.updatedAt) }}</p></div>
-        <p class="micro-note">按模块 isOnline / 设备 online 统计；网关不重复计入设备数。</p>
+    <section class="wall-metrics" aria-label="实时监测概览">
+      <article><Server :size="23" /><div><span>接入设备</span><strong>{{ hasData ? devices.length : '—' }}<small>台</small></strong></div><b>01</b></article>
+      <article><Wifi :size="23" /><div><span>在线设备</span><strong class="green">{{ hasData ? onlineCount : '—' }}<small>台</small></strong></div><b>02</b></article>
+      <article><Radio :size="23" /><div><span>已加载监测点位</span><strong>{{ hasData ? pointCount : '—' }}<small>个</small></strong></div><b>03</b></article>
+      <article><Activity :size="23" /><div><span>离线设备</span><strong class="orange">{{ hasData ? offlineCount : '—' }}<small>台</small></strong></div><span class="unknown-note">未知 {{ unknownCount }}</span><b>04</b></article>
+    </section>
+    <div v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="wall-error" role="alert"><span v-if="telemetry.errors.modules">设备列表：{{ telemetry.errors.modules }}。</span><span v-if="telemetry.errors.latest">实时采样：{{ telemetry.errors.latest }}。</span><span v-if="monitor.error">声纹设备：{{ monitor.error }}。</span>保留最近成功数据，请留意采样时间。</div>
+    <div class="wall-controls"><div role="group" aria-label="首页设备来源"><button v-for="item in [{id:'all',label:'全部设备'}, {id:'legacy',label:'采集模块'}, {id:'monitor',label:'声纹设备'}]" :key="item.id" :class="{active: source === item.id}" :aria-pressed="source === item.id" @click="source = item.id">{{ item.label }}</button></div><label><Search :size="16" /><input v-model="search" aria-label="搜索设备名称或编号" placeholder="搜索设备名称 / 编号" /></label><span>{{ visibleDevices.length }} 台设备 · 2 秒更新</span></div>
+    <div class="wall-device-grid">
+      <article v-for="(device, deviceIndex) in visibleDevices" :key="device.key" class="wall-device" :style="{ '--entry-delay': Math.min(deviceIndex, 6) * 70 + 'ms' }">
+        <header class="module-stage-header">
+          <div class="module-topline"><span>{{ device.source === 'legacy' ? '采集模块' : '声纹设备' }} / {{ device.id }}</span><RouterLink :to="{ path:'/device/detail', query:{source:device.source, device:device.id, tab:'live'} }" :aria-label="'查看' + device.name + '详情'">详情 ↗</RouterLink></div>
+          <div class="module-stage"><div class="stage-orbit" aria-hidden="true"></div><EquipmentVisual class="stage-equipment" :name="device.name" :source="device.source" :device-id="device.id" /><div class="stage-plinth" aria-hidden="true"></div></div>
+          <div class="module-caption"><h2 :title="device.name">{{ device.name }}</h2><p><span class="module-state" :class="device.online === true ? 'online' : device.online === false ? 'offline' : ''"><i></i>{{ stateText(device.online) }}</span><span>{{ device.points.length }} 个点位</span><span v-if="device.source === 'legacy' && device.points.some(isVibrationPoint)">振动 {{ device.points.filter(isVibrationPoint).length }} 项</span><span v-else>{{ device.source === 'legacy' ? device.raw.protocol || '采集模块' : '声纹采集' }}</span></p></div>
+        </header>
+        <div class="parameter-heading"><span>实时点位 <b>{{ device.points.length }}</b></span><span>{{ device.points.length > 4 ? '上下滚动查看全部 ↓' : '独立采样 · 实时曲线' }}</span></div>
+        <div class="parameter-viewport" tabindex="0" role="region" :aria-label="device.name + '实时点位，可上下滚动'" :class="{ 'single-point': device.points.length === 1, 'few-points': device.points.length <= 2 }">
+        <div v-if="pointErrors[device.id] && device.source === 'legacy'" class="wall-error" role="alert">{{ pointErrors[device.id] }}</div>
+        <div class="wall-points module-parameters">
+          <div v-for="(group, groupIndex) in pointGroups(device.points)" :key="groupIndex" class="parameter-column" :aria-label="groupIndex === 0 ? '左侧参数' : '右侧参数'">
+          <template v-if="device.source === 'legacy'"><HomePointCard compact v-for="(point, index) in group.points" :key="pointKey(point)" :point="point" :samples="telemetry.buffers[pointKey(point)] || []" :color="colors[(group.offset + index) % colors.length]" :now="now" :paused="!autoRefresh" /></template>
+          <template v-else><template v-for="(channel, index) in group.points" :key="connectionKey(device, channel)">
+            <SpectrumPage v-if="activeAcoustic === connectionKey(device, channel)" ref="acousticPanel" embedded compact :device="device.raw" :channel-id="channel.channelId" :accent-color="colors[(group.offset + index) % colors.length]" display-mode="live" />
+            <section v-else class="wall-acoustic-point"><header><h3>{{ channel.name || channel.channelName || channel.channelId }}</h3><span>{{ stateText(channel.online) }}</span></header><strong>— <small>波形 RMS</small></strong><div class="acoustic-placeholder"><Activity :size="30" /><span>{{ channel.online === false ? '点位离线' : '连接后显示实时波形' }}</span></div><button :disabled="!autoRefresh || channel.online !== true || device.online === false || switchingAcoustic" @click="selectAcoustic(device, channel)">监听此点位 →</button></section>
+          </template></template>
+          </div>
+        </div>
+        <p v-if="!device.points.length" class="wall-empty">{{ refreshing ? '正在加载点位…' : '该设备暂无监测点位' }}</p>
+        </div>
+        <footer class="wall-device-footer"><span class="signal-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span>{{ device.source === 'legacy' ? '各点位独立采样 · 最近 300 个时间点' : '声纹实时监听 · 同时监听一个点位' }}</span><span>{{ autoRefresh ? '实时监测' : '刷新已暂停' }}</span></footer>
       </article>
-
-      <article class="viz-panel core-panel"><header><div><span class="section-no">02</span><h2>健康检查核心</h2></div><ShieldCheck :size="17" /></header><div class="core-orbit" aria-hidden="true"></div><div class="core-gauge" role="img" :aria-label="`健康检查 ${passedChecks} 项通过，共 ${health.checks.length} 项`"><EChart :option="gaugeOption" /></div><div class="core-summary"><span><b class="good">{{ health.detail ? passedChecks : '—' }}</b>项通过</span><i></i><span><b :class="health.failedChecks.length ? 'warn' : ''">{{ health.detail ? health.failedChecks.length : '—' }}</b>项异常</span></div><div class="core-nodes"><div v-for="node in systemNodes" :key="node.label" :class="tone(node.ok)"><component :is="node.icon" :size="17" /><span>{{ node.label }}</span><b>{{ node.ok === true ? '正常' : node.ok === false ? '异常' : '未知' }}</b></div></div><p class="micro-note">采集健康检查 · 不代表声纹服务健康</p></article>
-
-      <article class="viz-panel checks-panel"><header><div><span class="section-no">03</span><h2>检查项覆盖</h2></div><span class="mini-tag">{{ health.checks.length }} CHECKS</span></header><div class="mini-legend"><span><i class="cyan-dot"></i>通过</span><span><i class="orange-dot"></i>异常</span><small>单位：项</small></div><div class="checks-chart" role="img" aria-label="按数据库、历史表、聚合表、配置、缓存队列、运行时分类的检查结果"><EChart :option="checksOption" /></div><div class="check-message" :class="{ warning: health.failedChecks.length }"><CircleCheck :size="16" /><span>{{ !health.detail ? '等待检查结果' : health.failedChecks.length ? `${health.failedChecks.length} 项检查需要关注` : '全部已上报检查项通过' }}</span></div><p class="micro-note">采集检查项 · 按类别展示当前检查结果</p></article>
-
-      <article class="viz-panel partition-panel"><header><div><span class="section-no">04</span><h2>数据分区覆盖矩阵</h2></div><div class="segmented" role="group" aria-label="分区表类型"><button type="button" :class="{ active: partitionType === 'moduleTables' }" :aria-pressed="partitionType === 'moduleTables'" @click="partitionType = 'moduleTables'">原始历史表</button><button type="button" :class="{ active: partitionType === 'aggregationTables' }" :aria-pressed="partitionType === 'aggregationTables'" @click="partitionType = 'aggregationTables'">聚合表</button></div></header><div class="partition-stats"><span><b>{{ tables.length }}</b> 张表</span><span :class="missingPartitions ? 'warn' : 'good'"><b>{{ health.detail ? missingPartitions : '—' }}</b> 缺失分区</span><div class="mini-legend"><span><i class="green-dot"></i>覆盖</span><span><i class="orange-dot"></i>缺失</span><span><i class="gray-dot"></i>未知 / 不要求</span></div></div><div class="partition-chart" :style="{ height: `${Math.max(225, Math.min(tables.length, 20) * 23 + 42)}px` }" role="img" :aria-label="`${tables.length} 张表的预期分区覆盖矩阵，缺失 ${missingPartitions} 个分区`"><EChart :option="partitionOption" /></div><p class="micro-note">横轴为预期分区月份与 pmax；悬停查看每个模块的覆盖状态。</p></article>
-
-      <article class="viz-panel cache-panel"><header><div><span class="section-no">05</span><h2>离线缓存舱</h2></div><Database :size="16" /></header><div class="cache-visual"><div class="cache-chart" role="img" aria-label="待回写、坏文件与临时文件数量分布"><EChart :option="cacheOption" /></div><div class="cache-amount"><span>缓存占用</span><strong>{{ bytes(cache?.totalBytes) }}</strong><small>{{ cache?.fileCount === 0 && cache?.badFileCount === 0 && cache?.temporaryFileCount === 0 ? '当前无缓存文件' : '当前缓存快照' }}</small></div></div><div class="cache-meters"><div><i class="cyan-dot"></i><span>待回写</span><b>{{ display(cache?.fileCount) }}</b></div><div><i class="orange-dot"></i><span>坏文件</span><b :class="cache?.badFileCount ? 'warn' : ''">{{ display(cache?.badFileCount) }}</b></div><div><i class="purple-dot"></i><span>临时文件</span><b>{{ display(cache?.temporaryFileCount) }}</b></div></div><p class="micro-note">缓存为零时显示空环，不填充模拟占比。</p></article>
-
-      <article class="viz-panel maintenance-panel"><header><div><span class="section-no">06</span><h2>分区维护观测</h2></div><small>分区数 / 个</small></header><div class="maintenance-policies"><span>预建 <b>{{ display(options.futurePartitionMonths) }}</b> 个月</span><span>保留 <b>{{ display(options.dataRetentionMonths) }}</b> 个月</span><span>周期 <b>{{ display(options.checkIntervalHours) }}</b> 小时</span></div><div class="maintenance-chart" role="img" aria-label="最近一次维护前后，各模块分区数量对比"><EChart :option="maintenanceOption" /></div><div class="maintenance-timeline"><div v-for="event in maintenanceEvents" :key="event.label"><i :class="`${event.type}-dot`"></i><span>{{ event.label }}</span><time>{{ dateTime(event.time) }}</time></div></div><p v-if="maintenance.lastError" class="maintenance-error warn">{{ maintenance.lastError }}</p></article>
-
-      <article class="viz-panel pipeline-panel"><header><div><span class="section-no">07</span><h2>数据管道与配置</h2></div><Activity :size="16" /></header><div class="pipeline-flow"><div class="flow-source"><Radio :size="15" /><span>模块采集</span><b>{{ display(runtime.statusCount) }}</b></div><div class="flow-connector" aria-hidden="true"><ArrowDown :size="15" /></div><div class="flow-queues"><div><span>持久化待处理</span><strong>{{ display(detail.queues?.persistencePending) }}</strong></div><div><span>分析待处理</span><strong>{{ display(detail.queues?.analysisPending) }}</strong></div></div><div class="flow-connector" aria-hidden="true"><ArrowDown :size="15" /></div><div class="flow-database" :class="tone(detail.database?.isHealthy)"><Database :size="15" />数据库<span>{{ detail.database?.isHealthy === true ? '连接正常' : detail.database?.isHealthy === false ? '连接异常' : '状态未知' }}</span></div></div><div class="config-chips"><div v-for="file in detail.configFiles || []" :key="file.file" :title="`${file.file}\n${file.path || ''}`"><FileCheck2 :size="13" /><span>{{ file.file.split('/').pop() }}</span><i :class="file.exists === true ? 'green-dot' : 'orange-dot'"></i></div></div><p class="micro-note">采集管道示意 · 不含声纹网关队列</p></article>
     </div>
-
-    <footer class="cockpit-footer"><span><i class="cyan-dot"></i>采集健康 + 声纹设备 · 多业务数据</span><span>最近请求 {{ dateTime(health.lastAttemptAt) }} · {{ autoRefresh ? '自动刷新开启' : '自动刷新暂停' }}</span></footer>
+    <div v-if="!visibleDevices.length" class="wall-empty"><Server :size="34" /><p>{{ refreshing ? '正在加载设备…' : '暂无匹配设备，请调整筛选或刷新重试' }}</p></div>
+    <footer class="wall-footer"><span><i></i>设备状态与采样时间独立展示</span><span>蓝 · 橙 · 绿 / 多点位实时趋势</span></footer>
   </section>
 </template>
 
 <style scoped>
-.health-cockpit { --glow: #8ee6a8; --aqua: #50d8cb; --warm: #ffad66; --violet: #ab9ff2; --muted: var(--text-muted); --card-fill: rgba(18, 32, 29, .82); display: block; overflow-y: auto; overflow-x: hidden; padding: 20px; scrollbar-width: thin; color: var(--text-main); background: radial-gradient(ellipse at 50% 5%, #46907c14, transparent 55%), var(--page-bg); }
-.health-cockpit * { box-sizing: border-box; }
-.cockpit-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
-.cockpit-header h1 { display: flex; align-items: center; gap: 13px; margin-bottom: 8px; }
-.cockpit-header p { font-size: 10px; color: var(--muted); margin: 0; line-height: 1.7; }
-.cockpit-header p > span { margin: 0 9px; opacity: .4; }
-.live-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 10px; color: var(--glow); background: #8ee6a810; border: 1px solid #8ee6a82b; border-radius: 20px; letter-spacing: 0; white-space: nowrap; }
-.live-pill > i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
-.live-pill.warning { color: var(--warm); border-color: #ffad6655; }
-.cockpit-actions { display: grid; grid-template-columns: auto auto; gap: 4px 12px; flex-shrink: 0; }
-.cockpit-actions label { display: flex; gap: 7px; align-items: center; font-size: 10px; cursor: pointer; }
-.cockpit-actions small { grid-column: 1 / -1; text-align: right; font-size: 10px; color: var(--muted); }
-.cockpit-actions :deep(.el-button > span) { gap: 6px; }
-.cockpit-error { border: 1px solid #ffad6655; padding: 10px 14px; color: var(--warm); background: #ffad660d; border-radius: 6px; margin-bottom: 12px; font-size: 12px; }
-.metric-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
-.metric-tile { position: relative; display: flex; gap: 15px; align-items: center; min-width: 0; padding: 16px 18px; border: 1px solid var(--glass-border); border-radius: 10px; overflow: hidden; background: linear-gradient(115deg, #46907c12, transparent), var(--card-fill); --metric-color: var(--aqua); }
-.metric-tile.green { --metric-color: var(--glow); }.metric-tile.orange { --metric-color: var(--warm); }.metric-tile.purple { --metric-color: var(--violet); }
-.metric-icon { width: 40px; height: 44px; border: 1px solid color-mix(in srgb, var(--metric-color) 23%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--metric-color) 8%, transparent); color: var(--metric-color); display: grid; place-items: center; }
-.metric-tile span { font-size: 11px; color: var(--text-soft); }
-.metric-tile strong { display: block; font-size: 30px; color: var(--metric-color); font-weight: 600; margin-top: 5px; font-variant-numeric: tabular-nums; line-height: 1.1; text-shadow: 0 0 20px color-mix(in srgb, var(--metric-color) 18%, transparent); }
-.metric-tile strong small { color: var(--muted); font-size: 10px; margin-left: 8px; font-weight: 400; }
-.metric-tile p { margin: 6px 0 0; font-size: 9px; color: var(--muted); }
-.metric-tile .metric-index { position: absolute; top: 12px; right: 12px; opacity: .2; font-size: 20px; font-style: italic; }
-.tile-trace { position: absolute; bottom: 0; left: 18px; right: 18px; height: 2px; background: linear-gradient(90deg, var(--metric-color), transparent); opacity: .45; }
-.cockpit-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
-.viz-panel { position: relative; min-width: 0; grid-column: span 4; overflow: hidden; border: 1px solid var(--glass-border); border-radius: 10px; background: linear-gradient(160deg, #46907c08, transparent 55%), var(--card-fill); box-shadow: inset 0 1px 0 #ffffff06, 0 8px 24px #00000012; }
-.viz-panel::after { content: ''; position: absolute; top: -1px; left: 22px; width: 68px; height: 1px; background: var(--aqua); box-shadow: 0 0 13px #50d8cb66; opacity: .65; }
-.viz-panel > header { height: 46px; margin: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #7ebca515; }
-.viz-panel > header > div:first-child { display: flex; align-items: center; gap: 8px; }
-.viz-panel h2 { margin: 0; font-size: 12px; font-weight: 600; white-space: nowrap; letter-spacing: .5px; }
-.section-no { font-size: 9px; color: var(--aqua); opacity: .6; font-family: monospace; }
-.viz-panel header small, .viz-panel header > svg { font-size: 9px; color: var(--muted); }
-.module-summary { display: flex; justify-content: center; align-items: center; gap: 25px; padding: 5px 14px 0; }
-.online-chart { width: 130px; height: 130px; }
-.module-legend { display: grid; gap: 12px; font-size: 10px; min-width: 86px; }
-.module-legend > span { display: flex; align-items: center; gap: 8px; color: var(--text-soft); }.module-legend b { margin-left: auto; color: var(--text-main); }
-i.green-dot, i.cyan-dot, i.orange-dot, i.gray-dot, i.purple-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.green-dot { background: var(--glow); }.cyan-dot { background: var(--aqua); }.orange-dot { background: var(--warm); }.gray-dot { background: #708781; }.purple-dot { background: var(--violet); }
-.module-matrix { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 4px 16px 10px; max-height: 145px; overflow: auto; }
-.module-matrix button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 39px; padding: 5px 2px; font-family: monospace; font-size: 9px; border: 1px solid #8ee6a826; background: #8ee6a807; border-radius: 4px; transition: background .2s, transform .2s; }
-.module-matrix button.warn { border-color: #ffad6645; background: #ffad660d; }.module-matrix button.selected, .module-matrix button:hover { background: #8ee6a815; border-color: currentColor; transform: translateY(-1px); }
-.module-matrix button i { height: 3px; width: 16px; background: currentColor; border-radius: 2px; box-shadow: 0 0 7px currentColor; opacity: .8; }
-.module-insight { margin: 0 16px 13px; padding: 9px 10px; border-left: 2px solid var(--aqua); background: #46907c0b; font-size: 9px; }.module-insight b { font-size: 10px; }.module-insight p { margin: 5px 0 0; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.6; overflow-wrap: anywhere; }
-.core-panel { background: radial-gradient(ellipse at 50% 45%, #50d8cb0e, transparent 65%), var(--card-fill); }
-.core-gauge { position: relative; height: 213px; z-index: 1; margin-top: -3px; }
-.core-orbit { position: absolute; width: 205px; height: 205px; border: 1px dashed #50d8cb19; border-radius: 50%; left: calc(50% - 102.5px); top: 50px; animation: orbit 70s linear infinite; }.core-orbit::before { content: ''; position: absolute; width: 4px; height: 4px; border-radius: 50%; top: 10px; left: 50px; background: var(--aqua); box-shadow: 0 0 10px var(--aqua); }
-.core-summary { display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: -23px; position: relative; z-index: 2; font-size: 10px; color: var(--muted); }.core-summary b { font-size: 19px; margin-right: 5px; color: var(--text-main); }.core-summary i { height: 20px; width: 1px; background: var(--line); }
-.core-nodes { display: grid; grid-template-columns: repeat(3, 1fr); margin: 18px 13px 0; gap: 5px; }.core-nodes > div { display: flex; flex-direction: column; gap: 5px; align-items: center; font-size: 9px; }.core-nodes span { color: var(--muted); }.core-nodes b { font-weight: 400; font-size: 10px; }
-.micro-note { color: var(--muted); font-size: 9px; padding: 0 16px; margin: 12px 0; line-height: 1.6; }.core-panel .micro-note { text-align: center; }
-.mini-tag { font-size: 8px; letter-spacing: .6px; color: var(--aqua); background: #50d8cb0b; border: 1px solid #50d8cb20; padding: 4px 6px; border-radius: 3px; }
-.mini-legend { display: flex; align-items: center; gap: 12px; padding: 15px 16px 8px; color: var(--muted); font-size: 9px; }.mini-legend span { display: inline-flex; align-items: center; gap: 5px; }.mini-legend small { margin-left: auto; font-size: 9px; }
-.checks-chart { height: 210px; }.check-message { display: flex; align-items: center; gap: 9px; margin: 7px 16px 0; padding: 9px; border-radius: 4px; background: #8ee6a809; color: var(--glow); font-size: 10px; }.check-message.warning { color: var(--warm); background: #ffad6609; }
-.partition-panel, .maintenance-panel { grid-column: span 8; }
-.segmented { display: flex; padding: 2px; border: 1px solid var(--glass-border); border-radius: 5px; gap: 2px; }.segmented button { border: 0; color: var(--muted); background: none; border-radius: 3px; font-size: 9px; padding: 5px 9px; white-space: nowrap; }.segmented button.active { color: var(--glow); background: #8ee6a814; }
-.partition-stats { display: flex; align-items: center; gap: 16px; padding: 11px 16px 8px; font-size: 10px; color: var(--muted); }.partition-stats b { color: var(--text-main); font-size: 17px; margin-right: 4px; font-weight: 500; }.partition-stats .mini-legend { margin-left: auto; padding: 0; gap: 8px; }.partition-chart { width: 100%; }.partition-panel .micro-note { margin-top: 4px; }
-.cache-visual { display: flex; gap: 10px; justify-content: center; align-items: center; padding: 13px 14px 8px; }.cache-chart { width: 160px; height: 160px; flex-shrink: 0; }.cache-amount { display: grid; gap: 9px; }.cache-amount span { font-size: 10px; color: var(--muted); }.cache-amount strong { font-size: 24px; color: var(--aqua); font-weight: 500; white-space: nowrap; }.cache-amount small { font-size: 9px; color: var(--muted); }
-.cache-meters { display: grid; gap: 11px; padding: 9px 20px 7px; }.cache-meters > div { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--muted); border-bottom: 1px solid #7ebca515; padding-bottom: 8px; }.cache-meters b { margin-left: auto; color: var(--text-main); font-size: 13px; font-weight: 500; }
-.maintenance-policies { display: flex; gap: 22px; padding: 12px 16px; font-size: 10px; color: var(--muted); }.maintenance-policies b { color: var(--aqua); margin: 0 4px; font-size: 16px; font-weight: 500; }.maintenance-chart { height: 190px; }
-.maintenance-timeline { display: grid; grid-template-columns: repeat(3, 1fr); padding: 13px 16px 15px; gap: 12px; border-top: 1px solid #7ebca515; }.maintenance-timeline > div { position: relative; display: grid; grid-template-columns: 8px 1fr; align-items: center; gap: 5px; font-size: 9px; color: var(--muted); }.maintenance-timeline time { grid-column: 2; color: var(--text-soft); font-size: 9px; }.maintenance-error { padding: 0 16px; overflow-wrap: anywhere; font-size: 10px; }
-.pipeline-flow { padding: 15px 18px 0; }.flow-source, .flow-database { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--aqua); border: 1px solid #50d8cb29; border-radius: 4px; padding: 8px 11px; background: #50d8cb08; }.flow-source b { margin-left: auto; font-size: 14px; font-weight: 500; }.flow-database span { margin-left: auto; font-size: 9px; }
-.flow-connector { color: #50d8cb77; display: grid; place-items: center; height: 23px; }.flow-queues { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }.flow-queues > div { text-align: center; border: 1px solid #50d8cb25; background: #50d8cb08; padding: 9px 3px; border-radius: 5px; }.flow-queues span { font-size: 9px; color: var(--muted); }.flow-queues strong { display: block; font-size: 23px; font-weight: 500; color: var(--aqua); margin-top: 4px; }
-.config-chips { display: grid; gap: 7px; margin: 13px 18px 0; }.config-chips > div { display: flex; align-items: center; gap: 6px; font-size: 9px; color: var(--muted); }.config-chips i { margin-left: auto; }.config-chips span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cockpit-footer { display: flex; justify-content: space-between; align-items: center; padding: 16px 0 0; font-size: 9px; color: var(--muted); }.cockpit-footer > span:first-child { display: flex; align-items: center; gap: 6px; }
-.health-cockpit .good { color: var(--glow); }.health-cockpit .warn { color: var(--warm); }.health-cockpit .muted { color: var(--muted); }
-@keyframes orbit { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .core-orbit { animation: none; }.module-matrix button { transition: none; } }
-:global(.light-theme .health-cockpit) { --glow: #246947; --aqua: #1f7168; --warm: #a94713; --violet: #6553a7; --muted: #516a62; --card-fill: rgba(255,255,255,.96); }
-:global(.light-theme .health-cockpit .metric-tile),
-:global(.light-theme .health-cockpit .viz-panel) { border-color: rgba(31,73,63,.2); box-shadow: inset 0 1px 0 #fff, 0 7px 18px rgba(31,73,63,.07); }
-@media (max-width: 1300px) { .health-cockpit { padding: 14px; }.cockpit-header p { max-width: 430px; }.metric-tile { padding: 13px 11px; gap: 10px; }.metric-icon { width: 33px; height: 38px; }.metric-tile p { font-size: 8px; }.cockpit-grid { gap: 12px; }.viz-panel > header { margin: 0 12px; }.module-summary { gap: 12px; }.online-chart { width: 116px; height: 123px; }.cache-visual { gap: 0; }.cache-chart { width: 137px; height: 152px; }.cache-amount strong { font-size: 20px; }.partition-stats { gap: 10px; }.partition-stats .mini-legend { gap: 5px; font-size: 8px; }.mini-tag { font-size: 7px; } }
-.device-source-status { display: flex; flex-wrap: wrap; gap: 7px 18px; margin: -5px 0 14px; font-size: 10px; }
-.device-source-status > div { display: flex; align-items: center; gap: 6px; }
-.device-source-status > div > i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-.device-source-status time { color: var(--muted); font-size: 9px; }
-.device-source-status p { width: 100%; margin: 0; color: var(--muted); font-size: 9px; }
-.device-source-filter { margin: 9px 16px 0; justify-content: space-between; }
-.device-source-filter button { flex: 1; }
-.module-matrix button { min-height: 51px; gap: 4px; min-width: 0; }
-.module-matrix button > span { display: block; width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.module-matrix button > small { font-size: 7px; opacity: .65; }
-.module-matrix button.new-device { border-bottom: 2px solid var(--violet); }
-.module-matrix > p { grid-column: 1 / -1; font-size: 10px; }
-.module-insight > small { display: block; font-size: 8px; margin-top: 5px; color: var(--muted); overflow-wrap: anywhere; }
+.live-wall { --wall-text: var(--text-main); --wall-muted: var(--text-muted); --wall-line: var(--glass-border); --wall-point: var(--glass-card-soft); --wall-card: var(--glass-card); --wall-accent: #8ee6a8; padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; background: var(--page-bg); color: var(--wall-text); }
+.wall-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--wall-line); position: relative; }
+.wall-heading::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 120px; height: 2px; background: linear-gradient(90deg, transparent, var(--wall-accent), transparent); animation: heading-scan 9s ease-in-out infinite; }
+.wall-eyebrow { font-size: 10px; letter-spacing: 4px; color: var(--text-soft); }.wall-heading h1 { display: flex; gap: 18px; align-items: center; font-size: 28px; font-weight: 500; letter-spacing: 2px; margin: 10px 0; }.wall-heading p { font-size: 12px; color: var(--wall-muted); margin: 0; letter-spacing: 2px; }
+.wall-live { display: flex; gap: 7px; align-items: center; font-size: 10px; letter-spacing: 2px; color: var(--wall-accent); padding: 5px 9px; border: 1px solid var(--control-border-active); border-radius: 4px; }.wall-live i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: beacon 2s ease-out infinite; }
+.wall-actions { display: grid; gap: 12px; justify-items: end; }.wall-actions time { color: var(--text-soft); font-size: 16px; font-variant-numeric: tabular-nums; letter-spacing: 1px; }.wall-actions > div { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--wall-muted); }
+.wall-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }.wall-metrics article { display: flex; align-items: center; gap: 20px; padding: 18px 22px; border: 1px solid var(--wall-line); background: linear-gradient(110deg, rgba(70, 144, 124, .07), transparent), var(--wall-card); border-radius: 7px; position: relative; overflow: hidden; }.wall-metrics article > svg { color: var(--wall-accent); }.wall-metrics article > b { position: absolute; right: 12px; top: 8px; color: var(--glass-border); font-size: 26px; font-weight: 400; }.wall-metrics article div > span { font-size: 12px; color: var(--wall-muted); }.wall-metrics strong { display: block; color: var(--text-soft); font-size: 34px; font-weight: 500; margin-top: 5px; font-variant-numeric: tabular-nums; }.wall-metrics small { font-size: 12px; margin-left: 8px; color: var(--wall-muted); }.wall-metrics .green { color: var(--wall-accent); }.wall-metrics .orange { color: #e4a260; }.unknown-note { margin-left: auto; color: var(--wall-muted); font-size: 11px; align-self: end; }
+.wall-controls { display: flex; align-items: center; gap: 20px; }.wall-controls > div { display: flex; gap: 5px; }.wall-controls button { background: transparent; color: var(--wall-muted); border: 1px solid transparent; padding: 8px 16px; border-radius: 4px; font-size: 13px; }.wall-controls button.active { background: var(--control-bg-active); border-color: var(--control-border-active); color: var(--wall-accent); }.wall-controls label { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--wall-line); border-radius: 4px; color: var(--wall-muted); }.wall-controls input { background: transparent; color: var(--wall-text); border: 0; outline: none; font-size: 12px; width: 180px; }.wall-controls label:focus-within { border-color: var(--wall-accent); }.wall-controls > span { font-size: 11px; color: var(--wall-muted); margin-left: auto; }
+.wall-device-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.wall-device { min-width: 0; background: var(--wall-card); border: 1px solid var(--wall-line); border-radius: 9px; position: relative; overflow: hidden; box-shadow: inset 0 1px 0 var(--glass-highlight), 0 12px 30px #0002; animation: card-arrive .6s both; animation-delay: var(--entry-delay); transition: border-color .25s, box-shadow .25s; }.wall-device:hover { border-color: var(--control-border-active); box-shadow: 0 0 24px rgba(70, 144, 124, .08); }.wall-device::before { content: ''; position: absolute; top: 0; left: 0; width: 90px; height: 1px; background: linear-gradient(90deg, transparent, var(--wall-accent), transparent); animation: card-scan 8s linear infinite; animation-delay: var(--entry-delay); }
+.wall-device-header { display: flex; align-items: center; gap: 12px; padding: 12px 18px 12px 10px; border-bottom: 1px solid var(--wall-line); }.wall-device .wall-device-photo { width: 100px; height: 82px; flex-shrink: 0; }.wall-device-photo :deep(.equipment-symbol) { padding: 8px; border-radius: 8px; }.wall-device-photo :deep(.equipment-symbol) { color: var(--text-soft); background: var(--glass-card); border-color: var(--glass-border); }
+.wall-device-photo :deep(svg) { width: 42px; height: 42px; }.wall-device-photo :deep(.visual-baseline) { bottom: 0; }.wall-device-title { min-width: 0; flex: 1; }.wall-device-title > span { font-size: 10px; letter-spacing: 1px; color: var(--wall-muted); overflow-wrap: anywhere; }.wall-device-title h2 { font-size: 18px; margin: 6px 0 9px; font-weight: 500; overflow-wrap: anywhere; }.wall-device-title p { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--wall-muted); margin: 0; }.wall-device-title p > span { margin-left: 10px; }.wall-device-title i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-muted); }.wall-device-title i.online { background: #00c875; box-shadow: 0 0 8px #00c87550; }.wall-device-title i.offline { background: #ff9800; }.wall-device-header > a { color: var(--wall-accent); text-decoration: none; font-size: 11px; white-space: nowrap; }
+.wall-points { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px; }.wall-device-footer { display: flex; align-items: center; gap: 9px; padding: 0 16px 13px; font-size: 10px; color: var(--wall-muted); }.wall-device-footer > span:last-child { margin-left: auto; }.signal-bars { display: flex; align-items: center; gap: 2px; height: 12px; }.signal-bars i { background: #46907C; width: 2px; height: 8px; animation: signal-wave 1.4s ease-in-out infinite alternate; }.signal-bars i:nth-child(2n) { animation-delay: -.5s; }.signal-bars i:nth-child(3n) { animation-delay: -.9s; }
+.wall-acoustic-point { min-width: 0; padding: 13px 12px; border: 1px solid var(--wall-line); border-radius: 7px; background: var(--wall-point); }.wall-acoustic-point header { display: flex; justify-content: space-between; gap: 8px; }.wall-acoustic-point h3 { font-size: 13px; margin: 0; font-weight: 500; }.wall-acoustic-point header span { font-size: 10px; color: var(--wall-muted); }.wall-acoustic-point > strong { display: block; font-size: 28px; color: var(--wall-accent); margin-top: 12px; font-weight: 400; }.wall-acoustic-point small { font-size: 11px; color: var(--wall-muted); }.acoustic-placeholder { height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--wall-muted); font-size: 11px; }.acoustic-placeholder svg { opacity: .35; }.wall-acoustic-point button { width: 100%; background: rgba(70, 144, 124, .08); color: var(--wall-accent); border: 1px solid var(--control-border); padding: 7px; font-size: 11px; border-radius: 4px; }.wall-acoustic-point button:disabled { opacity: .4; cursor: not-allowed; }
+.wall-error { color: #e4a260; border: 1px solid #e4a26030; background: #e4a26008; padding: 10px 14px; font-size: 12px; line-height: 1.7; }.wall-empty { color: var(--wall-muted); text-align: center; padding: 35px; font-size: 14px; }.wall-footer { display: flex; justify-content: space-between; gap: 15px; font-size: 11px; color: var(--wall-muted); padding: 8px 0; }.is-paused .signal-bars i, .is-paused .wall-live i, .is-paused .wall-heading::after, .is-paused .wall-device::before { animation-play-state: paused; }
+@keyframes card-arrive { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }@keyframes heading-scan { 0%,100% { left: 0; opacity: .3; } 50% { left: calc(100% - 120px); opacity: 1; } }@keyframes card-scan { from { left: -90px; } to { left: 100%; } }@keyframes beacon { 0% { box-shadow: 0 0 0 0 rgba(142, 230, 168, .27); } 100% { box-shadow: 0 0 0 7px rgba(142, 230, 168, 0); } }@keyframes signal-wave { from { transform: scaleY(.35); } to { transform: scaleY(1.3); } }
+:global(.light-theme .live-wall) { --wall-accent: #237f76; }
+@media (min-width: 2100px) { .wall-device-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1200px) { .wall-device-grid { grid-template-columns: minmax(0, 1fr); }.wall-metrics article { padding: 14px; gap: 10px; }.wall-controls { flex-wrap: wrap; }.wall-controls > span { margin-left: 0; } }
+@media (max-width: 650px) { .live-wall { padding: 14px; }.wall-heading { align-items: start; flex-direction: column; }.wall-heading h1 { font-size: 22px; letter-spacing: 0; }.wall-actions { justify-items: start; }.wall-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.wall-metrics article > svg { display: none; }.wall-points { grid-template-columns: minmax(0, 1fr); }.wall-device-photo { width: 72px; }.wall-device-header { gap: 6px; }.wall-device-title h2 { font-size: 15px; }.wall-footer { flex-wrap: wrap; } }
+@media (prefers-reduced-motion: reduce) { .live-wall *, .live-wall *::before, .live-wall *::after { animation: none !important; transition: none !important; } }
+
+/* Dense responsive layout. */
+.live-wall { padding: 16px 20px; gap: 12px; }
+.wall-heading { padding-bottom: 10px; }.wall-heading h1 { font-size: 23px; margin: 5px 0; }.wall-heading p { font-size: 11px; }.wall-eyebrow { font-size: 9px; letter-spacing: 3px; }.wall-actions { gap: 5px; }.wall-actions time { font-size: 13px; }
+.wall-metrics { gap: 12px; }.wall-metrics article { padding: 10px 16px; gap: 12px; }.wall-metrics article > div { display: flex; align-items: center; gap: 16px; }.wall-metrics strong { font-size: 27px; margin: 0; }.wall-metrics article > b { font-size: 18px; opacity: .6; }.wall-metrics .unknown-note { font-size: 10px; }
+.wall-controls { gap: 10px; }.wall-controls button { padding: 6px 10px; font-size: 12px; }.wall-controls label { padding: 6px 10px; }.wall-controls input { width: 150px; }.wall-controls > span { margin-left: 0; font-size: 10px; }
+.wall-device-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 6px 3px 18px; }
+.wall-device { background: linear-gradient(140deg, var(--glass-card), transparent 75%), var(--page-bg); border-radius: 7px; animation-name: compact-arrive; transition: transform .32s ease, border-color .25s, box-shadow .3s; }
+.wall-device-header { padding: 8px 10px 8px 7px; gap: 7px; }.wall-device .wall-device-photo { width: 55px; height: 48px; }.wall-device-photo :deep(svg) { width: 27px; height: 27px; }.wall-device-photo :deep(.equipment-symbol) { padding: 5px; }.wall-device-title > span { font-size: 9px; letter-spacing: .5px; }.wall-device-title h2 { font-size: 14px; margin: 3px 0 5px; }.wall-device-title p { font-size: 10px; gap: 5px; }.wall-device-header > a { font-size: 10px; }
+.wall-points { grid-template-columns: minmax(0, 1fr); gap: 5px; padding: 8px; }.wall-device-footer { padding: 0 10px 8px; gap: 5px; font-size: 9px; }.wall-device-footer > span:last-child { display: none; }
+.spatial-view .wall-device { --depth-y: 0px; --tilt-y: -1deg; transform: perspective(1000px) translateY(var(--depth-y)) rotateY(var(--tilt-y)) rotateX(1deg); transform-origin: center; box-shadow: 3px 4px 0 var(--control-bg), 5px 6px 0 var(--glass-border), 0 16px 24px #0003, inset 0 1px 0 var(--glass-highlight); }
+.spatial-view .wall-device:nth-child(3n + 2) { --depth-y: 12px; --tilt-y: 0deg; }
+.spatial-view .wall-device:nth-child(3n) { --tilt-y: 1deg; }
+.spatial-view .wall-device:hover, .spatial-view .wall-device:focus-within { transform: perspective(1000px) translateY(calc(var(--depth-y) - 4px)) rotateY(0) rotateX(0); border-color: var(--control-border-active); box-shadow: 2px 3px 0 var(--control-bg), 3px 4px 0 var(--glass-border), 0 20px 30px #0004, 0 0 18px #46907c12; z-index: 1; }
+.wall-acoustic-point { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; padding: 8px 10px; }.wall-acoustic-point header { grid-column: 1; }.wall-acoustic-point h3 { font-size: 11px; }.wall-acoustic-point > strong { grid-column: 1; margin-top: 5px; font-size: 21px; }.wall-acoustic-point .acoustic-placeholder { display: none; }.wall-acoustic-point > button { grid-column: 2; grid-row: 1 / 3; align-self: center; font-size: 10px; }
+.wall-points :deep(.acoustic-point-card) { padding: 10px; }.wall-points :deep(.acoustic-point-card h3) { font-size: 12px; }.wall-points :deep(.acoustic-value) { font-size: 22px; margin-top: 6px; }.wall-points :deep(.compact-waveform) { height: 85px; }
+.wall-footer { font-size: 10px; padding: 0; }
+@keyframes compact-arrive { from { opacity: 0; } to { opacity: 1; } }
+@media (min-width: 1800px) { .wall-device-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }.spatial-view .wall-device:nth-child(n) { --depth-y: 0px; --tilt-y: -1deg; }.spatial-view .wall-device:nth-child(4n + 2), .spatial-view .wall-device:nth-child(4n + 3) { --depth-y: 12px; --tilt-y: 0deg; }.spatial-view .wall-device:nth-child(4n) { --tilt-y: 1deg; } }
+@media (max-width: 1250px) { .wall-device-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.spatial-view .wall-device:nth-child(n) { --depth-y: 0px; --tilt-y: 0deg; }.spatial-view .wall-device:nth-child(even) { --depth-y: 10px; }.wall-controls { flex-wrap: wrap; }.wall-metrics article > div { gap: 8px; }.wall-metrics article > svg { display: none; } }
+@media (max-width: 700px) { .wall-device-grid { grid-template-columns: minmax(0, 1fr); }.spatial-view .wall-device:nth-child(n) { transform: none; --depth-y: 0px; }.wall-heading { flex-wrap: wrap; }.live-wall { padding: 12px; }.wall-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (prefers-reduced-motion: reduce) { .wall-device { animation: none; transition: none; }.spatial-view .wall-device:hover, .spatial-view .wall-device:focus-within { transform: perspective(1000px) translateY(var(--depth-y)) rotateY(var(--tilt-y)) rotateX(1deg); } }
+
+/* Equipment stands: depth is applied to the equipment, not the data panels. */
+.wall-device-grid { gap: 20px 18px; }
+.wall-device, .spatial-view .wall-device:nth-child(n), .spatial-view .wall-device:hover, .spatial-view .wall-device:focus-within { transform: none; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
+.wall-device::before { display: none; }
+.module-stage-header { padding: 0 10px; }
+.module-topline { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 9px; color: var(--wall-muted); letter-spacing: .6px; }
+.module-topline a { color: var(--wall-accent); font-size: 10px; text-decoration: none; }
+.module-stage { position: relative; height: 112px; display: grid; place-items: center; isolation: isolate; }
+.module-stage .stage-equipment { position: relative; width: 180px; height: 100px; overflow: visible; z-index: 2; background: none; }
+.stage-equipment :deep(img) { width: 100%; height: 100%; filter: drop-shadow(0 10px 8px #0005); }
+.stage-equipment :deep(.equipment-symbol) { padding: 10px; border-radius: 10px; color: var(--text-soft); background: var(--glass-card); border-color: var(--glass-border); }
+.stage-equipment :deep(svg) { width: 43px; height: 43px; }
+.stage-equipment :deep(.visual-baseline), .stage-equipment::before { display: none; }
+.stage-plinth { position: absolute; z-index: 1; width: 158px; height: 30px; bottom: 0; border: 1px solid var(--control-border-active); border-radius: 50%; background: radial-gradient(ellipse, #46907c25, #46907c04 70%); box-shadow: 0 4px 0 var(--page-bg), 0 5px 0 var(--glass-border), 0 10px 20px #0003; }
+.stage-orbit { position: absolute; bottom: 0; width: 210px; height: 45px; border: 1px dashed #46907c30; border-radius: 50%; transform: rotate(-7deg); }
+.module-caption { position: relative; text-align: center; padding: 7px 0 9px; }
+.module-caption h2 { font-size: 14px; line-height: 20px; height: 40px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 500; margin: 0 0 6px; overflow-wrap: anywhere; }.module-caption p { display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; gap: 10px; height: 16px; font-size: 10px; color: var(--wall-muted); margin: 0; }
+.module-state { display: inline-flex; align-items: center; gap: 5px; }.module-state i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }.module-state.online { color: var(--wall-accent); }.module-state.offline { color: #ff9800; }
+.parameter-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 28px; padding: 0 12px; border-top: 1px solid var(--glass-border); color: var(--wall-muted); font-size: 10px; }
+.parameter-heading b { margin-left: 5px; color: var(--text-soft); font-weight: 500; font-variant-numeric: tabular-nums; }
+.parameter-heading > span:last-child { font-size: 9px; }
+.parameter-viewport { height: 224px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--control-border-active) transparent; scrollbar-gutter: stable; background: linear-gradient(180deg, var(--glass-card), transparent); }
+.parameter-viewport:focus-visible { outline: 1px solid var(--control-border-active); outline-offset: 2px; }
+.wall-points.module-parameters { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 4px 8px 6px; }
+.module-parameters::before { content: ''; position: absolute; top: 8px; bottom: 8px; width: 1px; left: 50%; background: linear-gradient(transparent, var(--glass-border), transparent); }
+.parameter-column { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.module-parameters :deep(.home-point.compact) { box-sizing: border-box; flex: 0 0 103px; height: 103px; grid-template-columns: minmax(0, 1fr); grid-template-rows: 32px 27px 31px; padding: 6px 7px 3px; border: 0; border-bottom: 1px solid var(--glass-border); background: transparent; border-radius: 0; }
+.module-parameters :deep(.compact header) { align-items: flex-start; }
+.module-parameters :deep(.compact h3) { line-height: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.module-parameters :deep(.compact .home-point-value) { margin-top: 4px; height: 23px; }.module-parameters :deep(.compact .home-point-value strong) { font-size: 21px; }
+.module-parameters :deep(.compact .home-point-chart) { grid-column: 1; grid-row: 3; height: 31px; }
+.module-parameters .wall-acoustic-point { display: block; padding: 7px; border: 0; border-bottom: 1px solid var(--glass-border); background: transparent; }.module-parameters .wall-acoustic-point > button { margin-top: 8px; }
+.module-parameters :deep(.acoustic-point-card) { border: 0; border-bottom: 1px solid var(--glass-border); border-radius: 0; background: transparent; padding: 7px; }.module-parameters :deep(.acoustic-point-card header) { flex-wrap: wrap; gap: 3px; }.module-parameters :deep(.compact-waveform) { height: 75px; }
+.single-point .module-parameters { grid-template-columns: minmax(0, 1fr); }
+.single-point .module-parameters::before { display: none; }
+.few-points .module-parameters :deep(.home-point.compact) { height: 207px; flex-basis: 207px; grid-template-rows: 32px 40px 120px; }
+.few-points .module-parameters :deep(.compact .home-point-value) { height: 36px; }
+.few-points .module-parameters :deep(.compact .home-point-value strong) { font-size: 28px; }
+.few-points .module-parameters :deep(.compact .home-point-chart) { height: 120px; }
+.few-points .module-parameters .acoustic-placeholder { display: flex; height: 75px; }
+.parameter-viewport .wall-empty { margin: 0; padding: 65px 12px; font-size: 12px; }
+.wall-device-footer { padding: 4px 12px 0; opacity: .75; }
+.spatial-view .stage-equipment { animation: equipment-hover 6s ease-in-out infinite; animation-delay: var(--entry-delay); transform-origin: center bottom; }.spatial-view .stage-orbit { animation: stage-breathe 4s ease-in-out infinite; }
+.spatial-view .wall-device:nth-child(2n) .module-stage { perspective: 600px; }.spatial-view .wall-device:hover .stage-plinth { box-shadow: 0 4px 0 var(--page-bg), 0 5px 0 var(--control-border-active), 0 0 22px #46907c25; }
+@keyframes equipment-hover { 0%,100% { transform: perspective(650px) translateY(-2px) rotateY(-7deg); } 50% { transform: perspective(650px) translateY(-7px) rotateY(7deg); } }
+@keyframes stage-breathe { 0%,100% { opacity: .4; transform: scale(.95) rotate(-7deg); } 50% { opacity: 1; transform: scale(1.03) rotate(7deg); } }
+.is-paused .stage-equipment, .is-paused .stage-orbit { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .spatial-view .stage-equipment, .spatial-view .stage-orbit { animation: none; } }
 </style>

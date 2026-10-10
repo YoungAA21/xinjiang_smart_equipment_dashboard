@@ -115,12 +115,10 @@ export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     menus: [
       { label: '首页', icon: Home, path: '/' },
-      { label: '设备监控', icon: MonitorCog, path: '/device/detail' },
+      { label: '设备监控', icon: MonitorCog, path: '/device' },
       { label: '网关通讯', icon: Router, path: '/gateway/communication' },
       { label: '录音管理', icon: FileAudio, path: '/recordings' },
       { label: '告警管理', icon: AlarmClock, path: '/alarm/list' },
-      { label: '趋势分析', icon: BarChart3, path: '/analysis/trend' },
-      { label: '频谱分析', icon: RadioTower, path: '/analysis/spectrum' },
     ],
     apiStatus: 'error',
     apiError: '',
@@ -327,7 +325,7 @@ export const useDashboardStore = defineStore('dashboard', {
             style: {
               text: `${total}\n设备`,
               fill: '#FFFFFF',
-              fontSize: 14,
+              fontSize: 18,
               fontWeight: 700,
               lineHeight: 20,
               textAlign: 'center',
@@ -436,7 +434,7 @@ export const useDashboardStore = defineStore('dashboard', {
         xAxis: { type: 'value', min: 0, max: state.spectrum?.maxFrequency || 12000, axisLine: { lineStyle: { color: axisColor } }, axisLabel: { color: '#C3E2D9' }, splitLine: { lineStyle: { color: gridColor } } },
         yAxis: { type: 'value', axisLabel: { color: '#C3E2D9' }, splitLine: { lineStyle: { color: gridColor } } },
         series: [{ type: 'line', symbol: 'none', data, lineStyle: { width: 1.5 }, areaStyle: { color: 'rgba(70, 144, 124, .12)' } }],
-        graphic: state.spectrum ? [{ type: 'text', left: '14%', top: '11%', style: { text: `主频\n${formatValue(state.spectrum.mainFrequency)}Hz`, fill: '#A8FF7D', fontSize: 13, fontWeight: 700, textAlign: 'center' } }] : [],
+        graphic: state.spectrum ? [{ type: 'text', left: '14%', top: '11%', style: { text: `主频\n${formatValue(state.spectrum.mainFrequency)}Hz`, fill: '#A8FF7D', fontSize: 16, fontWeight: 700, textAlign: 'center' } }] : [],
       }
     },
     acousticSegmentRows: (state) => state.alarmSegments.map((segment) => {

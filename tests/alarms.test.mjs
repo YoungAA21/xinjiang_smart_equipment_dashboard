@@ -12,21 +12,20 @@ afterEach(() => { globalThis.fetch = originalFetch })
 const reply = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 const event = { alarmId: '2087109229625348096', moduleId: 'VSE08', channelId: 'VSE08-SE01', pointCode: 'SE08_v_01', alarmValue: 0, recoveryValue: 0, status: 'Active', startedAt: '2026-08-28T10:00:00+08:00' }
 
-test('5158 alarm routes are isolated and only send supported pointId filters without credentials', async () => {
+test('5158 alarm routes use the isolated same-origin proxy and supported filters without credentials', async () => {
   const calls = []
   globalThis.fetch = async (url, options) => { calls.push({ url, options }); return reply({ events: [] }) }
   await alarmApi.getAlarms({ pointId: 28, isActive: false, moduleId: 'ignore', channelId: 'ignore', start: '2026-08-28T00:00:00', end: '2026-08-29T00:00:00', limit: 1000 })
-  const url = new URL(calls[0].url)
-  assert.equal(url.origin, 'http://192.168.31.158:5158')
-  assert.equal(url.pathname, '/api/analysis/alarms')
+  const url = new URL(calls[0].url, 'http://frontend.test')
+  assert.equal(url.pathname, '/_alarm-api/api/analysis/alarms')
   assert.deepEqual([...url.searchParams.keys()], ['pointId', 'isActive', 'start', 'end', 'limit'])
   assert.equal(url.searchParams.get('isActive'), 'false')
   assert.equal(calls[0].options.headers.Authorization, undefined)
   assert.ok(calls[0].options.signal instanceof AbortSignal)
   await alarmApi.getAlarms()
-  assert.equal(calls[1].url, 'http://192.168.31.158:5158/api/analysis/alarms?limit=200')
+  assert.equal(calls[1].url, '/_alarm-api/api/analysis/alarms?limit=200')
   await alarmApi.getStatus()
-  assert.equal(calls[2].url, 'http://192.168.31.158:5158/api/analysis/status')
+  assert.equal(calls[2].url, '/_alarm-api/api/analysis/status')
 })
 
 test('alarm filters reject invalid input and retain false, zero-free IDs and optional times', () => {

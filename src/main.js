@@ -1,3 +1,4 @@
+import { isDemoMode } from './services/dataMode.js'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import {
@@ -23,6 +24,11 @@ import 'element-plus/dist/index.css'
 import './style.css'
 import App from './App.vue'
 import { router } from './router'
+
+if (isDemoMode) {
+  const { installDemo } = await import('./demo/install.js')
+  installDemo()
+}
 
 const app = createApp(App)
 

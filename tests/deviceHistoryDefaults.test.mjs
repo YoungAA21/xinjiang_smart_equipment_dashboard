@@ -5,13 +5,14 @@ import vm from 'node:vm'
 import { parse, compileScript } from '@vue/compiler-sfc'
 import * as vue from 'vue'
 import * as charts from '../src/charts/telemetry.js'
+import * as equipmentCatalog from '../src/charts/equipmentCatalog.js'
 
 const source = await readFile(new URL('../src/views/DeviceDetailPage.vue', import.meta.url), 'utf8')
 const { descriptor } = parse(source)
 const compiled = compileScript(descriptor, { id: 'device-history-test' })
 const flush = async () => { for (let i = 0; i < 8; i++) await vue.nextTick() }
 
-async function mountMonitor() {
+async function mountMonitor(query = { source: 'legacy', device: 'PRESS02' }) {
   let now = new Date(2026, 7, 28, 12, 0, 0).getTime()
   class Clock extends Date { static now() { return now } }
   const calls = []
@@ -19,7 +20,7 @@ async function mountMonitor() {
   const points = [37, 38].map((pointId) => ({ pointId, moduleId: 'PRESS02', channelId: `AI${pointId}`, pointCode: `P${pointId}` }))
   const telemetry = vue.reactive({
     modules: null, points: [], pointModuleId: '', latest: [], buffers: {}, history: null,
-    async refreshModules() { this.modules = [record] },
+    async refreshModules() { this.modules = [record, { ...record, moduleId: 'PRESS03', moduleName: '新设备' }] },
     async loadPoints(moduleId) { this.pointModuleId = moduleId; this.points = points },
     async refreshLatest() {},
     clearHistory() { this.history = null },
@@ -29,10 +30,13 @@ async function mountMonitor() {
   const context = vm.createContext({ console, Date: Clock, AbortController, AbortSignal, window: { setInterval: () => 1, clearInterval: () => {} } })
   const dependencies = {
     vue,
+    '../services/dataMode.js': { isDemoMode: false },
+    'vue-router': { useRoute: () => ({ query }) },
     'lucide-vue-next': Object.fromEntries(['Activity', 'Database', 'Fan', 'RefreshCcw', 'Search', 'Server'].map((key) => [key, {}])),
     '../services/api': { api: { getMonitorDevices: async () => [] } },
     '../stores/telemetry': { useTelemetryStore: () => telemetry },
     '../charts/telemetry': charts,
+    '../charts/equipmentCatalog.js': equipmentCatalog,
   }
   const moduleCode = new vm.SourceTextModule(compiled.content, { context })
   await moduleCode.link((specifier) => {
@@ -94,4 +98,71 @@ test('only the live chart remains in the device view, with a history table and l
   assert.doesNotMatch(source, /historyOption|历史原始数据折线/)
   assert.match(descriptor.template.content, /<TelemetryHistoryList/)
   assert.match(descriptor.template.content, /正在查询历史数据/)
+})
+
+test('analysis tabs keep the selected device and point; choosing a device resets the view', async (t) => {
+  const { app, state } = await mountMonitor()
+  t.after(() => app.unmount())
+  state.selectedPointId = 38
+  state.chartMode = 'trend'
+  await flush()
+  assert.equal(state.selected.id, 'PRESS02')
+  assert.equal(state.selectedPoint.pointId, 38)
+  state.chartMode = 'spectrum'
+  await flush()
+  assert.equal(state.selectedPoint.pointId, 38)
+  state.selectedKey = JSON.stringify(['legacy', 'PRESS03'])
+  await flush()
+  assert.equal(state.selected.id, 'PRESS03')
+  assert.equal(state.chartMode, 'live')
+  assert.match(descriptor.template.content, /<TrendPage[^>]+:point="selectedPoint"/)
+  assert.match(descriptor.template.content, /<SpectrumPage[^>]+:channel-id="selectedChannel.channelId"/)
+})
+
+test('legacy analysis entry opens the requested device detail tab', async (t) => {
+  const { app, state } = await mountMonitor({ tab: 'trend', source: 'legacy', device: 'PRESS02' })
+  t.after(() => app.unmount())
+  assert.equal(state.chartMode, 'trend')
+  assert.equal(state.source, 'legacy')
+  assert.equal(state.selectedPoint.pointId, 37)
+})
+
+
+test('device directory waits for an explicit device choice and missing devices do not fall back', async () => {
+  for (const query of [{}, { source: 'legacy', device: 'missing' }]) {
+    const { app, state, calls } = await mountMonitor(query)
+    assert.equal(state.selected, null)
+    assert.equal(state.points.length, 0)
+    assert.equal(calls.length, 0)
+    app.unmount()
+  }
+})
+
+test('every point card uses only its own sample buffer and marks stale data', async (t) => {
+  const { app, state } = await mountMonitor()
+  t.after(() => app.unmount())
+  const collectedAt = new Date(Date.now() - 60000).toISOString()
+  const samples = state.points.map((point, index) => ({ ...point, value: index + 10, collectedAt }))
+  state.telemetry.latest = samples
+  state.telemetry.buffers = charts.appendSamples({}, samples)
+  state.clock = Date.now()
+  await flush()
+  assert.equal(state.pointCards.length, 2)
+  assert.deepEqual(Array.from(state.pointCards, card => card.option.series[0].data[0][1]), [10, 11])
+  assert.ok(state.pointCards.every(card => card.stale))
+  state.selectedPointId = 38
+  await flush()
+  assert.equal(state.pointCards.length, 2)
+})
+
+
+test('device tabs exclude unsupported analysis and old URLs fall back to live', async () => {
+  for (const [source, unsupported, supported] of [['legacy', 'spectrum', 'trend'], ['monitor', 'trend', 'spectrum']]) {
+    const { app, state } = await mountMonitor({ source, device: source === 'legacy' ? 'PRESS02' : 'DEV1', tab: unsupported })
+    assert.equal(state.detailTabs.some(tab => tab.id === unsupported), false)
+    assert.equal(state.detailTabs.some(tab => tab.id === supported), true)
+    assert.equal(state.chartMode, 'live')
+    assert.equal(state.availableTab(unsupported, source), 'live')
+    app.unmount()
+  }
 })

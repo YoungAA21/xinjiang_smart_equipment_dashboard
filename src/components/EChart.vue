@@ -40,7 +40,16 @@ const themedOption = (value) => {
 const render = () => {
   if (!chartEl.value) return
   if (!chart) {
-    chart = echarts.init(chartEl.value, null, { renderer: 'canvas' })
+    chart = echarts.init(chartEl.value, {
+      textStyle: { fontSize: 15 },
+      title: { textStyle: { fontSize: 23 }, subtextStyle: { fontSize: 15 } },
+      legend: { textStyle: { fontSize: 15 } },
+      tooltip: { textStyle: { fontSize: 18 } },
+      categoryAxis: { axisLabel: { fontSize: 15 }, nameTextStyle: { fontSize: 15 } },
+      valueAxis: { axisLabel: { fontSize: 15 }, nameTextStyle: { fontSize: 15 } },
+      timeAxis: { axisLabel: { fontSize: 15 }, nameTextStyle: { fontSize: 15 } },
+      logAxis: { axisLabel: { fontSize: 15 }, nameTextStyle: { fontSize: 15 } },
+    }, { renderer: 'canvas' })
   }
   chart.setOption(themedOption(props.option), true)
 }

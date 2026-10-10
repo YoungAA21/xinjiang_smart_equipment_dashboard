@@ -1,7 +1,7 @@
-import { resolveServiceBase } from './endpoints.js'
+import { resolveProxiedServiceBase } from './endpoints.js'
 
 // Dedicated read-only 5158 transport. Never attach the 18080 authentication token.
-const BASE = import.meta.env?.DEV ? '/_alarm-api' : resolveServiceBase(import.meta.env?.VITE_API_BASE_URL, 5158)
+const BASE = resolveProxiedServiceBase(import.meta.env?.VITE_API_BASE_URL, '/_alarm-api')
 const present = (value) => value !== undefined && value !== null && value !== ''
 
 export function validateAlarmQuery(query = {}) {

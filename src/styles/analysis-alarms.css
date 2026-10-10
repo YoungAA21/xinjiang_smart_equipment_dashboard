@@ -19,7 +19,7 @@
 
 .analysis-alarm-toolbar > div:first-child > span {
   color: var(--analysis-accent);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 1.4px;
 }
@@ -27,7 +27,7 @@
 .analysis-alarm-toolbar h2 {
   margin: 4px 0 0;
   color: var(--text-main);
-  font-size: 20px;
+  font-size: 25px;
   letter-spacing: 0;
 }
 
@@ -52,14 +52,14 @@
 .analysis-alarm-summary span,
 .analysis-alarm-summary small {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .analysis-alarm-summary strong {
   grid-row: span 2;
   align-self: center;
   color: var(--text-main);
-  font-size: 26px;
+  font-size: 33px;
   font-weight: 650;
 }
 
@@ -86,7 +86,7 @@
 
 .analysis-alarm-filters label > span {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .analysis-alarm-filters .el-select,
@@ -138,13 +138,13 @@
 .analysis-event-detail h3 {
   margin: 0;
   color: var(--text-main);
-  font-size: 14px;
+  font-size: 18px;
   letter-spacing: 0;
 }
 
 .analysis-trend-card > header > span {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .analysis-trend-chart {
@@ -156,7 +156,7 @@
   max-width: 160px;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -179,7 +179,7 @@
 .analysis-event-table small {
   margin-top: 3px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .analysis-alarm-panel .risk-badge {
@@ -190,7 +190,7 @@
   padding: 3px 6px;
   border: 1px solid currentColor;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 14px;
 }
 
 .analysis-alarm-panel .risk-badge.normal {
@@ -229,7 +229,7 @@
 
 .analysis-event-detail dt {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .analysis-event-detail dd {
@@ -237,7 +237,7 @@
   margin: 0;
   overflow-wrap: anywhere;
   color: var(--text-main);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .analysis-table-pagination {
@@ -248,7 +248,7 @@
   padding: 10px 14px 13px;
   border-top: 1px solid var(--glass-border);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .analysis-table-pagination .el-pagination {
@@ -323,7 +323,7 @@
 
 .analysis-floating-detail header strong {
   color: #fff;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .analysis-floating-detail button {
@@ -349,7 +349,7 @@
   overflow: hidden;
   padding: 9px 12px 0;
   color: var(--analysis-accent);
-  font-size: 11px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -372,7 +372,7 @@
 
 .analysis-floating-detail dt {
   color: #9fbdb4;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .analysis-floating-detail dd {
@@ -380,7 +380,7 @@
   margin: 0;
   overflow-wrap: anywhere;
   color: #fff;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 @media (max-width: 1450px) {

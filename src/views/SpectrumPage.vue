@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { isDemoMode } from '../services/dataMode.js'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Activity, AudioLines, CircleStop, Headphones, RefreshCcw } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import EChart from '../components/EChart.vue'
@@ -7,11 +8,21 @@ import AudioVisualizationPanel from '../components/AudioVisualizationPanel.vue'
 import { api } from '../services/api'
 import { auth } from '../services/auth'
 
+const props = defineProps({
+  embedded: Boolean,
+  compact: Boolean,
+  accentColor: { type: String, default: '#39a9ff' },
+  device: { type: Object, default: null },
+  channelId: { type: String, default: '' },
+  displayMode: { type: String, default: 'spectrum' },
+})
 const devices = ref([])
 const selectedDeviceId = ref('')
 const selectedChannelId = ref('')
 const loadingDevices = ref(false)
 const starting = ref(false)
+let sessionVersion = 0
+let disposed = false
 const session = ref(null)
 const signalStatus = ref('未连接')
 const audioStatus = ref('未连接')
@@ -21,7 +32,7 @@ const waveform = ref([])
 const envelopeFrames = ref([])
 const spectrum = ref([])
 const lastFrameAt = ref(0)
-const audioEnabled = ref(true)
+const audioEnabled = ref(!props.embedded)
 const rawFrameLogCount = ref(0)
 
 const stats = reactive({
@@ -45,13 +56,13 @@ const MAX_AUDIO_SCHEDULE_AHEAD = 0.35
 const AUDIO_START_DELAY = 0.025
 
 const selectedDevice = computed(() =>
-  devices.value.find((device) => device.deviceId === selectedDeviceId.value) || devices.value[0] || null)
+  props.embedded ? props.device : devices.value.find((device) => device.deviceId === selectedDeviceId.value) || devices.value[0] || null)
 
 const channelOptions = computed(() => selectedDevice.value?.channels || [])
 const selectedChannels = computed(() =>
   channelOptions.value.filter((channel) => channel.channelId === selectedChannelId.value))
 
-const canStart = computed(() => selectedDevice.value && selectedChannelId.value && !session.value && !starting.value)
+const canStart = computed(() => selectedDevice.value?.online !== false && selectedChannels.value.some((channel) => channel.online) && !session.value && !starting.value)
 const frameLive = computed(() => Boolean(session.value) && lastFrameAt.value > 0 && Date.now() - lastFrameAt.value < 3000)
 const rollingEnvelope = computed(() => {
   const source = envelopeFrames.value.flatMap((item) => item.values)
@@ -164,11 +175,11 @@ const waterfallYLabels = computed(() => {
 
 const waveformOption = computed(() => ({
   tooltip: { trigger: 'axis', backgroundColor: '#111312', borderColor: '#46907C', textStyle: { color: '#FFFFFF' } },
-  color: ['#1853CF', '#0AAE91'],
-  grid: { left: 46, right: 18, top: 28, bottom: 34 },
+  color: [props.accentColor],
+  grid: props.compact ? { left: 8, right: 8, top: 14, bottom: 25 } : { left: 46, right: 18, top: 28, bottom: 34 },
   xAxis: { type: 'value', axisLabel: { color: '#C3E2D9' }, splitLine: { lineStyle: { color: 'rgba(195,226,217,.10)' } } },
-  yAxis: { type: 'value', min: -1, max: 1, axisLabel: { color: '#C3E2D9', formatter: (value) => value > 0 ? `+${value}` : value }, splitLine: { lineStyle: { color: 'rgba(195,226,217,.12)' } } },
-  series: [{ name: '采样折线', type: 'line', symbol: 'none', data: waveformSamples.value, lineStyle: { width: 1.1 } }],
+  yAxis: { type: 'value', min: -1, max: 1, show: !props.compact, axisLabel: { color: '#C3E2D9', formatter: (value) => value > 0 ? `+${value}` : value }, splitLine: { lineStyle: { color: 'rgba(195,226,217,.12)' } } },
+  series: [{ name: '采样折线', type: 'line', symbol: 'none', data: waveformSamples.value, lineStyle: { width: 1.4 }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${props.accentColor}16` }, { offset: 1, color: `${props.accentColor}00` }] } } }],
 }))
 
 const envelopeOption = computed(() => ({
@@ -195,9 +206,9 @@ const spectrumOption = computed(() => ({
 const trackOption = computed(() => ({
   tooltip: { trigger: 'axis', backgroundColor: '#111312', borderColor: '#46907C', textStyle: { color: '#FFFFFF' } },
   color: ['#1853CF', '#0AAE91'],
-  grid: { left: 46, right: 18, top: 28, bottom: 34 },
+  grid: { left: 8, right: 18, top: 28, bottom: 34 },
   xAxis: { type: 'value', axisLabel: { color: '#C3E2D9' }, splitLine: { lineStyle: { color: 'rgba(195,226,217,.10)' } } },
-  yAxis: { type: 'value', min: -1, max: 1, axisLabel: { color: '#C3E2D9', formatter: (value) => value > 0 ? `+${value}` : value }, splitLine: { lineStyle: { color: 'rgba(195,226,217,.12)' } } },
+  yAxis: { type: 'value', min: -1, max: 1, show: false },
   series: envelopeData.value.length ? [
     { name: 'Min', type: 'line', stack: 'track', symbol: 'none', data: envelopeData.value.map((item) => [item[0], item[1]]), lineStyle: { color: '#1853CF', width: 1.2 } },
     {
@@ -328,7 +339,9 @@ const playPcmChunk = async (buffer) => {
   audioState.nextTime = startAt + audioBuffer.duration
 }
 
-const connectSignalWs = () => {
+const connectSignalWs = async (version = sessionVersion) => {
+  const Socket = isDemoMode ? (await import('../demo/socket.js')).DemoSocket : WebSocket
+  if (disposed || version !== sessionVersion) return
   const sessionId = getSessionId(session.value)
   if (!sessionId) {
     signalStatus.value = '缺少会话ID'
@@ -337,12 +350,13 @@ const connectSignalWs = () => {
   }
   const wsUrl = resolveWsUrl(getSignalWsPath(session.value))
   console.log('[monitor/ws connect]', wsUrl)
-  sockets.signal = new WebSocket(wsUrl)
+  sockets.signal = new Socket(wsUrl)
   signalStatus.value = '连接中'
   sockets.signal.onopen = () => { signalStatus.value = '已连接' }
   sockets.signal.onclose = () => { signalStatus.value = session.value ? '已断开' : '未连接' }
   sockets.signal.onerror = () => { signalStatus.value = '异常' }
   sockets.signal.onmessage = (event) => {
+    if (disposed || version !== sessionVersion) return
     try {
       const frame = JSON.parse(event.data)
       if (rawFrameLogCount.value < 5) {
@@ -369,7 +383,9 @@ const connectSignalWs = () => {
   }
 }
 
-const connectAudioWs = () => {
+const connectAudioWs = async (version = sessionVersion) => {
+  const Socket = isDemoMode ? (await import('../demo/socket.js')).DemoSocket : WebSocket
+  if (disposed || version !== sessionVersion) return
   const sessionId = getSessionId(session.value)
   if (!audioEnabled.value || !sessionId) {
     audioStatus.value = audioEnabled.value ? '无音频地址' : '已关闭'
@@ -377,22 +393,30 @@ const connectAudioWs = () => {
   }
   const wsUrl = resolveWsUrl(getAudioWsPath(session.value))
   console.log('[monitor/audio connect]', wsUrl)
-  sockets.audio = new WebSocket(wsUrl)
+  sockets.audio = new Socket(wsUrl)
   sockets.audio.binaryType = 'arraybuffer'
   audioStatus.value = '连接中'
   sockets.audio.onopen = () => { audioStatus.value = '已连接' }
   sockets.audio.onclose = () => { audioStatus.value = session.value ? '已断开' : '未连接' }
   sockets.audio.onerror = () => { audioStatus.value = '异常' }
   sockets.audio.onmessage = (event) => {
+    if (disposed || version !== sessionVersion) return
     stats.audioChunks += 1
     stats.audioBytes += event.data?.byteLength || 0
     playPcmChunk(event.data)
   }
 }
 
-const startSession = async () => {
+let pendingStart
+const startSession = () => {
+  if (starting.value) return pendingStart
+  pendingStart = beginSession()
+  return pendingStart
+}
+const beginSession = async () => {
   if (!canStart.value) return
   starting.value = true
+  const version = ++sessionVersion
   rawFrameLogCount.value = 0
   latestFrame.value = null
   waterfallHistory.value = []
@@ -412,22 +436,31 @@ const startSession = async () => {
       visualizationRate: 10,
       audioCodec: 'pcm_s16le',
     })
+    if (disposed || version !== sessionVersion) {
+      const abandonedId = getSessionId(result)
+      if (abandonedId) await api.closeMonitorSession(abandonedId).catch(() => {})
+      return
+    }
     session.value = result
     console.log('[monitor/session created]', result)
-    connectSignalWs()
-    connectAudioWs()
+    await Promise.all([connectSignalWs(version), connectAudioWs(version)])
   } catch (error) {
-    ElMessage.error(error?.message || '监听会话创建失败')
+    if (!disposed && version === sessionVersion) ElMessage.error(error?.message || '监听会话创建失败')
   } finally {
     starting.value = false
   }
 }
 
 const stopSession = async () => {
+  sessionVersion += 1
   if (!session.value) return
-  const sessionId = session.value.sessionId
+  const sessionId = getSessionId(session.value)
   closeSockets()
   session.value = null
+  latestFrame.value = null
+  stats.frames = 0
+  stats.audioChunks = 0
+  stats.audioBytes = 0
   waveform.value = []
   envelopeFrames.value = []
   spectrum.value = []
@@ -443,40 +476,60 @@ const stopSession = async () => {
   })
 }
 
-onMounted(loadDevices)
-onBeforeUnmount(stopSession)
+defineExpose({ stopSession: async () => { await stopSession(); await pendingStart } })
+
+watch(() => [props.device?.deviceId, props.channelId], () => {
+  if (!props.embedded) return
+  stopSession()
+  selectedChannelId.value = props.channelId
+})
+onMounted(() => {
+  if (props.embedded) {
+    selectedChannelId.value = props.channelId
+    if (props.compact) startSession()
+  }
+  else loadDevices()
+})
+onBeforeUnmount(() => { disposed = true; stopSession() })
 </script>
 
 <template>
-  <section class="page single-page spectrum-live-page">
-    <header class="spectrum-page-header content-page-header"><h1 class="content-page-title">频谱分析</h1></header>
+  <article v-if="compact" class="acoustic-point-card" :style="{ '--point-color': accentColor }">
+    <header><h3>{{ selectedChannels[0]?.name || selectedChannels[0]?.channelName || channelId }}</h3><span>{{ signalStatus }}</span></header>
+    <div class="acoustic-value">{{ waveformSamples.length ? Math.sqrt(waveformSamples.reduce((sum, item) => sum + item[1] ** 2, 0) / waveformSamples.length).toFixed(3) : '—' }} <small>波形 RMS</small></div>
+    <p>声纹实时波形 · {{ stats.sampleRate }} Hz</p>
+    <div class="compact-waveform" role="img" :aria-label="channelId + '实时波形'"><EChart v-if="waveformSamples.length" :option="waveformOption" /><div v-else class="compact-empty">{{ starting ? '正在连接点位…' : '等待声纹采样' }}</div></div>
+    <footer><span>{{ lastFrameAt ? new Date(lastFrameAt).toLocaleTimeString('zh-CN') : '暂无采样' }}</span><el-button v-if="!session" size="small" :loading="starting" :disabled="!canStart" @click="startSession">连接点位</el-button><el-button v-else size="small" @click="stopSession">暂停</el-button></footer>
+  </article>
+  <section v-else class="page single-page spectrum-live-page" :class="{ 'embedded-spectrum': embedded }" :data-mode="displayMode">
+    <header v-if="!embedded" class="spectrum-page-header content-page-header"><h1 class="content-page-title">频谱分析</h1></header>
     <article class="panel spectrum-live-panel">
-      <h2>实时频谱分析 / 监听会话</h2>
+      <h2>{{ embedded && displayMode === 'live' ? '实时声纹监测' : '实时频谱分析' }}</h2>
 
       <div class="spectrum-live-toolbar">
-        <el-select v-model="selectedDeviceId" filterable placeholder="选择设备" :disabled="Boolean(session)">
+        <el-select v-if="!embedded" v-model="selectedDeviceId" filterable placeholder="选择设备" :disabled="Boolean(session)">
           <el-option v-for="device in devices" :key="device.deviceId" :label="device.deviceName || device.deviceId" :value="device.deviceId" />
         </el-select>
-        <el-select v-model="selectedChannelId" filterable placeholder="选择通道" :disabled="Boolean(session)">
+        <el-select v-if="!embedded" v-model="selectedChannelId" filterable placeholder="选择通道" :disabled="Boolean(session)">
           <el-option v-for="channel in channelOptions" :key="channel.channelId" :label="channel.name || channel.channelId" :value="channel.channelId" :disabled="!channel.online" />
         </el-select>
         <el-switch v-model="audioEnabled" active-text="音频" inactive-text="静音" :disabled="Boolean(session)" />
-        <el-button :icon="RefreshCcw" :loading="loadingDevices" :disabled="Boolean(session)" @click="loadDevices">刷新设备</el-button>
+        <el-button v-if="!embedded" :icon="RefreshCcw" :loading="loadingDevices" :disabled="Boolean(session)" @click="loadDevices">刷新设备</el-button>
         <el-button v-if="!session" type="primary" :icon="Headphones" :loading="starting" :disabled="!canStart" @click="startSession">开始监听</el-button>
         <el-button v-else type="danger" :icon="CircleStop" @click="stopSession">停止监听</el-button>
       </div>
 
       <div class="spectrum-session-strip">
-        <span><Activity :size="15" />Session：<b>{{ session?.sessionId || '-' }}</b></span>
-        <span>信号 WS：<b :class="signalStatus === '已连接' ? 'ok-text' : 'warn-text'">{{ signalStatus }}</b></span>
-        <span><AudioLines :size="15" />音频 WS：<b :class="audioStatus === '已连接' ? 'ok-text' : 'warn-text'">{{ audioStatus }}</b></span>
+        <span><Activity :size="15" />监听会话：<b>{{ session?.sessionId || '-' }}</b></span>
+        <span>信号连接：<b :class="signalStatus === '已连接' ? 'ok-text' : 'warn-text'">{{ signalStatus }}</b></span>
+        <span><AudioLines :size="15" />音频连接：<b :class="audioStatus === '已连接' ? 'ok-text' : 'warn-text'">{{ audioStatus }}</b></span>
         <span>采样率：<b>{{ stats.sampleRate }} Hz</b></span>
         <span>信号帧：<b>{{ stats.frames }}</b></span>
         <span>音频块：<b>{{ stats.audioChunks }}</b></span>
       </div>
 
       <section class="spectrum-live-grid">
-        <AudioVisualizationPanel
+        <AudioVisualizationPanel v-if="!embedded || displayMode === 'spectrum'"
           :active="frameLive"
           :waveform="waveform"
           :waveform-envelope="rollingEnvelope"
@@ -485,27 +538,48 @@ onBeforeUnmount(stopSession)
           :sample-rate="stats.sampleRate || 22000"
           :window-seconds="10"
         />
-        <section class="acoustic-chart">
+        <section v-if="!embedded || displayMode === 'live'" class="acoustic-chart">
           <header><strong>时域采样折线</strong><span>{{ waveformSamples.length }} points</span></header>
-          <div v-if="!waveformSamples.length" class="empty-state">等待信号帧 waveform/samples</div>
+          <div v-if="!waveformSamples.length" class="empty-state">开始监听后显示当前点位的实时波形</div>
           <EChart v-else :option="trackOption" />
         </section>
-        <section class="acoustic-chart">
+        <section v-if="!embedded || displayMode === 'live'" class="acoustic-chart">
           <header><strong>时域包络</strong><span>{{ envelopeData.length }} frames</span></header>
-          <div v-if="!envelopeData.length" class="empty-state">等待 envelope 或根据采样自动计算</div>
+          <div v-if="!envelopeData.length" class="empty-state">开始监听后显示当前点位的时域包络</div>
           <EChart v-else :option="envelopeOption" />
         </section>
-        <section class="acoustic-chart">
+        <section v-if="!embedded || displayMode === 'spectrum'" class="acoustic-chart">
           <header><strong>频域响应图</strong><span>{{ spectrumData.length }} bins</span></header>
-          <div v-if="!spectrumData.length" class="empty-state">等待 spectrum: [{ frequency, db }]</div>
+          <div v-if="!spectrumData.length" class="empty-state">开始监听后显示当前点位的频域响应</div>
           <EChart v-else :option="frequencyResponseOption" />
         </section>
-        <section class="acoustic-chart">
+        <section v-if="!embedded || displayMode === 'spectrum'" class="acoustic-chart">
           <header><strong>频谱瀑布图</strong><span>{{ waterfallMatrix.length }} cells</span></header>
-          <div v-if="!waterfallMatrix.length" class="empty-state">等待 waterfallRow</div>
+          <div v-if="!waterfallMatrix.length" class="empty-state">开始监听后显示当前点位的频谱瀑布</div>
           <EChart v-else :option="waterfallOption" />
         </section>
       </section>
     </article>
   </section>
 </template>
+
+<style scoped>
+.embedded-spectrum { height: auto; padding: 0; overflow: visible; background: transparent; }
+.embedded-spectrum .spectrum-live-panel { height: auto; flex: none; overflow: visible; }
+.embedded-spectrum .spectrum-live-toolbar { display: flex; flex-wrap: wrap; }
+.embedded-spectrum .spectrum-live-grid { grid-template-columns: minmax(0, 1fr); }
+.embedded-spectrum[data-mode="live"] .spectrum-live-grid > .acoustic-chart { display: flex; }
+.embedded-spectrum[data-mode="live"] .acoustic-chart .echart { min-height: 260px; }
+.embedded-spectrum .spectrum-live-grid { overflow: visible; flex: none; }
+.embedded-spectrum .spectrum-session-strip { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.embedded-spectrum .spectrum-session-strip span { overflow: visible; flex-wrap: wrap; white-space: normal; }
+
+.acoustic-point-card { min-width: 0; padding: 18px 16px 12px; background: var(--glass-card); border: 1px solid var(--glass-border); border-radius: 10px; }
+.acoustic-point-card header, .acoustic-point-card footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.acoustic-point-card h3 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.acoustic-point-card header span, .acoustic-point-card p, .acoustic-point-card footer { font-size: 12px; color: var(--text-muted); }
+.acoustic-value { color: var(--point-color); font-size: 34px; margin-top: 18px; }
+.acoustic-value small { font-size: 14px; color: var(--text-muted); }
+.compact-waveform { height: 150px; }
+.compact-empty { height: 100%; display: grid; place-items: center; color: var(--text-muted); font-size: 14px; }
+</style>

@@ -10,25 +10,41 @@ afterEach(() => { globalThis.fetch = originalFetch })
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 const range = { pointId: 35, start: '2026-08-01T00:00:00', end: '2026-09-01T00:00:00', bucketMinutes: 60 }
 
-test('analysis routes use 5158, preserve supported filters and do not send credentials', async () => {
+test('analysis routes use the same-origin 5158 proxy, preserve filters and omit credentials', async () => {
   const calls = []
   globalThis.fetch = async (url, options) => { calls.push({ url, options }); return reply({ events: [] }) }
   await analysisApi.getDailyLimitTrends({ ...range, limit: 366, ignored: 'value' })
   await analysisApi.getTrendInsights({ ...range, limit: 100000 })
   await analysisApi.getTrendAlarms({ pointId: 35, isActive: false, start: range.start, end: range.end, limit: 1000 })
 
-  assert.deepEqual(calls.map(({ url }) => new URL(url).pathname), [
-    '/api/analysis/daily-limit-trends',
-    '/api/analysis/trend-insights',
-    '/api/analysis/trend-alarms',
+  assert.deepEqual(calls.map(({ url }) => new URL(url, 'http://frontend.test').pathname), [
+    '/_analysis-api/api/analysis/daily-limit-trends',
+    '/_analysis-api/api/analysis/trend-insights',
+    '/_analysis-api/api/analysis/trend-alarms',
   ])
-  assert.deepEqual([...new URL(calls[0].url).searchParams.keys()], ['pointId', 'start', 'end', 'bucketMinutes', 'limit'])
-  assert.equal(new URL(calls[2].url).searchParams.get('isActive'), 'false')
+  assert.deepEqual([...new URL(calls[0].url, 'http://frontend.test').searchParams.keys()], ['pointId', 'start', 'end', 'bucketMinutes', 'limit'])
+  assert.equal(new URL(calls[2].url, 'http://frontend.test').searchParams.get('isActive'), 'false')
   for (const call of calls) {
     assert.equal(call.options.method, 'GET')
     assert.equal(call.options.headers.Authorization, undefined)
     assert.ok(call.options.signal instanceof AbortSignal)
   }
+})
+
+test('analysis transport rejects an SPA fallback response with a proxy-specific message', async () => {
+  globalThis.fetch = async () => new Response('<!doctype html><html><body>dashboard</body></html>', {
+    status: 200,
+    headers: { 'Content-Type': 'text/html' },
+  })
+  await assert.rejects(
+    analysisApi.getDailyLimitTrends(range),
+    /\/_analysis-api 反向代理配置/,
+  )
+})
+
+test('analysis transport supports a conventional API response envelope', async () => {
+  globalThis.fetch = async () => reply({ code: 200, success: true, data: { days: [] } })
+  assert.deepEqual(await analysisApi.getDailyLimitTrends(range), { days: [] })
 })
 
 test('analysis query validation enforces endpoint constraints and complete time ranges', () => {
@@ -56,7 +72,9 @@ test('development proxy permits only the trend analysis endpoints', async () => 
   assert.equal(url, '/_analysis-api/api/analysis/trend-alarms?limit=200')
 
   const { default: config } = await import('../vite.config.js')
-  const proxies = config({ mode: 'test' }).server.proxy
+  const resolvedConfig = config({ mode: 'test' })
+  const proxies = resolvedConfig.server.proxy
+  assert.equal(resolvedConfig.preview.proxy, proxies)
   const pattern = new RegExp(Object.keys(proxies).find((key) => key.startsWith('^/_analysis-api/')))
   for (const path of [
     '/_analysis-api/api/analysis/daily-limit-trends?pointId=35',

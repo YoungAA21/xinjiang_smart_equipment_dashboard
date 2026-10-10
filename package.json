@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "demo": "vite --mode demo --host 127.0.0.1 --port 5173",
+    "build:demo": "vite build --mode demo --outDir dist-demo",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"

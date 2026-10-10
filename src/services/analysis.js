@@ -1,6 +1,6 @@
-import { resolveServiceBase } from './endpoints.js'
+import { resolveProxiedServiceBase } from './endpoints.js'
 
-const BASE = import.meta.env?.DEV ? '/_analysis-api' : resolveServiceBase(import.meta.env?.VITE_API_BASE_URL, 5158)
+const BASE = resolveProxiedServiceBase(import.meta.env?.VITE_API_BASE_URL, '/_analysis-api')
 const present = (value) => value !== undefined && value !== null && value !== ''
 
 const pointIdValue = (value, required) => {
@@ -58,10 +58,20 @@ async function request(path, { query, method = 'GET', body, signal } = {}) {
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
   })
   const contentType = response.headers.get('content-type') || ''
-  const result = contentType.includes('application/json') ? await response.json() : await response.text()
+  const isJson = contentType.includes('application/json') || contentType.includes('+json')
+  const result = isJson ? await response.json() : await response.text()
   if (!response.ok) {
     const message = typeof result === 'object' ? result.message || result.detail || JSON.stringify(result) : result
     throw new Error(message || `分析接口请求失败（HTTP ${response.status}）`)
+  }
+  if (!isJson) {
+    const looksLikePage = typeof result === 'string' && /<!doctype\s+html|<html[\s>]/i.test(result)
+    if (looksLikePage) throw new Error('分析接口被静态页面接管，请检查服务器 Nginx 的 /_analysis-api 反向代理配置')
+    throw new Error(`分析接口返回了非 JSON 内容（${contentType || '未知类型'}）`)
+  }
+  if (result && typeof result === 'object' && 'code' in result) {
+    if (Number(result.code) !== 200 || result.success === false) throw new Error(result.message || `分析接口业务错误（${result.code}）`)
+    return result.data
   }
   return result
 }

@@ -1,3 +1,4 @@
+import { isDemoMode } from './dataMode.js'
 import { auth } from './auth'
 import { healthApi } from './health'
 import { resolveServiceBase } from './endpoints.js'
@@ -7,8 +8,7 @@ const LEGACY_API_BASE = resolveServiceBase(import.meta.env?.VITE_API_BASE_URL, 5
   developmentUrl: import.meta.env?.VITE_DEV_API_BASE_URL,
 })
 const NEW_API_BASE = resolveServiceBase(import.meta.env?.VITE_NEW_API_BASE_URL, 18080, {
-  development: Boolean(import.meta.env?.DEV),
-  developmentUrl: import.meta.env?.VITE_DEV_NEW_API_BASE_URL,
+  sameOrigin: true,
 })
 const LEGACY_API_DISABLED = import.meta.env.VITE_LEGACY_API_DISABLED !== 'false'
 
@@ -167,7 +167,7 @@ export const api = {
   getRecordingVisualization: (recordingId, params = {}) =>
     newApiRequest(`/recordings/${encodeURIComponent(recordingId)}/visualization`, params),
   getRecordingContentUrl: (recordingId, { download = false } = {}) =>
-    newApiUrl(`/recordings/${encodeURIComponent(recordingId)}/content`, {
+    isDemoMode ? `${import.meta.env?.BASE_URL || '/'}demo-audio.wav` : newApiUrl(`/recordings/${encodeURIComponent(recordingId)}/content`, {
       token: tokenQueryValue(),
       download: download ? 'true' : '',
     }),

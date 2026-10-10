@@ -1,4 +1,12 @@
 ﻿:root {
+  font-size: 20px;
+  /* Include dropdowns and dialogs mounted under body. */
+  --el-font-size-extra-small: 15px;
+  --el-font-size-small: 16px;
+  --el-font-size-base: 18px;
+  --el-font-size-medium: 20px;
+  --el-font-size-large: 23px;
+  --el-font-size-extra-large: 25px;
   color: #FFFFFF;
   background: #111312;
   font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", Arial, sans-serif;
@@ -75,7 +83,7 @@ body {
 .dashboard-shell.sidebar-collapsed {
   grid-template-columns: 68px 1fr;
 }
-button, select { font: inherit; }
+button, select, input, textarea { font: inherit; }
 button { cursor: pointer; }
 #app {
   width: 100vw;
@@ -449,7 +457,7 @@ button { cursor: pointer; }
   grid-row: 1;
   min-width: 0;
   overflow: visible;
-  font-size: 17px;
+  font-size: 21px;
   line-height: 1.25;
   white-space: normal;
   text-shadow: 0 0 18px rgba(168, 255, 125, 0.42), 0 0 34px rgba(70, 144, 124, 0.28);
@@ -597,7 +605,7 @@ button { cursor: pointer; }
 }
 .top-title strong {
   color: #FFFFFF;
-  font-size: 21px;
+  font-size: 26px;
   letter-spacing: 0;
   text-shadow: 0 0 18px rgba(168, 255, 125, 0.42), 0 0 38px rgba(70, 144, 124, 0.24);
 }
@@ -606,7 +614,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 13px;
   color: #C3E2D9;
-  font-size: 13px;
+  font-size: 16px;
 }
 .top-icon-btn {
   display: inline-grid;
@@ -869,7 +877,7 @@ button { cursor: pointer; }
   height: 31px;
   padding: 0 12px 0 26px;
   color: #FFFFFF;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
   border-bottom: 1px solid rgba(171, 235, 218, 0.14);
   background: linear-gradient(90deg, rgba(70, 144, 124, 0.55), rgba(70, 144, 124, 0.24) 56%, rgba(70, 144, 124, 0.06));
@@ -935,14 +943,14 @@ button { cursor: pointer; }
   gap: 7px;
   margin-top: 11px;
   color: #A8FF7D;
-  font-size: 30px;
+  font-size: 38px;
   line-height: 1;
 }
 .kpi-card span {
   margin-right: -14px;
   margin-left: -14px;
 }
-.kpi-card small { color: #FFFFFF; font-size: 14px; }
+.kpi-card small { color: #FFFFFF; font-size: 18px; }
 .kpi-card.green strong { color: var(--green); }
 .kpi-card.red strong { color: var(--red); }
 .kpi-card.orange strong { color: var(--orange); }
@@ -991,7 +999,7 @@ button { cursor: pointer; }
   margin: 0;
   padding: 0;
   color: #FFFFFF;
-  font-size: 12px;
+  font-size: 15px;
   list-style: none;
 }
 .legend-list li { display: flex; align-items: center; gap: 7px; }
@@ -1019,7 +1027,7 @@ button { cursor: pointer; }
   margin: 7px 9px 8px;
   color: #FFFFFF;
   background: transparent;
-  font-size: 12px;
+  font-size: 15px;
   backdrop-filter: blur(16px) saturate(1.26);
   -webkit-backdrop-filter: blur(16px) saturate(1.26);
 }
@@ -1041,7 +1049,7 @@ button { cursor: pointer; }
 .content-page-title {
   margin: 0;
   color: var(--text-main);
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: 0;
@@ -1086,7 +1094,7 @@ button { cursor: pointer; }
   min-height: 72px;
   margin: 10px;
   color: #C3E2D9;
-  font-size: 13px;
+  font-size: 16px;
   border: 1px dashed rgba(195, 226, 217, 0.18);
   border-radius: 4px;
   background: rgba(70, 144, 124, 0.006);
@@ -1106,7 +1114,7 @@ button { cursor: pointer; }
   height: 20px;
   padding: 0 7px;
   border-radius: 3px;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
 }
 .state.pending { color: #FF8B1F; background: rgba(255, 139, 31, 0.12); }
@@ -1128,7 +1136,7 @@ button { cursor: pointer; }
   backdrop-filter: blur(30px) saturate(1.55);
   -webkit-backdrop-filter: blur(30px) saturate(1.55);
 }
-.detail-header strong { color: #FFFFFF; font-size: 15px; text-shadow: 0 0 16px rgba(168, 255, 125, 0.32); }
+.detail-header strong { color: #FFFFFF; font-size: 19px; text-shadow: 0 0 16px rgba(168, 255, 125, 0.32); }
 .detail-selector {
   display: flex;
   align-items: center;
@@ -1228,7 +1236,7 @@ button { cursor: pointer; }
   grid-template-columns: 86px 1fr;
   gap: 16px 10px;
   margin: 14px 18px;
-  font-size: 12px;
+  font-size: 15px;
 }
 .info-card dt { color: #C3E2D9; }
 .info-card dd { margin: 0; color: #FFFFFF; }
@@ -1247,7 +1255,7 @@ button { cursor: pointer; }
   backdrop-filter: blur(28px) saturate(1.5);
   -webkit-backdrop-filter: blur(28px) saturate(1.5);
 }
-.tabs button { align-self: stretch; font-size: 13px; }
+.tabs button { align-self: stretch; font-size: 16px; }
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1272,10 +1280,10 @@ button { cursor: pointer; }
   border-radius: 50%;
 }
 .metric-value { display: flex; align-items: baseline; gap: 8px; margin-top: 28px; }
-.metric-value span { color: #C3E2D9; font-size: 20px; }
-.metric-value strong { font-size: 30px; }
-.metric-value small { color: #FFFFFF; font-size: 13px; }
-.metric-card p { min-height: 18px; margin: 5px 0 0; color: #C3E2D9; font-size: 12px; }
+.metric-value span { color: #C3E2D9; font-size: 25px; }
+.metric-value strong { font-size: 38px; }
+.metric-value small { color: #FFFFFF; font-size: 16px; }
+.metric-card p { min-height: 18px; margin: 5px 0 0; color: #C3E2D9; font-size: 15px; }
 .metric-card .echart { height: 58px; }
 .health-summary {
   display: grid;
@@ -1292,7 +1300,7 @@ button { cursor: pointer; }
   width: 64px;
   height: 64px;
   color: #A8FF7D;
-  font-size: 24px;
+  font-size: 30px;
   font-weight: 800;
   border-radius: 50%;
   background:
@@ -1301,11 +1309,11 @@ button { cursor: pointer; }
   box-shadow: 0 0 24px rgba(46, 255, 180, 0.28);
   animation: ring-breathe 2.8s ease-in-out infinite;
 }
-.status-ring { font-size: 16px; }
-.health-summary span { color: #C3E2D9; font-size: 12px; }
-.health-summary strong { display: block; margin-top: 5px; color: #A8FF7D; font-size: 17px; }
-.health-summary p { color: #C3E2D9; font-size: 13px; }
-.health-summary small { color: #C3E2D9; font-size: 11px; }
+.status-ring { font-size: 20px; }
+.health-summary span { color: #C3E2D9; font-size: 15px; }
+.health-summary strong { display: block; margin-top: 5px; color: #A8FF7D; font-size: 21px; }
+.health-summary p { color: #C3E2D9; font-size: 16px; }
+.health-summary small { color: #C3E2D9; font-size: 14px; }
 
 .device-overview-page {
   display: flex;
@@ -1330,11 +1338,11 @@ button { cursor: pointer; }
 }
 .device-overview-hero span {
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
 }
 .device-overview-hero strong {
   color: #FFFFFF;
-  font-size: 20px;
+  font-size: 25px;
   letter-spacing: 0;
 }
 .device-overview-hero ul {
@@ -1351,7 +1359,7 @@ button { cursor: pointer; }
 }
 .device-overview-hero b {
   color: #A8FF7D;
-  font-size: 28px;
+  font-size: 35px;
   line-height: 1;
 }
 .device-overview-grid {
@@ -1400,14 +1408,14 @@ button { cursor: pointer; }
 .device-card header strong {
   overflow: hidden;
   color: #FFFFFF;
-  font-size: 14px;
+  font-size: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .device-card header span {
   overflow: hidden;
   color: #C3E2D9;
-  font-size: 11px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1415,7 +1423,7 @@ button { cursor: pointer; }
   flex: 0 0 auto;
   padding: 3px 9px;
   color: rgba(255, 139, 31, 0.82);
-  font-size: 11px;
+  font-size: 14px;
   font-style: normal;
   border: 0;
   background: transparent;
@@ -1537,14 +1545,14 @@ button { cursor: pointer; }
   position: relative;
   z-index: 1;
   color: #FFFFFF;
-  font-size: 17px;
+  font-size: 21px;
   line-height: 1;
   text-shadow: 0 0 10px rgba(168, 255, 125, 0.28);
   transform: translate(3px, -4px);
 }
 .health-gauge b small {
   color: #C3E2D9;
-  font-size: 10px;
+  font-size: 14px;
 }
 .health-gauge span {
   position: absolute;
@@ -1555,7 +1563,7 @@ button { cursor: pointer; }
   height: auto;
   color: #C3E2D9;
   background: transparent;
-  font-size: 9px;
+  font-size: 14px;
   line-height: 1;
   transform: translateX(calc(-50% + 3px));
 }
@@ -1565,12 +1573,12 @@ button { cursor: pointer; }
 }
 .device-health > strong {
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
 }
 .device-health small {
   color: #A8FF7D;
-  font-size: 11px;
+  font-size: 14px;
 }
 .device-card.warning .device-health small,
 .device-card.offline .device-health small {
@@ -1594,18 +1602,18 @@ button { cursor: pointer; }
   align-items: center;
   gap: 5px;
   color: #C3E2D9;
-  font-size: 11px;
+  font-size: 14px;
 }
 .device-metric strong {
   display: block;
   margin-top: 5px;
-  font-size: 20px;
+  font-size: 25px;
   line-height: 1;
 }
 .device-metric small {
   margin-left: 3px;
   color: #FFFFFF;
-  font-size: 10px;
+  font-size: 14px;
 }
 .device-metric .echart {
   height: 48px;
@@ -1648,7 +1656,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 10px;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
 }
 .el-select__wrapper {
   min-height: 30px;
@@ -1721,7 +1729,7 @@ button { cursor: pointer; }
   min-height: 40px;
   padding: 6px 8px 10px;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
 }
 .spectrum-session-strip span {
   display: inline-flex;
@@ -1791,7 +1799,7 @@ button { cursor: pointer; }
 .acoustic-chart header strong,
 .segment-panel header strong {
   color: #FFFFFF;
-  font-size: 13px;
+  font-size: 16px;
 }
 .acoustic-chart .echart {
   flex: 1;
@@ -1805,7 +1813,7 @@ button { cursor: pointer; }
   min-height: 42px;
   padding: 0 12px;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
   border: 1px solid var(--glass-border);
   border-radius: 4px;
   background: var(--glass-card);
@@ -1856,13 +1864,13 @@ button { cursor: pointer; }
 }
 .segment-row strong {
   color: #FFFFFF;
-  font-size: 13px;
+  font-size: 16px;
 }
 .segment-row span,
 .segment-row small {
   overflow: hidden;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1883,7 +1891,7 @@ button { cursor: pointer; }
   gap: 5px;
   height: 30px;
 }
-.alarm-list table { font-size: 11px; }
+.alarm-list table { font-size: 14px; }
 .alarm-audio {
   width: 260px;
   height: 30px;
@@ -1942,7 +1950,7 @@ button { cursor: pointer; }
   justify-content: center;
   height: 30px;
   color: #A8FF7D;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 800;
   border: 1px solid rgba(168, 255, 125, 0.28);
   border-radius: 4px;
@@ -1976,14 +1984,14 @@ button { cursor: pointer; }
   margin: 0;
   padding: 0 12px;
   color: #FFFFFF;
-  font-size: 13px;
+  font-size: 16px;
   border-bottom: 1px solid rgba(195, 226, 217, 0.12);
   background: rgba(70, 144, 124, 0.2);
 }
 .external-side-card h3 span {
   margin-left: auto;
   color: #A8FF7D;
-  font-size: 12px;
+  font-size: 15px;
 }
 .external-alarm-table {
   flex: 1;
@@ -2033,11 +2041,11 @@ button { cursor: pointer; }
 }
 .external-audio-list span {
   color: #C3E2D9;
-  font-size: 11px;
+  font-size: 14px;
 }
 .external-audio-list strong {
   color: #A8FF7D;
-  font-size: 13px;
+  font-size: 16px;
 }
 .sample-type-list {
   display: flex;
@@ -2061,7 +2069,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 8px;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
 }
 .daily-bar i {
   display: block;
@@ -2082,7 +2090,7 @@ button { cursor: pointer; }
   gap: 8px;
   padding: 8px 12px 0;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
 }
 .pager .el-pagination {
   margin-left: auto;
@@ -2122,12 +2130,12 @@ button { cursor: pointer; }
 }
 .monitor-toolbar span {
   color: #A8FF7D;
-  font-size: 11px;
+  font-size: 14px;
   text-transform: uppercase;
 }
 .monitor-toolbar strong {
   color: #FFFFFF;
-  font-size: 18px;
+  font-size: 23px;
 }
 .monitor-toolbar h1 { margin: 0; }
 
@@ -2146,7 +2154,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 7px;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
 }
 .monitor-grid {
   display: grid;
@@ -2282,13 +2290,13 @@ button { cursor: pointer; }
   min-width: 0;
   overflow: hidden;
   color: #FFFFFF;
-  font-size: 13px;
+  font-size: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .monitor-device-item small {
   color: #C3E2D9;
-  font-size: 11px;
+  font-size: 14px;
 }
 .monitor-device-item span,
 .monitor-channel-list em {
@@ -2298,7 +2306,7 @@ button { cursor: pointer; }
   height: 20px;
   padding: 0 7px;
   border-radius: 3px;
-  font-size: 11px;
+  font-size: 14px;
   font-style: normal;
   font-weight: 700;
   white-space: nowrap;
@@ -2322,7 +2330,7 @@ button { cursor: pointer; }
 .monitor-channel-section h3 {
   margin: 2px 0 8px;
   color: #FFFFFF;
-  font-size: 13px;
+  font-size: 16px;
 }
 .monitor-channel-list {
   display: grid;
@@ -2344,7 +2352,7 @@ button { cursor: pointer; }
 .monitor-channel-list .el-checkbox__label {
   display: contents;
   color: #FFFFFF;
-  font-size: 12px;
+  font-size: 15px;
 }
 .monitor-channel-list span {
   min-width: 0;
@@ -2374,19 +2382,19 @@ button { cursor: pointer; }
   align-items: center;
   gap: 6px;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
 }
 .monitor-kpis strong {
   display: block;
   margin-top: 10px;
   color: #A8FF7D;
-  font-size: 28px;
+  font-size: 35px;
   line-height: 1;
 }
 .monitor-kpis small {
   margin-left: 3px;
   color: #FFFFFF;
-  font-size: 13px;
+  font-size: 16px;
 }
 .selected-device-panel {
   min-height: 116px;
@@ -2414,7 +2422,7 @@ button { cursor: pointer; }
   min-width: 0;
   overflow: hidden;
   color: #FFFFFF;
-  font-size: 18px;
+  font-size: 23px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2422,7 +2430,7 @@ button { cursor: pointer; }
   display: block;
   margin-top: 4px;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
 }
 .selected-device-title em {
   display: inline-flex;
@@ -2431,7 +2439,7 @@ button { cursor: pointer; }
   height: 24px;
   padding: 0 9px;
   border-radius: 3px;
-  font-size: 12px;
+  font-size: 15px;
   font-style: normal;
   font-weight: 700;
 }
@@ -2454,13 +2462,13 @@ button { cursor: pointer; }
   align-items: center;
   gap: 5px;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
 }
 .selected-device-content dd {
   grid-row: 2;
   margin: -4px 0 0;
   color: #A8FF7D;
-  font-size: 28px;
+  font-size: 35px;
   font-weight: 800;
   line-height: 1;
 }
@@ -2477,7 +2485,7 @@ button { cursor: pointer; }
   min-width: 0;
   overflow: hidden;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2571,16 +2579,16 @@ button { cursor: pointer; }
 }
 .topology-device-tab strong {
   color: #FFFFFF;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 800;
 }
 .topology-device-tab span {
   color: #C3E2D9;
-  font-size: 11px;
+  font-size: 14px;
 }
 .topology-device-tab em {
   color: #A8FF7D;
-  font-size: 11px;
+  font-size: 14px;
   font-style: normal;
 }
 .topology-device-tab.offline em {
@@ -2604,7 +2612,7 @@ button { cursor: pointer; }
 }
 .topology-column > header {
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 800;
 }
 .topology-node {
@@ -2635,12 +2643,12 @@ button { cursor: pointer; }
 }
 .topology-node strong {
   color: #FFFFFF;
-  font-size: 13px;
+  font-size: 16px;
 }
 .topology-node span,
 .topology-node small {
   color: #C3E2D9;
-  font-size: 11px;
+  font-size: 14px;
 }
 .topology-node small {
   color: #A8FF7D;
@@ -2658,7 +2666,7 @@ button { cursor: pointer; }
   place-items: center;
   min-height: 76px;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
   border: 1px dashed rgba(195, 226, 217, 0.14);
   border-radius: 4px;
 }
@@ -2692,7 +2700,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 6px;
   color: var(--text-soft);
-  font-size: 12px;
+  font-size: 15px;
   white-space: nowrap;
 }
 .gateway-filter-actions .el-input-number,
@@ -2775,16 +2783,16 @@ button { cursor: pointer; }
   align-items: center;
   gap: 6px;
   color: var(--text-soft);
-  font-size: 12px;
+  font-size: 15px;
 }
 .gateway-kpis strong {
   color: var(--green);
-  font-size: 24px;
+  font-size: 30px;
   line-height: 1;
 }
 .gateway-kpis small {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 .gateway-device-section,
 .gateway-status-card,
@@ -2810,7 +2818,7 @@ button { cursor: pointer; }
   padding: 0;
   margin: 0;
   color: var(--text-main);
-  font-size: 14px;
+  font-size: 18px;
   border-bottom: 0;
   background: transparent;
   text-shadow: none;
@@ -2826,7 +2834,7 @@ button { cursor: pointer; }
 }
 .gateway-section-heading > span {
   color: var(--text-soft);
-  font-size: 12px;
+  font-size: 15px;
 }
 .gateway-card-grid {
   display: grid;
@@ -2903,12 +2911,12 @@ button { cursor: pointer; }
   white-space: nowrap;
 }
 .gateway-device-info strong {
-  font-size: 13px;
+  font-size: 16px;
 }
 .gateway-device-info em {
   color: var(--text-soft);
   font-style: normal;
-  font-size: 11px;
+  font-size: 14px;
 }
 .gateway-card-signal {
   display: flex;
@@ -2941,17 +2949,17 @@ button { cursor: pointer; }
 }
 .gateway-heading h2 {
   margin: 0 0 5px;
-  font-size: 20px;
+  font-size: 25px;
 }
 .gateway-heading p {
   margin: 0;
   color: var(--green);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 800;
 }
 .gateway-heading span {
   color: var(--text-soft);
-  font-size: 12px;
+  font-size: 15px;
 }
 .gateway-primary-metrics {
   display: grid;
@@ -2970,14 +2978,14 @@ button { cursor: pointer; }
   display: block;
   margin-bottom: 5px;
   color: var(--text-soft);
-  font-size: 11px;
+  font-size: 14px;
 }
 .gateway-primary-metrics strong {
   display: block;
   min-width: 0;
   overflow: hidden;
   color: var(--text-main);
-  font-size: 15px;
+  font-size: 19px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2985,7 +2993,7 @@ button { cursor: pointer; }
   margin: 12px 0 0;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3015,11 +3023,11 @@ button { cursor: pointer; }
 .gateway-detail-grid span {
   margin-bottom: 6px;
   color: var(--text-soft);
-  font-size: 11px;
+  font-size: 14px;
 }
 .gateway-detail-grid strong {
   color: var(--text-main);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 800;
 }
 .gateway-event-filters {
@@ -3182,7 +3190,7 @@ button { cursor: pointer; }
   padding: 0;
   margin: 0;
   color: var(--text-main);
-  font-size: 14px;
+  font-size: 18px;
   border-bottom: 0;
   background: transparent;
   text-shadow: none;
@@ -3220,11 +3228,11 @@ button { cursor: pointer; }
   align-items: center;
   gap: 6px;
   color: var(--text-soft);
-  font-size: 12px;
+  font-size: 15px;
 }
 .recording-summary strong {
   color: var(--green);
-  font-size: 24px;
+  font-size: 30px;
   line-height: 1;
 }
 .recording-layout {
@@ -3241,7 +3249,7 @@ button { cursor: pointer; }
 }
 .recording-section-heading > span {
   color: var(--text-soft);
-  font-size: 12px;
+  font-size: 15px;
 }
 .recording-table {
   --el-table-bg-color: transparent;
@@ -3281,7 +3289,7 @@ button { cursor: pointer; }
   margin-bottom: 12px;
   overflow: hidden;
   color: var(--text-main);
-  font-size: 13px;
+  font-size: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3299,7 +3307,7 @@ button { cursor: pointer; }
   height: 34px;
   margin-bottom: 12px;
   color: #10201c;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 800;
   text-decoration: none;
   border-radius: 5px;
@@ -3311,7 +3319,7 @@ button { cursor: pointer; }
   gap: 9px 10px;
   margin: 0;
   color: var(--text-main);
-  font-size: 12px;
+  font-size: 15px;
 }
 .recording-meta dt {
   color: var(--text-soft);
@@ -3327,7 +3335,7 @@ button { cursor: pointer; }
   display: grid;
   gap: 6px;
   color: var(--text-soft);
-  font-size: 12px;
+  font-size: 15px;
 }
 .recording-visual-filters .el-input-number {
   width: 100%;
@@ -3430,7 +3438,7 @@ button { cursor: pointer; }
   gap: 9px 12px;
   margin: 12px 14px;
   color: #FFFFFF;
-  font-size: 12px;
+  font-size: 15px;
 }
 .collector-card dt,
 .frame-card dt {
@@ -3628,11 +3636,11 @@ button { cursor: pointer; }
 }
 .login-brandline span {
   color: #A8FF7D;
-  font-size: 14px;
+  font-size: 18px;
 }
 .login-brandline strong {
   color: #FFFFFF;
-  font-size: 52px;
+  font-size: 65px;
   line-height: 1.08;
   text-shadow: 0 0 24px rgba(168, 255, 125, 0.28), 0 0 54px rgba(70, 144, 124, 0.2);
 }
@@ -3640,7 +3648,7 @@ button { cursor: pointer; }
   max-width: 560px;
   margin: 0;
   color: #C3E2D9;
-  font-size: 16px;
+  font-size: 20px;
   line-height: 1.8;
 }
 .login-hologram {
@@ -3722,14 +3730,14 @@ button { cursor: pointer; }
 .login-stats b {
   display: block;
   color: #A8FF7D;
-  font-size: 24px;
+  font-size: 30px;
   line-height: 1;
 }
 .login-stats span {
   display: block;
   margin-top: 9px;
   color: #C3E2D9;
-  font-size: 12px;
+  font-size: 15px;
 }
 .login-panel {
   width: 100%;
@@ -3762,11 +3770,11 @@ button { cursor: pointer; }
   gap: 6px;
   width: fit-content;
   color: #A8FF7D;
-  font-size: 13px;
+  font-size: 16px;
 }
 .login-panel header strong {
   color: #FFFFFF;
-  font-size: 30px;
+  font-size: 38px;
   line-height: 1.2;
   text-shadow: 0 0 22px rgba(168, 255, 125, 0.24);
 }
@@ -3779,7 +3787,7 @@ button { cursor: pointer; }
   display: grid;
   gap: 8px;
   color: #C3E2D9;
-  font-size: 13px;
+  font-size: 16px;
 }
 .login-form label > div {
   display: grid;
@@ -3821,7 +3829,7 @@ button { cursor: pointer; }
   min-height: 18px;
   margin: -4px 0 0;
   color: #FF8B1F;
-  font-size: 12px;
+  font-size: 15px;
 }
 .login-form button {
   height: 48px;
@@ -3873,7 +3881,7 @@ button { cursor: pointer; }
     gap: 20px;
   }
   .login-brandline strong {
-    font-size: 34px;
+    font-size: 43px;
   }
   .login-hologram {
     width: 100%;
@@ -3892,3 +3900,8 @@ button { cursor: pointer; }
 
 
 
+
+/* Keep date fields consistent with the larger form typography. */
+.el-range-editor .el-range-input { font-size: var(--el-font-size-base); }
+
+.screen.device-monitor-screen { min-width: 0; }

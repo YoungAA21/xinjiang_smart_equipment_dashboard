@@ -114,44 +114,44 @@ const bytes = (value) => value == null ? '—' : value < 1024 ? `${value} B` : v
 .health-home { color: var(--text-main); }
 .health-home .panel { border-radius: 8px; }
 .health-home .panel:hover { transform: none; }
-.health-home .panel h2 { height: 45px; background: none; padding-left: 18px; font-size: 14px; gap: 12px; }
+.health-home .panel h2 { height: 45px; background: none; padding-left: 18px; font-size: 18px; gap: 12px; }
 .health-home .panel h2::before, .health-home .panel h2::after { display: none; }
-.health-home .panel h2 small { color: var(--text-muted); font-size: 11px; font-weight: 400; margin-left: auto; }
+.health-home .panel h2 small { color: var(--text-muted); font-size: 14px; font-weight: 400; margin-left: auto; }
 .health-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.65fr); gap: 16px; }
 .health-grid > article { min-width: 0; }
 .health-wide { grid-column: 1 / -1; }
-.health-badge { display: inline-flex; align-items: center; padding: 3px 9px; border: 1px solid currentColor; border-radius: 5px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+.health-badge { display: inline-flex; align-items: center; padding: 3px 9px; border: 1px solid currentColor; border-radius: 5px; font-size: 14px; font-weight: 500; white-space: nowrap; }
 .health-home .good { color: var(--health-good, #a8ff7d); }
 .health-home .bad { color: var(--health-bad, #ffad66); }
 .health-home .muted { color: var(--text-muted); }
 :global(.light-theme .health-home) { --health-good: #287452; --health-bad: #b65015; }
-.health-error { margin-bottom: 12px; padding: 12px 16px; border: 1px solid rgba(255, 139, 31, .4); background: rgba(255, 139, 31, .08); color: var(--health-bad, #ffad66); border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; }
-.health-footnote { padding: 0 18px; margin: 12px 0 16px; font-size: 11px; line-height: 1.7; color: var(--text-muted); }
-.health-section-tools { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 18px; color: var(--text-muted); font-size: 11px; }
+.health-error { margin-bottom: 12px; padding: 12px 16px; border: 1px solid rgba(255, 139, 31, .4); background: rgba(255, 139, 31, .08); color: var(--health-bad, #ffad66); border-radius: 6px; font-size: 15px; overflow-wrap: anywhere; }
+.health-footnote { padding: 0 18px; margin: 12px 0 16px; font-size: 14px; line-height: 1.7; color: var(--text-muted); }
+.health-section-tools { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 18px; color: var(--text-muted); font-size: 14px; }
 .health-section-tools label { display: flex; align-items: center; gap: 8px; }
-.health-expanded, .health-info { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px; padding: 12px 20px; margin: 0; font-size: 12px; }
+.health-expanded, .health-info { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px; padding: 12px 20px; margin: 0; font-size: 15px; }
 .health-expanded dt, .health-info dt { color: var(--text-muted); }
 .health-expanded dd, .health-info dd { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
 .health-tabs { padding: 0 18px; }
 .health-tabs :deep(.el-tabs__header) { margin-bottom: 0; }
 .health-cache-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 20px 18px 10px; gap: 12px; }
-.health-cache-metrics span { display: block; font-size: 10px; color: var(--text-muted); }
-.health-cache-metrics strong { display: block; margin-top: 8px; font-size: 20px; font-weight: 500; }
-.health-details { padding: 12px 18px 18px; font-size: 12px; }
+.health-cache-metrics span { display: block; font-size: 14px; color: var(--text-muted); }
+.health-cache-metrics strong { display: block; margin-top: 8px; font-size: 25px; font-weight: 500; }
+.health-details { padding: 12px 18px 18px; font-size: 15px; }
 .health-details summary { cursor: pointer; color: var(--text-soft); }
 .health-cache-event { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; overflow-wrap: anywhere; }
 .health-cache-event span { margin-left: 12px; color: var(--text-muted); }
-.health-cache-event p { color: var(--text-muted); font-size: 11px; }
+.health-cache-event p { color: var(--text-muted); font-size: 14px; }
 .health-config { margin: 20px 18px; }
-.health-config > div { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.health-config > div { display: flex; align-items: center; gap: 10px; font-size: 15px; }
 .health-config .health-badge { margin-left: auto; }
-.health-config p { color: var(--text-muted); font-size: 11px; overflow-wrap: anywhere; margin-left: 27px; }
-.health-empty { color: var(--text-muted); text-align: center; padding: 30px; font-size: 12px; }
-.health-maintenance-options { display: flex; flex-wrap: wrap; gap: 15px 36px; padding: 18px; font-size: 12px; border-bottom: 1px solid var(--line); color: var(--text-soft); }
-.health-maintenance-options b { color: var(--text-main); font-size: 20px; margin: 0 6px; }
-.health-maintenance-times { display: grid; grid-template-columns: repeat(3, 1fr); padding: 16px 18px; margin: 0; gap: 20px; font-size: 12px; }
-.health-maintenance-times dt { color: var(--text-muted); font-size: 11px; }
+.health-config p { color: var(--text-muted); font-size: 14px; overflow-wrap: anywhere; margin-left: 27px; }
+.health-empty { color: var(--text-muted); text-align: center; padding: 30px; font-size: 15px; }
+.health-maintenance-options { display: flex; flex-wrap: wrap; gap: 15px 36px; padding: 18px; font-size: 15px; border-bottom: 1px solid var(--line); color: var(--text-soft); }
+.health-maintenance-options b { color: var(--text-main); font-size: 25px; margin: 0 6px; }
+.health-maintenance-times { display: grid; grid-template-columns: repeat(3, 1fr); padding: 16px 18px; margin: 0; gap: 20px; font-size: 15px; }
+.health-maintenance-times dt { color: var(--text-muted); font-size: 14px; }
 .health-maintenance-times dd { margin: 8px 0 0; }
 .health-home :deep(.el-table__expanded-cell) { background: var(--glass-card); padding: 8px 0; }
-.health-home :deep(.el-table .cell) { font-size: 12px; }
+.health-home :deep(.el-table .cell) { font-size: 15px; }
 </style>

@@ -1,9 +1,7 @@
-import { resolveServiceBase } from './endpoints.js'
+import { resolveProxiedServiceBase } from './endpoints.js'
 
 // Only migrated health endpoints use this transport. Other legacy APIs stay disabled.
-const HEALTH_API_BASE = import.meta.env?.DEV
-  ? '/_health-api'
-  : resolveServiceBase(import.meta.env?.VITE_API_BASE_URL, 5158)
+const HEALTH_API_BASE = resolveProxiedServiceBase(import.meta.env?.VITE_API_BASE_URL, '/_health-api')
 
 async function requestHealth(path, { signal } = {}) {
   const response = await fetch(`${HEALTH_API_BASE}${path}`, {

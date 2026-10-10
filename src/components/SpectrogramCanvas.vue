@@ -135,7 +135,7 @@ canvas {
   display: grid;
   place-items: center;
   color: var(--spectrogram-axis, #a8b7cf);
-  font-size: 12px;
+  font-size: 15px;
 }
 .frequency-axis {
   position: absolute;
@@ -147,7 +147,7 @@ canvas {
   flex-direction: column;
   justify-content: space-between;
   color: var(--spectrogram-axis, #a8b7cf);
-  font-size: 9px;
+  font-size: 14px;
   pointer-events: none;
 }
 .time-axis {
@@ -158,7 +158,7 @@ canvas {
   display: flex;
   justify-content: space-between;
   color: var(--spectrogram-axis, #a8b7cf);
-  font-size: 9px;
+  font-size: 14px;
   pointer-events: none;
 }
 @media (max-height: 800px) {

@@ -53,11 +53,11 @@ const timeText = (value) => {
 </template>
 
 <style scoped>
-.history-list { margin: 18px 0; border-top: 1px solid var(--glass-border); padding-top: 16px; font-size: 11px; color: var(--text-main); }
+.history-list { margin: 18px 0; border-top: 1px solid var(--glass-border); padding-top: 16px; font-size: 14px; color: var(--text-main); }
 .history-list-header, .history-list-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-h3 { font-size: 13px; margin: 0 0 7px; font-weight: 600; }
-p { color: var(--text-muted); font-size: 10px; margin: 0; }
-label { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 10px; }
+h3 { font-size: 16px; margin: 0 0 7px; font-weight: 600; }
+p { color: var(--text-muted); font-size: 14px; margin: 0; }
+label { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 14px; }
 select, button { background: var(--surface); color: var(--text-main); border: 1px solid var(--glass-border); border-radius: 4px; padding: 6px 8px; font: inherit; }
 button { cursor: pointer; } button:disabled { opacity: .4; cursor: default; }
 button:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
@@ -66,14 +66,14 @@ button:not(:disabled):hover { border-color: var(--accent); color: var(--accent);
 .history-table-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); background-clip: padding-box; border: 2px solid transparent; border-radius: 6px; }
 .history-table-scroll::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
-caption { text-align: left; padding: 9px 12px; font-size: 10px; color: var(--text-muted); }
+caption { text-align: left; padding: 9px 12px; font-size: 14px; color: var(--text-muted); }
 th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--glass-border); white-space: nowrap; }
-th { position: sticky; top: 0; background: var(--surface); color: var(--text-soft); font-size: 10px; font-weight: 500; z-index: 1; }
+th { position: sticky; top: 0; background: var(--surface); color: var(--text-soft); font-size: 14px; font-weight: 500; z-index: 1; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover { background: #50d8cb08; }
 .value-cell { text-align: right; } td.value-cell { color: var(--accent); }
 .empty-history { text-align: center; color: var(--text-muted); padding: 28px; }
-.history-list-footer { color: var(--text-muted); font-size: 10px; }
+.history-list-footer { color: var(--text-muted); font-size: 14px; }
 .history-list-footer > label { margin-left: auto; }
 nav { display: flex; align-items: center; gap: 12px; }
 </style>

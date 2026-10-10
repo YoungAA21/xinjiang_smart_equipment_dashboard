@@ -26,8 +26,10 @@ async function loadApi(fetch, env = {}, location) {
   await endpoints.link(() => { throw new Error('Unexpected endpoint dependency') })
   await health.link((specifier) => specifier === './endpoints.js' ? endpoints : Promise.reject(new Error(`Unexpected health dependency: ${specifier}`)))
   const auth = new vm.SyntheticModule(['auth'], function () { this.setExport('auth', { getToken: () => 'test-token' }) }, { context })
+  const dataMode = await makeModule('../src/services/dataMode.js')
+  await dataMode.link(() => { throw new Error('Unexpected data mode dependency') })
   const api = await makeModule('../src/services/api.js')
-  await api.link((specifier) => specifier === './auth' ? auth : specifier === './health' ? health : endpoints)
+  await api.link((specifier) => specifier === './dataMode.js' ? dataMode : specifier === './auth' ? auth : specifier === './health' ? health : endpoints)
   await api.evaluate()
   return api.namespace.api
 }
@@ -37,7 +39,7 @@ test('only three migrated health routes are enabled; no 18080 token is sent', as
   const api = await loadApi(async (url, options) => { calls.push({ url, options }); return sampleFetch(url) })
   await api.getHealth(); await api.getHealthDetail(); await api.getTableMaintenance()
   assert.deepEqual(calls.map((c) => c.url), [
-    'http://192.168.31.158:5158/api/health', 'http://192.168.31.158:5158/api/health/detail', 'http://192.168.31.158:5158/api/health/table-maintenance',
+    '/_health-api/api/health', '/_health-api/api/health/detail', '/_health-api/api/health/table-maintenance',
   ])
   for (const { options } of calls) {
     assert.equal(options.headers.Authorization, undefined)
@@ -49,29 +51,29 @@ test('only three migrated health routes are enabled; no 18080 token is sent', as
   assert.equal(calls.length, 3)
 })
 
-test('health base override is independent of new service and trims trailing slash', async () => {
+test('health base override is independent of the same-origin new service and trims trailing slash', async () => {
   const calls = []
-  const api = await loadApi(async (url) => { calls.push(url); return reply(heartbeat) }, { VITE_API_BASE_URL: 'http://health.test:5158/' })
+  const api = await loadApi(async (url) => { calls.push(url); return reply(heartbeat) }, { VITE_API_BASE_URL: 'http://health.test:5158/' }, { origin: 'http://localhost:5175' })
   await api.getHealth()
   assert.equal(calls[0], 'http://health.test:5158/api/health')
-  assert.equal(api.getNewApiBaseUrl(), 'http://192.168.31.158:18080')
+  assert.equal(api.getNewApiBaseUrl(), 'http://localhost:5175')
 })
 
-test('development health calls use scoped same-origin proxy, new API still goes directly to 18080', async () => {
+test('development health and new service calls use scoped same-origin proxies', async () => {
   const calls = []
-  const api = await loadApi(async (url) => { calls.push(url); return reply(heartbeat) }, { DEV: true })
+  const api = await loadApi(async (url) => { calls.push(url); return reply(heartbeat) }, { DEV: true }, { origin: 'http://localhost:5175' })
   await api.getHealth()
   assert.equal(calls[0], '/_health-api/api/health')
-  assert.equal(api.getNewApiBaseUrl(), 'http://192.168.31.158:18080')
+  assert.equal(api.getNewApiBaseUrl(), 'http://localhost:5175')
 })
 
-test('production defaults follow the frontend host while preserving service ports', async () => {
+test('production uses same-origin proxies for both services', async () => {
   const calls = []
   const location = { origin: 'http://equipment.example:8080' }
   const api = await loadApi(async (url) => { calls.push(url); return reply(heartbeat) }, {}, location)
   await api.getHealth()
-  assert.equal(calls[0], 'http://equipment.example:5158/api/health')
-  assert.equal(api.getNewApiBaseUrl(), 'http://equipment.example:18080')
+  assert.equal(calls[0], '/_health-api/api/health')
+  assert.equal(api.getNewApiBaseUrl(), 'http://equipment.example:8080')
 })
 
 test('proxy allowlist excludes unmigrated legacy routes and all new API routes', async () => {
@@ -85,14 +87,18 @@ test('proxy allowlist excludes unmigrated legacy routes and all new API routes',
   for (const path of ['/_health-api/api/configuration/modules', '/api/health', '/monitor/devices', '/auth/login', '/_health-api/api/health/other']) {
     assert.equal(pattern.test(path), false)
   }
+  assert.equal(proxies[healthProxyKey].target, 'http://66.66.66.4:5158')
   assert.equal(proxies[healthProxyKey].rewrite('/_health-api/api/health/detail'), '/api/health/detail')
+  const newApiProxyKey = Object.keys(proxies).find((key) => new RegExp(key).test('/auth/login'))
+  assert.equal(proxies[newApiProxyKey].target, 'http://66.66.66.4:18080')
+  assert.equal(proxies[newApiProxyKey].ws, true)
 })
 
 test('new API methods, auth, body, unwrapping and audio URLs remain unchanged', async () => {
   const calls = []
-  const api = await loadApi(async (url, options) => { calls.push({ url, options }); return reply({ code: 200, data: { token: 'new-token', id: 1 } }) })
+  const api = await loadApi(async (url, options) => { calls.push({ url, options }); return reply({ code: 200, data: { token: 'new-token', id: 1 } }) }, {}, { origin: 'http://localhost:5175' })
   assert.equal((await api.login({ username: 'user', password: 'password' })).token, 'new-token')
-  assert.equal(calls[0].url, 'http://192.168.31.158:18080/auth/login')
+  assert.equal(calls[0].url, 'http://localhost:5175/auth/login')
   assert.equal(calls[0].options.headers.Authorization, undefined)
   assert.equal(calls[0].options.body.get('username'), 'user')
   const methods = [
@@ -114,21 +120,21 @@ test('new API methods, auth, body, unwrapping and audio URLs remain unchanged', 
   for (const [name, args, path, method] of methods) {
     assert.equal((await api[name](...args)).id, 1)
     const call = calls.at(-1)
-    assert.equal(call.url, `http://192.168.31.158:18080${path}`)
+    assert.equal(call.url, `http://localhost:5175${path}`)
     assert.equal(call.options.method, method)
     assert.equal(call.options.headers.Authorization, 'Bearer test-token')
   }
   assert.equal(calls[2].options.body, JSON.stringify({ channel: 1 }))
-  assert.equal(api.getRecordingContentUrl(1, { download: true }), 'http://192.168.31.158:18080/recordings/1/content?token=test-token&download=true')
+  assert.equal(api.getRecordingContentUrl(1, { download: true }), 'http://localhost:5175/recordings/1/content?token=test-token&download=true')
 })
 
 test('monitor device requests accept cancellation without changing authentication or URL', async () => {
   let call
-  const api = await loadApi(async (url, options) => { call = { url, options }; return reply({ code: 200, data: [] }) })
+  const api = await loadApi(async (url, options) => { call = { url, options }; return reply({ code: 200, data: [] }) }, {}, { origin: 'http://localhost:5175' })
   const controller = new AbortController()
   await api.getMonitorDevices({ signal: controller.signal })
   assert.equal(call.options.signal, controller.signal)
-  assert.equal(call.url, 'http://192.168.31.158:18080/monitor/devices')
+  assert.equal(call.url, 'http://localhost:5175/monitor/devices')
   assert.equal(call.options.headers.Authorization, 'Bearer test-token')
   await api.getMonitorDevices()
   assert.equal('signal' in call.options, false)

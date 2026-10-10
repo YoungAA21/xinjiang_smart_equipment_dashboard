@@ -1,23 +1,42 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Activity, Database, Fan, RefreshCcw, Search, Server } from 'lucide-vue-next'
+import { isDemoMode } from '../services/dataMode.js'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import TrendPage from './TrendPage.vue'
+import SpectrumPage from './SpectrumPage.vue'
+import { Database, Fan, RefreshCcw, Search, Server } from 'lucide-vue-next'
 import EChart from '../components/EChart.vue'
+import EquipmentVisual from '../components/EquipmentVisual.vue'
 import MonitorDeviceDetails from '../components/MonitorDeviceDetails.vue'
 import TelemetryHistoryList from '../components/TelemetryHistoryList.vue'
 import { api } from '../services/api'
 import { useTelemetryStore } from '../stores/telemetry'
 import { localInputTime, numericValue, pointKey, telemetryLine } from '../charts/telemetry'
+import { isVibrationPoint, moduleDisplayName, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 
+const demoMode = isDemoMode
+const route = useRoute()
 const telemetry = useTelemetryStore()
 const monitorDevices = ref(null)
 const monitorError = ref('')
 const monitorTime = ref(null)
 const loadingMonitor = ref(false)
-const source = ref('all')
-const selectedKey = ref('')
+const source = ref(['legacy', 'monitor'].includes(route.query.source) ? route.query.source : 'all')
+const selectedKey = ref(route.query.device ? JSON.stringify([route.query.source, route.query.device]) : '')
+const showingDetail = computed(() => Boolean(route.query.device))
 const selectedPointId = ref(null)
 const autoLive = ref(true)
-const chartMode = ref('live')
+const chartMode = ref(['live', 'trend', 'spectrum', 'history', 'info'].includes(route.query.tab) ? route.query.tab : 'live')
+const selectedChannelId = ref('')
+const allDetailTabs = [
+  { id: 'live', label: '实时监测' },
+  { id: 'trend', label: '趋势分析' },
+  { id: 'spectrum', label: '频谱分析' },
+  { id: 'history', label: '数据列表' },
+  { id: 'info', label: '设备信息' },
+]
+const channels = computed(() => !isLegacy.value ? selected.value?.raw.channels || [] : [])
+const selectedChannel = computed(() => channels.value.find((channel) => channel.channelId === selectedChannelId.value) || channels.value.find((channel) => channel.online) || channels.value[0] || null)
 const clock = ref(Date.now())
 const historyStart = ref(localInputTime(Date.now() - 10 * 60 * 1000))
 const historyEnd = ref(localInputTime(Date.now()))
@@ -25,18 +44,56 @@ const historyLimit = ref(5000)
 const pageController = new AbortController()
 let pointController, historyController, pollTimer, metadataTimer
 const entries = computed(() => [
-  ...(telemetry.modules || []).map((module) => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', name: module.moduleName || module.moduleId, id: module.moduleId, online: module.runtimeStatus?.isOnline, raw: module })),
+  ...sortMonitoringModules(telemetry.modules || []).map((module) => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', name: moduleDisplayName(module), id: module.moduleId, online: module.runtimeStatus?.isOnline, raw: module })),
   ...(monitorDevices.value || []).map((device) => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', name: device.deviceName || device.deviceId, id: device.deviceId, online: device.online, raw: device })),
 ])
-const visibleEntries = computed(() => entries.value.filter((entry) => source.value === 'all' || entry.source === source.value))
-const selected = computed(() => visibleEntries.value.find((entry) => entry.key === selectedKey.value) || visibleEntries.value[0] || null)
+const deviceSearch = ref('')
+const statusFilter = ref('all')
+const deviceStats = computed(() => ({
+  total: entries.value.length,
+  online: entries.value.filter(entry => entry.online === true).length,
+  offline: entries.value.filter(entry => entry.online === false).length,
+  unknown: entries.value.filter(entry => entry.online !== true && entry.online !== false).length,
+}))
+const visibleEntries = computed(() => entries.value.filter(entry => {
+  const keyword = deviceSearch.value.trim().toLocaleLowerCase()
+  return (source.value === 'all' || entry.source === source.value)
+    && (statusFilter.value === 'all' || (statusFilter.value === 'online' ? entry.online === true : statusFilter.value === 'offline' ? entry.online === false : entry.online !== true && entry.online !== false))
+    && (!keyword || `${entry.name} ${entry.id}`.toLocaleLowerCase().includes(keyword))
+}))
+const entryPointCount = entry => entry.source === 'monitor' ? entry.raw.channels?.length ?? '—' : entry.raw.pointCount ?? '—'
+function resetDeviceFilters() { deviceSearch.value = ''; statusFilter.value = 'all'; source.value = 'all' }
+const selected = computed(() => entries.value.find((entry) => entry.key === selectedKey.value) || null)
 const isLegacy = computed(() => selected.value?.source === 'legacy')
-const points = computed(() => isLegacy.value && telemetry.pointModuleId === selected.value.id ? telemetry.points : [])
+const detailTabs = computed(() => allDetailTabs.filter(tab =>
+  tab.id !== ((selected.value?.source || route.query.source) === 'monitor' ? 'trend' : 'spectrum')))
+const availableTab = (tab, deviceSource) => allDetailTabs.some(item => item.id === tab)
+  && tab !== (deviceSource === 'monitor' ? 'trend' : 'spectrum') ? tab : 'live'
+watch([chartMode, detailTabs], () => {
+  if (!detailTabs.value.some(tab => tab.id === chartMode.value)) chartMode.value = 'live'
+}, { immediate: true })
+const points = computed(() => isLegacy.value && telemetry.pointModuleId === selected.value.id
+  ? sortMonitoringPoints(telemetry.points).map(point => ({ ...point, name: monitoringPointName(point) })) : [])
 const selectedPoint = computed(() => points.value.find((point) => point.pointId === selectedPointId.value) || points.value[0] || null)
-const selectedSamples = computed(() => selectedPoint.value ? telemetry.buffers[pointKey(selectedPoint.value)] || [] : [])
-const latestSample = computed(() => selectedPoint.value ? telemetry.latest.find((sample) => pointKey(sample) === pointKey(selectedPoint.value)) : null)
-const stale = computed(() => latestSample.value && clock.value - Date.parse(latestSample.value.collectedAt) > 10000)
-const liveOption = computed(() => telemetryLine(selectedSamples.value, selectedPoint.value))
+const pointPalette = ['#39a9ff', '#ff9800', '#00c875']
+const pointColors = new Map()
+function pointColor(key) {
+  if (!pointColors.has(key)) pointColors.set(key, pointPalette[pointColors.size % pointPalette.length])
+  return pointColors.get(key)
+}
+const pointCards = computed(() => points.value.map((point) => {
+  const samples = telemetry.buffers[pointKey(point)] || []
+  const latest = pointLatest(point)
+  const color = pointColor(pointKey(point))
+  const option = telemetryLine(samples, point, { color })
+  option.grid = { left: 52, right: 12, top: 24, bottom: 28 }
+  option.dataZoom = []
+  option.series[0].lineStyle.width = 1.5
+  option.series[0].areaStyle.opacity = 0.45
+  option.xAxis.splitNumber = 3
+  option.yAxis.splitNumber = 3
+  return { point, latest, option, color, count: samples.length, stale: latest && clock.value - Date.parse(latest.collectedAt) > 10000 }
+}))
 const historyValues = computed(() => (telemetry.history?.points || []).map((sample) => numericValue(sample.value)).filter((value) => value !== null))
 const historyMin = computed(() => historyValues.value.length ? historyValues.value.reduce((a, b) => Math.min(a, b)) : null)
 const historyMax = computed(() => historyValues.value.length ? historyValues.value.reduce((a, b) => Math.max(a, b)) : null)
@@ -61,20 +118,22 @@ async function loadMonitorDevices() {
     if (!pageController.signal.aborted) monitorError.value = error.name === 'TimeoutError' ? '设备请求超时（10 秒）' : error.message || '设备请求失败'
   } finally { loadingMonitor.value = false }
 }
-async function loadPoints() {
+async function loadPoints(preferredPointId = null) {
   pointController?.abort()
   historyController?.abort()
   telemetry.clearHistory()
   selectedPointId.value = null
   if (!isLegacy.value) return
   pointController = new AbortController()
-  await telemetry.loadPoints(selected.value.id, { signal: AbortSignal.any([pageController.signal, pointController.signal]) })
+  const controller = pointController
+  await telemetry.loadPoints(selected.value.id, { signal: AbortSignal.any([pageController.signal, controller.signal]) })
+  if (!pageController.signal.aborted && !controller.signal.aborted) selectedPointId.value = points.value.find((point) => point.pointId === preferredPointId)?.pointId ?? points.value[0]?.pointId ?? null
 }
 async function refreshAll() {
   const previousKey = selected.value?.key
   await Promise.all([telemetry.refreshModules({ signal: pageController.signal }), loadMonitorDevices()])
   if (pageController.signal.aborted) return
-  if (selected.value?.key === previousKey && isLegacy.value) await loadPoints()
+  if (selected.value?.key === previousKey && isLegacy.value) await loadPoints(selectedPoint.value?.pointId)
   if (isLegacy.value) await telemetry.refreshLatest({ signal: pageController.signal })
 }
 function queryHistory() {
@@ -88,8 +147,9 @@ function recentRange(minutes) {
   historyEnd.value = localInputTime(now)
   historyStart.value = localInputTime(now - minutes * 60 * 1000)
 }
-watch(() => selected.value?.key, async () => {
-  chartMode.value = 'live'
+watch(() => selected.value?.key, async (key, previousKey) => {
+  if (previousKey) chartMode.value = 'live'
+  selectedChannelId.value = channels.value.find((channel) => channel.online)?.channelId || channels.value[0]?.channelId || ''
   await loadPoints()
   if (isLegacy.value && !pageController.signal.aborted) await telemetry.refreshLatest({ signal: pageController.signal })
 })
@@ -101,12 +161,19 @@ watch([chartMode, () => selectedPoint.value?.pointId], ([mode, pointId]) => {
     queryHistory()
   }
 })
+watch(() => route.query, async (query) => {
+  selectedKey.value = query.device ? JSON.stringify([query.source, query.device]) : ''
+  source.value = ['legacy', 'monitor'].includes(query.source) ? query.source : 'all'
+  if (!['live', 'trend', 'spectrum', 'history', 'info'].includes(query.tab)) return
+  await nextTick()
+  chartMode.value = availableTab(query.tab, selected.value?.source || query.source)
+})
 watch(autoLive, (enabled) => { if (enabled && isLegacy.value) telemetry.refreshLatest({ signal: pageController.signal }) })
 onMounted(() => {
   refreshAll()
   pollTimer = window.setInterval(() => {
     clock.value = Date.now()
-    if (autoLive.value && isLegacy.value) telemetry.refreshLatest({ signal: pageController.signal })
+    if (autoLive.value && isLegacy.value && chartMode.value === 'live') telemetry.refreshLatest({ signal: pageController.signal })
   }, 2000)
   metadataTimer = window.setInterval(() => telemetry.refreshModules({ signal: pageController.signal }), 15000)
 })
@@ -121,41 +188,76 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page unified-monitor">
-    <header class="device-toolbar content-page-header"><div><h1 class="content-page-title">设备监控 <small>采集模块 / 声纹设备</small></h1></div><el-button :icon="RefreshCcw" :loading="refreshing" @click="refreshAll">刷新设备</el-button></header>
-    <div class="source-summary"><span :class="telemetry.errors.modules ? 'warn' : ''">采集模块 · {{ telemetry.modules?.length ?? '—' }} 个 · {{ dateTime(telemetry.moduleTime) }}</span><span :class="monitorError ? 'warn' : ''">声纹设备 · {{ monitorDevices?.length ?? '—' }} 台 · {{ dateTime(monitorTime) }}</span></div>
-    <div v-if="telemetry.errors.modules" class="monitor-error" role="alert">采集模块获取失败：{{ telemetry.errors.modules }}。{{ telemetry.modules ? '当前保留上次模块列表。' : '声纹设备仍可使用。' }}</div>
-    <div v-if="monitorError" class="monitor-error" role="alert">声纹设备获取失败：{{ monitorError }}。{{ monitorDevices ? '当前保留上次设备列表。' : '采集模块仍可使用。' }}</div>
-
-    <div class="device-workspace">
-      <aside class="device-directory">
-        <div class="source-filter" role="group" aria-label="设备来源"><button :class="{active: source === 'all'}" :aria-pressed="source === 'all'" @click="source = 'all'">全部</button><button :class="{active: source === 'legacy'}" :aria-pressed="source === 'legacy'" @click="source = 'legacy'">采集模块</button><button :class="{active: source === 'monitor'}" :aria-pressed="source === 'monitor'" @click="source = 'monitor'">声纹设备</button></div>
-        <div class="device-list"><button v-for="entry in visibleEntries" :key="entry.key" class="device-entry" :class="{selected: selected?.key === entry.key}" :aria-pressed="selected?.key === entry.key" :aria-label="(entry.source === 'legacy' ? '采集模块 ' : '声纹设备 ')+entry.id+' '+entry.name" @click="selectedKey = entry.key"><div><component :is="entry.source === 'legacy' ? Server : Fan" :size="17" /><strong>{{ entry.name }}</strong><i :class="tone(entry.online)">{{ status(entry.online) }}</i></div><p>{{ entry.id }}</p><small>{{ entry.source === 'legacy' ? '采集模块 · '+entry.raw.protocol : '声纹设备 · '+(entry.raw.collectors?.length || 0)+' 网关 / '+(entry.raw.channels?.length || 0)+' 通道' }}</small></button><p v-if="!visibleEntries.length" class="empty-copy">当前来源暂无设备数据</p></div>
+  <section class="page unified-monitor" :class="{ 'equipment-directory-page': !showingDetail }">
+    <header class="device-toolbar content-page-header"><div><h1 class="content-page-title">设备监控 <small>{{ showingDetail ? '设备详情 · 全部点位实时监测' : '选择设备，进入监测详情' }}</small></h1></div><el-button :icon="RefreshCcw" :loading="refreshing" @click="refreshAll">刷新设备</el-button></header>
+    <div v-if="showingDetail" class="source-summary"><span :class="telemetry.errors.modules ? 'warn' : ''">采集模块 · {{ telemetry.modules?.length ?? '—' }} 个 · {{ dateTime(telemetry.moduleTime) }}</span><span :class="monitorError ? 'warn' : ''">声纹设备 · {{ monitorDevices?.length ?? '—' }} 台 · {{ dateTime(monitorTime) }}</span></div>
+    <div v-if="telemetry.errors.modules" class="monitor-error" role="alert">采集模块获取失败：{{ telemetry.errors.modules }}</div>
+    <div v-if="monitorError" class="monitor-error" role="alert">声纹设备获取失败：{{ monitorError }}</div>
+    <div class="device-workspace" :class="{ 'directory-view': !showingDetail }">
+      <section v-if="!showingDetail" class="equipment-directory">
+        <header class="fleet-overview">
+          <div class="fleet-intro"><span class="eyebrow">EQUIPMENT MONITORING</span><h2>设备运行总览</h2><p>掌握设备在线状态，进入设备查看实时监测与趋势分析。</p><span class="fleet-sync">{{ refreshing ? '正在同步设备状态…' : '最近同步 · ' + dateTime(telemetry.moduleTime || monitorTime) }}</span></div>
+          <div class="fleet-stats" aria-label="设备状态概览">
+            <button v-for="item in [{id: 'all', label: '全部设备', value: deviceStats.total}, {id: 'online', label: '在线设备', value: deviceStats.online}, {id: 'offline', label: '离线设备', value: deviceStats.offline}, {id: 'unknown', label: '状态未知', value: deviceStats.unknown}]" :key="item.id" :class="[item.id, {active: statusFilter === item.id}]" :aria-pressed="statusFilter === item.id" @click="statusFilter = item.id"><span>{{ item.label }}</span><strong>{{ telemetry.modules === null && monitorDevices === null ? '—' : item.value }}<small>台</small></strong></button>
+          </div>
+        </header>
+        <div class="fleet-controls">
+          <div class="fleet-source-tabs" role="group" aria-label="设备来源"><button :class="{active: source === 'all'}" :aria-pressed="source === 'all'" @click="source = 'all'">全部设备 <span>{{ entries.length }}</span></button><button :class="{active: source === 'legacy'}" :aria-pressed="source === 'legacy'" @click="source = 'legacy'">采集模块 <span>{{ telemetry.modules?.length ?? '—' }}</span></button><button :class="{active: source === 'monitor'}" :aria-pressed="source === 'monitor'" @click="source = 'monitor'">声纹设备 <span>{{ monitorDevices?.length ?? '—' }}</span></button></div>
+          <label class="fleet-search"><Search :size="17" /><input v-model="deviceSearch" aria-label="搜索设备名称或编号" placeholder="搜索设备名称或编号" /><button v-if="deviceSearch" aria-label="清空搜索" @click="deviceSearch = ''">×</button></label>
+        </div>
+        <div class="fleet-result"><span>设备目录 <b>{{ visibleEntries.length }}</b></span><span>{{ statusFilter === 'all' ? '全部状态' : statusFilter === 'online' ? '仅在线设备' : statusFilter === 'offline' ? '仅离线设备' : '仅状态未知设备' }} · 点击卡片进入监测</span></div>
+        <div class="fleet-grid">
+          <RouterLink v-for="entry in visibleEntries" :key="entry.key" class="fleet-card" :aria-label="(entry.source === 'legacy' ? '采集模块 ' : '声纹设备 ')+entry.id+' '+entry.name" :to="{ path: '/device/detail', query: { source: entry.source, device: entry.id, tab: availableTab(route.query.tab, entry.source) } }">
+            <div class="fleet-card-top"><span class="fleet-kind"><component :is="entry.source === 'legacy' ? Server : Fan" :size="14" />{{ entry.source === 'legacy' ? '采集模块' : '声纹设备' }}</span><span class="fleet-status" :class="tone(entry.online)"><i></i>{{ status(entry.online) }}</span></div>
+            <EquipmentVisual :name="entry.name" :source="entry.source" :device-id="entry.id" />
+            <div class="fleet-card-body"><span class="fleet-id">{{ entry.id }}</span><h3>{{ entry.name }}</h3><div class="fleet-card-metrics"><span>监测点位 <b>{{ entryPointCount(entry) }}<small> 个</small></b></span><span>{{ entry.source === 'legacy' ? '通讯协议' : '采集类型' }} <b>{{ entry.source === 'legacy' ? entry.raw.protocol || '—' : '声纹采集' }}</b></span></div></div>
+            <footer><span>进入实时监测</span><span class="fleet-arrow" aria-hidden="true">↗</span></footer>
+          </RouterLink>
+        </div>
+        <div v-if="!visibleEntries.length" class="fleet-empty"><Server :size="32" /><h3>{{ refreshing ? '正在加载设备…' : '暂无匹配设备' }}</h3><p>可调整设备来源、状态或搜索关键词。</p><button @click="resetDeviceFilters">重置筛选</button></div>
+        <p class="fleet-footnote">设备状态以最近一次接口返回为准{{ telemetry.errors.modules || monitorError ? ' · 部分来源获取失败，当前展示已获取的数据' : '' }}</p>
+      </section>
+      <aside v-if="showingDetail && selected" class="device-profile device-info-card">
+        <RouterLink class="back-link" :to="{ path: '/device', query: { source } }">‹ 返回设备列表</RouterLink>
+        <h2>{{ selected.name }}</h2><EquipmentVisual class="profile-equipment-visual" :name="selected.name" :source="selected.source" :device-id="selected.id" />
+        <dl><div><dt>设备编号</dt><dd>{{ selected.id }}</dd></div><div><dt>设备来源</dt><dd>{{ isLegacy ? '采集模块' : '声纹设备' }}</dd></div><div><dt>设备状态</dt><dd :class="tone(selected.online)">{{ status(selected.online) }}</dd></div><div><dt>监测点位</dt><dd>{{ isLegacy ? points.length : channels.length }} 个</dd></div><div v-if="isLegacy"><dt>通讯协议</dt><dd>{{ selected.raw.protocol || '—' }}</dd></div></dl>
       </aside>
-
-      <main class="device-detail">
-        <div v-if="!selected" class="device-empty"><Server :size="38" /><p>选择设备或等待接口返回</p></div>
+      <main v-if="showingDetail" class="device-detail">
+        <div v-if="!selected" class="device-empty"><Server :size="38" /><p>正在加载设备，或该设备已不可用</p><RouterLink to="/device">返回设备列表</RouterLink></div>
         <template v-else>
           <header class="selection-summary"><div><h2>{{ selected.name }} <span :class="tone(selected.online)">{{ status(selected.online) }}</span></h2><p>{{ selected.id }} · {{ isLegacy ? selected.raw.protocol || '采集模块' : '声纹设备' }}</p></div><span class="source-tag">{{ isLegacy ? '采集模块' : '声纹设备' }}</span></header>
-
-          <template v-if="isLegacy">
-            <div v-if="selected.raw.runtimeStatus?.offlineReason" class="monitor-error">{{ selected.raw.runtimeStatus.offlineReason }}</div>
-            <div v-if="telemetry.errors.points" class="monitor-error" role="alert">点位获取失败：{{ telemetry.errors.points }} <button @click="loadPoints">重试点位</button></div>
-            <div v-if="telemetry.loadingPoints" class="empty-copy">正在获取点位与 pointId…</div>
-            <div v-else-if="!points.length" class="empty-copy">该模块暂无可查询点位；未生成模拟采样。</div>
-            <template v-else>
-              <div class="point-selector"><label>监测点位 <el-select v-model="selectedPointId" :placeholder="selectedPoint?.name || '选择点位'" filterable aria-label="监测点位"><el-option v-for="point in points" :key="point.pointId" :value="point.pointId" :label="point.name+' / '+point.channelId+' / '+point.pointCode+' · #'+point.pointId" /></el-select></label><span>pointId <b>{{ selectedPoint?.pointId }}</b> · {{ selectedPoint?.unit || '无单位' }}</span></div>
-              <div class="point-cards"><button v-for="point in points" :key="point.pointId" :class="{active: selectedPoint?.pointId === point.pointId}" @click="selectedPointId = point.pointId"><span>{{ point.name || point.pointCode }}</span><strong>{{ numberText(pointLatest(point)?.value) }}<small>{{ point.unit }}</small></strong><small>#{{ point.pointId }} · {{ point.pointCode }}</small></button></div>
-              <article class="telemetry-panel">
-                <header class="chart-toolbar"><div class="mode-tabs" role="group" aria-label="数据模式"><button :class="{active: chartMode === 'live'}" :aria-pressed="chartMode === 'live'" @click="chartMode = 'live'"><Activity :size="14" />实时折线</button><button :class="{active: chartMode === 'history'}" :aria-pressed="chartMode === 'history'" @click="chartMode = 'history'"><Database :size="14" />历史原始数据</button></div><label><el-switch v-model="autoLive" aria-label="实时自动刷新" /><span>每 2 秒采样</span></label></header>
+          <div class="device-detail-tabs" role="tablist" aria-label="设备数据视图"><button v-for="tab in detailTabs" :id="'device-tab-'+tab.id" :key="tab.id" role="tab" :aria-selected="chartMode === tab.id" :aria-controls="'device-panel-'+tab.id" :class="{active: chartMode === tab.id}" @click="chartMode = tab.id">{{ tab.label }}</button></div>
+          <div v-if="chartMode !== 'info' && chartMode !== 'live'" class="point-tabs" aria-label="分析点位">
+            <template v-if="isLegacy"><button v-for="point in points" :key="point.pointId" :class="{active: selectedPoint?.pointId === point.pointId}" :aria-pressed="selectedPoint?.pointId === point.pointId" @click="selectedPointId = point.pointId">{{ point.name || point.pointCode }}</button></template>
+            <template v-else><button v-for="channel in channels" :key="channel.channelId" :class="{active: selectedChannel?.channelId === channel.channelId}" :aria-pressed="selectedChannel?.channelId === channel.channelId" @click="selectedChannelId = channel.channelId">{{ channel.name || channel.channelName || channel.channelId }}</button></template>
+          </div>
+          <section :id="'device-panel-'+chartMode" role="tabpanel" :aria-labelledby="'device-tab-'+chartMode" class="device-tab-content">
+            <template v-if="chartMode === 'info'">
+              <article class="device-info-card"><h3>设备信息</h3><dl><div><dt>设备名称</dt><dd>{{ selected.name }}</dd></div><div><dt>设备编号</dt><dd>{{ selected.id }}</dd></div><div><dt>设备来源</dt><dd>{{ isLegacy ? '采集模块' : '声纹设备' }}</dd></div><div><dt>运行状态</dt><dd :class="tone(selected.online)">{{ status(selected.online) }}</dd></div><div v-if="isLegacy"><dt>通讯协议</dt><dd>{{ selected.raw.protocol || '—' }}</dd></div><div v-if="isLegacy"><dt>连接地址</dt><dd>{{ selected.raw.host || '—' }}{{ selected.raw.port ? ':'+selected.raw.port : '' }}</dd></div><div><dt>监测点位</dt><dd>{{ isLegacy ? points.length : channels.length }} 个</dd></div></dl></article>
+              <MonitorDeviceDetails v-if="!isLegacy" :device="selected.raw" />
+            </template>
+            <template v-else-if="isLegacy">
+              <div v-if="selected.raw.runtimeStatus?.offlineReason" class="monitor-error">{{ selected.raw.runtimeStatus.offlineReason }}</div>
+              <div v-if="telemetry.errors.points" class="monitor-error" role="alert">点位获取失败：{{ telemetry.errors.points }} <button @click="loadPoints">重试点位</button></div>
+              <p v-if="telemetry.loadingPoints" class="empty-copy">正在获取监测点位…</p>
+              <p v-else-if="!points.length" class="empty-copy">该设备暂无可查询点位</p>
+              <template v-else>
                 <template v-if="chartMode === 'live'">
-                  <div v-if="telemetry.errors.latest" class="monitor-error" role="alert">实时更新失败：{{ telemetry.errors.latest }}。折线保留上次数据。</div>
-                  <div class="sample-summary"><strong>{{ numberText(latestSample?.value) }} <small>{{ selectedPoint?.unit }}</small></strong><span>{{ dateTime(latestSample?.collectedAt) }} · 质量 {{ latestSample?.quality ?? '—' }}</span><b v-if="stale" class="warn">超过 10 秒未更新</b><b v-if="!autoLive" class="warn">刷新已暂停</b></div>
-                  <div class="telemetry-chart" role="img" :aria-label="selectedPoint.name+'实时折线，'+selectedSamples.length+'个已采集样本'"><EChart :option="liveOption" /></div>
-                  <p class="chart-note">{{ selectedSamples.length }} / 300 个时间点 · 仅积累本次页面访问的真实采样，不重复补点；间隔超过 15 秒断线。暂停刷新后可缩放查看。</p>
+                  <header class="chart-toolbar"><strong>全部监测点位 · {{ points.length }} 个<span v-if="points.some(isVibrationPoint)"> · 振动 {{ points.filter(isVibrationPoint).length }} 项</span></strong><label><el-switch v-model="autoLive" aria-label="实时自动刷新" /><span>{{ autoLive ? '每 2 秒刷新' : '刷新已暂停' }}</span></label></header>
+                  <div v-if="telemetry.errors.latest" class="monitor-error" role="alert">实时更新失败：{{ telemetry.errors.latest }}</div>
+                  <div class="live-point-grid">
+                    <article v-for="card in pointCards" :key="pointKey(card.point)" class="live-point-card" :style="{ '--point-color': card.color }">
+                      <header><h3>{{ card.point.name || card.point.pointCode }}</h3><span :class="card.stale ? 'warn' : 'muted'">{{ card.stale ? '数据未更新' : card.latest ? '实时采样' : '等待采样' }}</span></header>
+                      <div class="point-value">{{ numberText(card.latest?.value) }} <small>{{ card.point.unit }}</small></div>
+                      <p class="point-meta">{{ card.point.channelId }} · {{ card.point.pointCode }}</p>
+                      <div class="point-chart" role="img" :aria-label="(card.point.name || card.point.pointCode)+'实时折线，'+card.count+'个已采集样本'"><EChart :option="card.option" /></div>
+                      <footer>{{ dateTime(card.latest?.collectedAt) }} · 质量 {{ card.latest?.quality ?? '—' }}</footer>
+                    </article>
+                  </div>
+                  <p class="chart-note">{{ demoMode ? '当前为演示采样。' : '显示当前访问期间采集的数据；间隔超过 15 秒断线。' }}每个点位保留最近 300 个时间点。</p>
                 </template>
-                <template v-else>
-                  <form class="history-form" @submit.prevent="queryHistory"><label>开始时间<input v-model="historyStart" type="datetime-local" step="1" aria-label="开始时间" required /></label><label>结束时间<input v-model="historyEnd" type="datetime-local" step="1" aria-label="结束时间" required /></label><label>最多条数<input v-model.number="historyLimit" type="number" min="1" max="100000" step="1" aria-label="最多条数" required /></label><el-button native-type="submit" :icon="Search" :loading="telemetry.loadingHistory">查询历史</el-button></form>
+                <TrendPage v-else-if="chartMode === 'trend'" embedded :module-id="selected.id" :point="selectedPoint" />
+                <article v-else-if="chartMode === 'history'" class="telemetry-panel history-panel"><form class="history-form" @submit.prevent="queryHistory"><label>开始时间<input v-model="historyStart" type="datetime-local" step="1" aria-label="开始时间" required /></label><label>结束时间<input v-model="historyEnd" type="datetime-local" step="1" aria-label="结束时间" required /></label><label>最多条数<input v-model.number="historyLimit" type="number" min="1" max="100000" step="1" aria-label="最多条数" required /></label><el-button native-type="submit" :icon="Search" :loading="telemetry.loadingHistory">查询历史</el-button></form>
                   <div class="quick-range"><button @click="recentRange(10)">最近 10 分钟</button><button @click="recentRange(60)">最近 1 小时</button><span>本地时间 · 起始包含，结束不包含</span></div>
                   <div v-if="telemetry.errors.history" class="monitor-error" role="alert">{{ telemetry.errors.history }}</div>
                   <div v-if="telemetry.history" class="history-summary"><span>{{ telemetry.history.points.length }} 条 · 最小 {{ numberText(historyMin) }} / 最大 {{ numberText(historyMax) }} {{ selectedPoint.unit }}</span><small>已查询 #{{ telemetry.history.requested.pointId }} · {{ dateTime(telemetry.history.requested.start) }} → {{ dateTime(telemetry.history.requested.end) }}</small></div>
@@ -163,11 +265,16 @@ onBeforeUnmount(() => {
                   <p v-if="telemetry.history?.points.length >= telemetry.history?.requested.limit" class="monitor-error">结果已达到查询上限，可能未覆盖完整区间。请缩短时间范围或提高上限。</p>
                   <p class="chart-note">默认查询当前时间之前 10 分钟的历史记录，可调整时间范围后重新查询。</p>
                   <TelemetryHistoryList v-if="telemetry.history" :samples="telemetry.history.points" :point="selectedPoint" />
-                </template>
-              </article>
+</article>
+              </template>
             </template>
-          </template>
-          <template v-else><p class="external-note">声纹网关与通道信息。声纹实时波形继续在“频谱分析”使用，不自动创建监听会话。</p><MonitorDeviceDetails :device="selected.raw" /></template>
+            <template v-else>
+              <p v-if="!channels.length" class="empty-copy">该设备暂无声纹点位</p>
+              <div v-else-if="chartMode === 'live'" class="live-point-grid"><SpectrumPage v-for="channel in channels" :key="selected.key + channel.channelId" embedded compact :accent-color="pointColor(JSON.stringify([selected.id, channel.channelId]))" :device="selected.raw" :channel-id="channel.channelId" display-mode="live" /></div>
+              <SpectrumPage v-else-if="chartMode === 'spectrum'" :key="selected.key" embedded :device="selected.raw" :channel-id="selectedChannel.channelId" :display-mode="chartMode" />
+              <div v-else class="capability-empty"><Database :size="32" /><h3>当前声纹点位暂无历史采样列表</h3><p>可在实时监测或频谱分析中监听当前点位。采集模块的点位支持历史趋势和数据列表。</p></div>
+            </template>
+          </section>
         </template>
       </main>
     </div>
@@ -176,16 +283,102 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .unified-monitor { display: flex; flex-direction: column; padding: 16px; overflow-y: auto; color: var(--text-main); background: var(--page-bg); gap: 12px; --accent: #50d8cb; --warning: #ffad66; scrollbar-width: thin; }
-.device-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 20px; }.device-toolbar h1 small { color: var(--text-muted); font-size: 11px; font-weight: 400; margin-left: 10px; }
-.source-summary { display: flex; gap: 24px; font-size: 10px; color: var(--text-muted); }.monitor-error { color: var(--warning); font-size: 11px; padding: 10px 12px; border: 1px solid #ffad6635; border-radius: 5px; background: #ffad6608; line-height: 1.6; overflow-wrap: anywhere; }.monitor-error button { border: 0; background: none; color: inherit; text-decoration: underline; }
-.device-workspace { display: grid; grid-template-columns: 240px minmax(0,1fr); gap: 14px; flex: 1; min-height: 560px; }.device-directory { border: 1px solid var(--glass-border); background: var(--glass-card); border-radius: 8px; padding: 10px; align-self: start; position: sticky; top: 0; }.source-filter { display: flex; gap: 4px; padding-bottom: 10px; }.source-filter button { flex: 1; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-radius: 4px; padding: 6px; font-size: 10px; }.source-filter button.active { color: var(--accent); background: #50d8cb14; border-color: #50d8cb25; }
-.device-list { display: grid; gap: 7px; max-height: 580px; overflow-y: auto; scrollbar-width: thin; }.device-entry { text-align: left; width: 100%; padding: 12px 10px; border: 1px solid var(--glass-border); border-radius: 6px; background: transparent; color: var(--text-main); }.device-entry.selected { border-color: #50d8cb80; background: #50d8cb0b; }.device-entry > div { display: flex; align-items: center; gap: 7px; }.device-entry strong { font-size: 11px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.device-entry i { margin-left: auto; font-size: 9px; white-space: nowrap; font-style: normal; }.device-entry svg { color: var(--accent); flex-shrink: 0; }.device-entry p { margin: 7px 0 4px; color: var(--text-soft); font-size: 10px; overflow-wrap: anywhere; }.device-entry small { font-size: 9px; color: var(--text-muted); }
-.device-detail { min-width: 0; display: flex; flex-direction: column; gap: 12px; }.selection-summary { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px; border: 1px solid var(--glass-border); border-radius: 8px; background: var(--glass-card); }.selection-summary h2 { font-size: 15px; margin: 0 0 7px; }.selection-summary h2 span { margin-left: 12px; font-size: 10px; font-weight: 400; }.selection-summary p { margin: 0; font-size: 10px; color: var(--text-muted); }.source-tag { color: var(--accent); border: 1px solid #50d8cb30; padding: 5px 8px; font-size: 10px; border-radius: 5px; }
-.point-selector { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 11px; }.point-selector label { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }.point-selector :deep(.el-select) { max-width: 540px; flex: 1; }.point-selector > span { color: var(--text-muted); font-size: 10px; white-space: nowrap; }.point-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 8px; max-height: 220px; overflow-y: auto; }.point-cards button { text-align: left; border: 1px solid var(--glass-border); border-radius: 6px; padding: 11px; background: var(--glass-card); color: var(--text-main); min-width: 0; }.point-cards button.active { border-color: #50d8cb80; }.point-cards button > span { display: block; font-size: 10px; }.point-cards strong { display: block; color: var(--accent); font-size: 22px; font-weight: 500; margin: 7px 0; }.point-cards small { color: var(--text-muted); font-size: 9px; overflow-wrap: anywhere; }.point-cards strong small { margin-left: 5px; }
-.telemetry-panel { border: 1px solid var(--glass-border); border-radius: 8px; background: var(--glass-card); min-width: 0; padding: 0 14px; }.chart-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--glass-border); min-height: 47px; }.mode-tabs { display: flex; gap: 12px; }.mode-tabs button { display: flex; align-items: center; gap: 6px; font-size: 11px; border: 0; background: none; color: var(--text-muted); padding: 8px 0; }.mode-tabs button.active { color: var(--accent); }.chart-toolbar label { display: flex; align-items: center; gap: 6px; font-size: 10px; cursor: pointer; white-space: nowrap; }
-.sample-summary { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-top: 15px; }.sample-summary > strong { font-size: 27px; color: var(--accent); font-weight: 500; }.sample-summary small { font-size: 12px; }.sample-summary > span, .sample-summary > b { font-size: 10px; color: var(--text-muted); }.telemetry-chart { height: 330px; }.chart-note { color: var(--text-muted); font-size: 10px; line-height: 1.8; margin: 6px 0 14px; }
-.history-form { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) 95px auto; gap: 10px; align-items: end; margin: 15px 0 10px; }.history-form label { display: grid; gap: 6px; font-size: 10px; color: var(--text-muted); min-width: 0; }.history-form input { background: var(--surface); color: var(--text-main); border: 1px solid var(--glass-border); border-radius: 4px; height: 32px; min-width: 0; width: 100%; font: inherit; padding: 3px 6px; color-scheme: dark; }.quick-range { display: flex; align-items: center; gap: 12px; }.quick-range button { font-size: 10px; border: 0; background: transparent; color: var(--accent); padding: 4px 0; }.quick-range span { font-size: 9px; color: var(--text-muted); margin-left: auto; }.history-summary { display: grid; gap: 6px; margin-top: 13px; font-size: 11px; color: var(--text-soft); }.history-summary small { color: var(--text-muted); font-size: 10px; }
-.empty-copy, .external-note { color: var(--text-muted); font-size: 11px; line-height: 1.7; }.device-empty { display: grid; place-content: center; justify-items: center; min-height: 400px; color: var(--text-muted); font-size: 12px; }.unified-monitor .good { color: #8ee6a8; }.unified-monitor .warn { color: var(--warning); }.unified-monitor .muted { color: var(--text-muted); }
+.device-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 20px; }.device-toolbar h1 small { color: var(--text-muted); font-size: 14px; font-weight: 400; margin-left: 10px; }
+.source-summary { display: flex; gap: 24px; font-size: 14px; color: var(--text-muted); }.monitor-error { color: var(--warning); font-size: 14px; padding: 10px 12px; border: 1px solid #ffad6635; border-radius: 5px; background: #ffad6608; line-height: 1.6; overflow-wrap: anywhere; }.monitor-error button { border: 0; background: none; color: inherit; text-decoration: underline; }
+.device-workspace { display: grid; grid-template-columns: 270px minmax(0,1fr); gap: 14px; flex: 1; min-height: 560px; }.device-directory { border: 1px solid var(--glass-border); background: var(--glass-card); border-radius: 8px; padding: 10px; align-self: start; position: sticky; top: 0; }.source-filter { display: flex; gap: 4px; padding-bottom: 10px; }.source-filter button { flex: 1 0 auto; white-space: nowrap; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-radius: 4px; padding: 6px 3px; font-size: 14px; }.source-filter button.active { color: var(--accent); background: #50d8cb14; border-color: #50d8cb25; }
+.device-list { display: grid; gap: 7px; max-height: 580px; overflow-y: auto; scrollbar-width: thin; }.device-entry { text-align: left; width: 100%; padding: 12px 10px; border: 1px solid var(--glass-border); border-radius: 6px; background: transparent; color: var(--text-main); }.device-entry.selected { border-color: #50d8cb80; background: #50d8cb0b; }.device-entry > div { display: flex; align-items: center; gap: 7px; }.device-entry strong { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.device-entry i { margin-left: auto; font-size: 14px; white-space: nowrap; font-style: normal; }.device-entry svg { color: var(--accent); flex-shrink: 0; }.device-entry p { margin: 7px 0 4px; color: var(--text-soft); font-size: 14px; overflow-wrap: anywhere; }.device-entry small { font-size: 14px; color: var(--text-muted); }
+.device-detail { min-width: 0; display: flex; flex-direction: column; gap: 12px; }.selection-summary { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px; border: 1px solid var(--glass-border); border-radius: 8px; background: var(--glass-card); }.selection-summary h2 { font-size: 19px; margin: 0 0 7px; }.selection-summary h2 span { margin-left: 12px; font-size: 14px; font-weight: 400; }.selection-summary p { margin: 0; font-size: 14px; color: var(--text-muted); }.source-tag { color: var(--accent); border: 1px solid #50d8cb30; padding: 5px 8px; font-size: 14px; border-radius: 5px; }
+.point-selector { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; }.point-selector label { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }.point-selector :deep(.el-select) { max-width: 540px; flex: 1; }.point-selector > span { color: var(--text-muted); font-size: 14px; white-space: nowrap; }.point-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 8px; max-height: 220px; overflow-y: auto; }.point-cards button { text-align: left; border: 1px solid var(--glass-border); border-radius: 6px; padding: 11px; background: var(--glass-card); color: var(--text-main); min-width: 0; }.point-cards button.active { border-color: #50d8cb80; }.point-cards button > span { display: block; font-size: 14px; }.point-cards strong { display: block; color: var(--accent); font-size: 28px; font-weight: 500; margin: 7px 0; }.point-cards small { color: var(--text-muted); font-size: 14px; overflow-wrap: anywhere; }.point-cards strong small { margin-left: 5px; }
+.telemetry-panel { border: 1px solid var(--glass-border); border-radius: 8px; background: var(--glass-card); min-width: 0; padding: 0 14px; }.chart-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--glass-border); min-height: 47px; }.mode-tabs { display: flex; gap: 12px; }.mode-tabs button { display: flex; align-items: center; gap: 6px; font-size: 14px; border: 0; background: none; color: var(--text-muted); padding: 8px 0; }.mode-tabs button.active { color: var(--accent); }.chart-toolbar label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.sample-summary { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-top: 15px; }.sample-summary > strong { font-size: 34px; color: var(--accent); font-weight: 500; }.sample-summary small { font-size: 15px; }.sample-summary > span, .sample-summary > b { font-size: 14px; color: var(--text-muted); }.telemetry-chart { height: 330px; }.chart-note { color: var(--text-muted); font-size: 14px; line-height: 1.8; margin: 6px 0 14px; }
+.history-form { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) 95px auto; gap: 10px; align-items: end; margin: 15px 0 10px; }.history-form label { display: grid; gap: 6px; font-size: 14px; color: var(--text-muted); min-width: 0; }.history-form input { background: var(--surface); color: var(--text-main); border: 1px solid var(--glass-border); border-radius: 4px; height: 32px; min-width: 0; width: 100%; font: inherit; padding: 3px 6px; color-scheme: dark; }.quick-range { display: flex; align-items: center; gap: 12px; }.quick-range button { font-size: 14px; border: 0; background: transparent; color: var(--accent); padding: 4px 0; }.quick-range span { font-size: 14px; color: var(--text-muted); margin-left: auto; }.history-summary { display: grid; gap: 6px; margin-top: 13px; font-size: 14px; color: var(--text-soft); }.history-summary small { color: var(--text-muted); font-size: 14px; }
+.empty-copy, .external-note { color: var(--text-muted); font-size: 14px; line-height: 1.7; }.device-empty { display: grid; place-content: center; justify-items: center; min-height: 400px; color: var(--text-muted); font-size: 15px; }.unified-monitor .good { color: #8ee6a8; }.unified-monitor .warn { color: var(--warning); }.unified-monitor .muted { color: var(--text-muted); }
 :global(.light-theme .unified-monitor) { --accent: #237f76; --warning: #b65015; }:global(.light-theme .unified-monitor .good) { color: #287452; }:global(.light-theme .unified-monitor input) { color-scheme: light; }
 @media (max-width:1300px) { .device-workspace { grid-template-columns: 205px minmax(0,1fr); }.unified-monitor { padding: 12px; }.history-form { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }.point-selector { flex-wrap: wrap; }.point-selector label { flex-basis: 100%; }.device-toolbar h1 small { display: block; margin: 6px 0 0; } }
+
+.directory-heading { display: flex; gap: 8px; align-items: center; padding: 4px 0 14px; color: var(--accent); font-size: 16px; }
+.directory-heading span { margin-left: auto; color: var(--text-muted); font-size: 14px; }
+.device-detail-tabs { display: flex; border-bottom: 1px solid var(--glass-border); gap: 8px; background: var(--glass-card); border-radius: 8px 8px 0 0; padding: 0 8px; }
+.device-detail-tabs button { flex: 1; padding: 16px 8px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--text-muted); font-size: 17px; white-space: nowrap; }
+.device-detail-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); background: #50d8cb08; }
+.device-tab-content { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.device-info-card, .capability-empty { border: 1px solid var(--glass-border); border-radius: 8px; background: var(--glass-card); padding: 20px; }
+.device-info-card h3 { font-size: 19px; margin: 0 0 20px; }
+.device-info-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 0; font-size: 16px; }
+.device-info-card dt { color: var(--text-muted); margin-bottom: 8px; }
+.device-info-card dd { margin: 0; overflow-wrap: anywhere; }
+.capability-empty { min-height: 280px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: var(--text-muted); }
+.capability-empty h3 { color: var(--text-main); font-size: 20px; }
+.capability-empty p { max-width: 560px; font-size: 16px; line-height: 1.8; margin: 0; }
+@media (max-width: 1300px) { .device-detail-tabs { gap: 0; padding: 0; } .device-detail-tabs button { font-size: 15px; padding: 14px 5px; } }
+
+.directory-view.device-workspace { display: block; }
+.directory-view .device-directory { position: static; padding: 20px; }
+.directory-view .device-list { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); max-height: none; }
+.device-entry { text-decoration: none; transition: border-color .2s, background .2s; }
+.device-entry:hover { border-color: var(--accent); background: #50d8cb0b; }
+.device-profile { align-self: start; position: sticky; top: 0; }
+.device-profile h2 { font-size: 21px; margin-top: 22px; overflow-wrap: anywhere; }
+.device-profile dl { grid-template-columns: 1fr; font-size: 14px; }
+.back-link { color: var(--accent); text-decoration: none; }
+.equipment-illustration { height: 180px; display: grid; place-items: center; color: var(--accent); background: radial-gradient(ellipse, #50d8cb18, transparent 70%); margin-bottom: 22px; }
+.live-point-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.live-point-card { min-width: 0; border: 1px solid var(--glass-border); border-radius: 10px; background: var(--glass-card); padding: 18px 16px 12px; }
+.live-point-card header { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
+.live-point-card h3 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.live-point-card header span { font-size: 12px; white-space: nowrap; }
+.point-value { font-size: 34px; color: var(--point-color); margin-top: 18px; font-variant-numeric: tabular-nums; }
+.point-value small { font-size: 15px; color: var(--text-muted); }
+.point-meta, .live-point-card footer { font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+.point-chart { height: 150px; }
+.point-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.point-tabs button { padding: 9px 14px; border: 1px solid var(--glass-border); border-radius: 6px; color: var(--text-muted); background: var(--glass-card); }
+.point-tabs button.active { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 1500px) { .live-point-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .device-workspace { grid-template-columns: minmax(0, 1fr); } .device-profile { position: static; } .device-profile dl { grid-template-columns: repeat(2, minmax(0, 1fr)); } .equipment-illustration { display: none; } .device-detail-tabs { overflow-x: auto; } }
+@media (max-width: 600px) { .live-point-grid { grid-template-columns: minmax(0, 1fr); } .source-summary { flex-wrap: wrap; gap: 8px; } }
+
+/* Equipment directory */
+.equipment-directory-page { --directory-accent: #6cb6dc; }
+.equipment-directory { min-width: 0; }
+.fleet-overview { display: flex; justify-content: space-between; align-items: center; gap: 30px; padding: 28px 30px; border: 1px solid var(--glass-border); border-radius: 10px; background: radial-gradient(ellipse at 5% 0, #3d8cb51a, transparent 65%), var(--glass-card); }
+.eyebrow { font-size: 11px; letter-spacing: 3px; color: var(--directory-accent); }
+.fleet-intro h2 { margin: 10px 0; font-size: 27px; font-weight: 500; letter-spacing: 1px; }
+.fleet-intro p { color: var(--text-muted); font-size: 13px; margin: 0 0 18px; line-height: 1.7; }
+.fleet-sync { color: var(--text-muted); font-size: 12px; }
+.fleet-stats { display: grid; grid-template-columns: repeat(4, minmax(85px, 1fr)); gap: 10px; min-width: 42%; }
+.fleet-stats button { text-align: left; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-left-color: var(--glass-border); border-radius: 4px; padding: 16px; }
+.fleet-stats button.active { background: #6cb6dc09; border-color: #6cb6dc35; }
+.fleet-stats button > span { font-size: 13px; white-space: nowrap; }
+.fleet-stats strong { display: block; font-size: 36px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-main); margin-top: 14px; }
+.fleet-stats .online strong { color: #59b69a; }.fleet-stats .offline strong { color: #d4a56b; }
+.fleet-stats small { font-size: 12px; color: var(--text-muted); margin-left: 8px; }
+.fleet-controls { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 24px; border-bottom: 1px solid var(--glass-border); padding-bottom: 14px; }
+.fleet-source-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.fleet-source-tabs button { border: 1px solid transparent; border-radius: 5px; padding: 10px 16px; background: transparent; color: var(--text-muted); font-size: 14px; }
+.fleet-source-tabs button.active { background: #6cb6dc12; color: var(--directory-accent); border-color: #6cb6dc35; }
+.fleet-source-tabs button span { margin-left: 10px; opacity: .7; font-size: 12px; }
+.fleet-search { display: flex; align-items: center; gap: 10px; width: 280px; padding: 9px 12px; border: 1px solid var(--glass-border); border-radius: 5px; color: var(--text-muted); background: var(--glass-card); }
+.fleet-search:focus-within { border-color: var(--directory-accent); }
+.fleet-search input { min-width: 0; width: 100%; border: 0; outline: 0; color: var(--text-main); font: inherit; font-size: 13px; background: transparent; }
+.fleet-search button { border: 0; background: none; color: var(--text-muted); }
+.fleet-result { display: flex; justify-content: space-between; gap: 12px; margin: 19px 0 14px; color: var(--text-muted); font-size: 12px; }
+.fleet-result > span:first-child { color: var(--text-main); font-size: 14px; }.fleet-result b { margin-left: 7px; color: var(--directory-accent); }
+.fleet-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.fleet-card { display: block; min-width: 0; border: 1px solid var(--glass-border); border-radius: 9px; overflow: hidden; color: var(--text-main); background: linear-gradient(145deg, #4382a808, transparent 65%), var(--glass-card); text-decoration: none; transition: border-color .2s, box-shadow .2s, transform .2s; }
+.fleet-card:hover, .fleet-card:focus-visible { border-color: #6cb6dc80; box-shadow: 0 8px 24px #0002; transform: translateY(-3px); outline: none; }
+.fleet-card-top { display: flex; justify-content: space-between; gap: 10px; padding: 17px 18px 0; font-size: 12px; }
+.fleet-kind { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+.fleet-status { display: flex; align-items: center; gap: 6px; }.fleet-status i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.fleet-card-body { padding: 0 18px 18px; }.fleet-id { color: var(--text-muted); font-size: 11px; letter-spacing: 1.5px; overflow-wrap: anywhere; }
+.fleet-card h3 { font-size: 18px; font-weight: 500; margin: 7px 0 18px; overflow-wrap: anywhere; }
+.fleet-card-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fleet-card-metrics > span { color: var(--text-muted); font-size: 12px; }.fleet-card-metrics b { display: block; font-size: 14px; font-weight: 400; color: var(--text-soft); margin-top: 8px; overflow-wrap: anywhere; }.fleet-card-metrics small { font-size: 12px; }
+.fleet-card footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--glass-border); padding: 11px 18px; color: var(--directory-accent); font-size: 12px; background: #6cb6dc04; }.fleet-arrow { font-size: 21px; }
+.fleet-empty { display: grid; justify-items: center; padding: 50px 20px; color: var(--text-muted); }.fleet-empty h3 { font-size: 18px; }.fleet-empty p { font-size: 14px; }.fleet-empty button { background: transparent; color: var(--directory-accent); border: 1px solid var(--glass-border); border-radius: 5px; padding: 8px 18px; }
+.fleet-footnote { color: var(--text-muted); font-size: 12px; margin: 20px 0 5px; }
+.profile-equipment-visual { margin: 12px -12px 24px; height: 210px; }
+@media (max-width: 1550px) { .fleet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }.fleet-overview { gap: 20px; padding: 24px; }.fleet-stats button { padding: 12px; } }
+@media (max-width: 1150px) { .fleet-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.fleet-overview { flex-direction: column; align-items: stretch; }.fleet-stats { min-width: 0; }.fleet-controls { flex-wrap: wrap; }.fleet-search { width: 100%; } }
+@media (max-width: 600px) { .fleet-grid { grid-template-columns: minmax(0, 1fr); }.fleet-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }.fleet-result { flex-wrap: wrap; }.fleet-source-tabs button { padding: 8px; }.fleet-intro h2 { font-size: 23px; } }
 </style>

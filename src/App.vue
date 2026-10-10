@@ -1,4 +1,5 @@
 <script setup>
+import DataModeControl from './components/DataModeControl.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ChevronDown, Fan, Maximize2, Minimize2, Moon, PanelLeftClose, PanelLeftOpen, Sun, UserRound } from 'lucide-vue-next'
@@ -19,6 +20,7 @@ const isLoginPage = computed(() => route.name === 'login')
 const currentUser = computed(() => auth.getUser()?.username || auth.getUser()?.name || 'admin')
 
 const isMenuActive = (item) => {
+  if (item.path === '/device') return activePath.value.startsWith('/device')
   if (item.path === '/') return activePath.value === '/'
   return activePath.value === item.path
 }
@@ -95,13 +97,14 @@ onBeforeUnmount(() => {
       </button>
     </aside>
 
-    <section class="screen">
+    <section class="screen" :class="{ 'device-monitor-screen': route.name === 'device-detail' }">
       <header class="topbar">
         <div class="top-title">
           <span class="title-glow"></span>
           <strong>{{ pageTitle }}</strong>
         </div>
         <div class="top-actions">
+          <DataModeControl />
           <button class="top-icon-btn" type="button" :title="isLightTheme ? '切换当前主题色' : '切换亮色主题'" @click="toggleTheme">
             <component :is="isLightTheme ? Moon : Sun" :size="17" />
           </button>

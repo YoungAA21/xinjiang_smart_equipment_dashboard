@@ -26,7 +26,6 @@
           <path v-if="waveformMode === 'envelope'" :d="envelopePath" fill="url(#waveGradient)" fill-opacity=".58" stroke="#2563eb" stroke-width="1" vector-effect="non-scaling-stroke" />
           <polyline v-else :points="waveformPoints" fill="none" stroke="url(#waveGradient)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
         </svg>
-        <div class="amplitude-scale"><span>+1</span><span>0</span><span>-1</span></div>
         <div class="time-scale">
           <span>-{{ windowSeconds }}s</span>
           <span>-{{ windowSeconds * 0.75 }}s</span>
@@ -141,12 +140,12 @@ const envelopePath = computed(() => {
 }
 .visual-card strong {
   color: var(--chart-text);
-  font-size: 14px;
+  font-size: 18px;
 }
 .visual-card header div span,
 .unit {
   color: var(--chart-muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 .visual-card header .waveform-actions {
   align-items: center;
@@ -161,7 +160,7 @@ const envelopePath = computed(() => {
   border-radius: 6px;
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: 14px;
 }
 .waveform-actions button.active {
   color: #88f36c;
@@ -185,7 +184,7 @@ const envelopePath = computed(() => {
   display: grid;
   place-items: center;
   color: var(--chart-muted);
-  font-size: 12px;
+  font-size: 15px;
 }
 .waveform svg {
   position: absolute;
@@ -201,25 +200,12 @@ const envelopePath = computed(() => {
   border-top: 1px dashed var(--chart-axis-line);
   opacity: 0.45;
 }
-.amplitude-scale {
-  position: absolute;
-  z-index: 1;
-  top: 4px;
-  bottom: 23px;
-  left: 4px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  color: var(--chart-muted);
-  font-size: 9px;
-  pointer-events: none;
-}
 .time-scale,
 .frequency-scale {
   display: flex;
   justify-content: space-between;
   color: var(--chart-muted);
-  font-size: 10px;
+  font-size: 14px;
 }
 .time-scale {
   position: absolute;

@@ -4,6 +4,19 @@
 
 ## 本地运行
 
+### 离线开发与演示数据
+
+本目录执行 `npm run dev`，默认使用演示数据并自动进入演示账号，无需后端、硬件或密码。页面右上角“演示数据”开关可以切换到后端数据；切换会刷新页面，浏览器会记住选择。后端不可用时，也可在登录页打开此开关回到演示模式。
+
+- 演示数据覆盖首页、设备监控内的实时监测/趋势/频谱、网关通讯、录音管理和各类告警。
+- 包含 8 个采集模块、32 个监测点、4 台声纹设备、4 个网关及 48 条录音；提供在线、离线和超限等状态。
+- 实时数值和曲线持续变化，预填最近约 4 分钟采样；历史查询按选定点位和时间范围生成，趋势默认近 30 天。
+- 选择声纹设备和点位后点击“开始监听”，即可查看模拟波形与频谱瀑布；录音播放使用本地合成音频。
+- 筛选、分页、日期范围和点位切换均可用于前端联调。业务请求在浏览器内生成模拟响应，并带约 120 毫秒延迟；不会请求后端服务器。取消请求会停止模拟响应。
+- 演示账号与后端账号分别保存，右下角持续标注“演示数据 · 非现场实测”。
+- `npm run demo` 始终启动演示模式；`npm run build:demo` 输出独立的 `dist-demo` 离线演示包。
+- 普通 `npm run build` 输出 `dist` 后端版本，不读取浏览器中的开发模式偏好。`.env.local` 中可设置 `VITE_DEMO_MODE=false`，使首次本地启动默认使用后端。
+
 ```bash
 npm install
 npm run dev
@@ -26,9 +39,9 @@ npm run build
 
 首页请求采集服务的 `GET /api/health`、`GET /api/health/detail`、`GET /api/health/table-maintenance`，同时复用声纹服务的 `GET /monitor/devices`。默认每 15 秒刷新，可暂停或手动刷新，离开首页即停止轮询并取消未完成请求。各业务独立处理，超时为 10 秒。健康详情返回 HTTP 503 时仍展示 JSON 检查结果；请求失败保留上次数据并明确提示。
 
-本地开发默认连接 `http://192.168.31.158:5158`，通过 `/_health-api` 同源代理访问，代理仅匹配上述三个健康接口，不转发其他旧接口或 18080 接口。生产环境未配置 `VITE_API_BASE_URL` 时自动使用前端页面的协议和主机名并切换到 `5158` 端口，例如页面为 `http://192.168.31.158:8080` 时接口为 `http://192.168.31.158:5158`。需要连接其他服务器时可复制 `.env.example` 为 `.env.local` 覆盖开发或生产地址。
+本地开发通过 `/_health-api` 同源代理连接 `http://66.66.66.4:5158`，代理仅匹配上述三个健康接口，不转发其他旧接口或 18080 接口。生产环境未配置 `VITE_API_BASE_URL` 时同样请求 `/_health-api`，由 Nginx 转发到 `66.66.66.4:5158`，浏览器不再跨域访问后端。需要直连其他服务器时可复制 `.env.example` 为 `.env.local` 并设置 `VITE_API_BASE_URL`。
 
-`src/services/health.js` 使用独立请求通道，不携带 18080 服务的登录令牌。首页的新设备列表通过现有 `api.getMonitorDevices` 使用 18080 的登录令牌；没有新增监听会话或音频连接。本地开发默认连接 `http://192.168.31.158:18080`，生产环境未配置 `VITE_NEW_API_BASE_URL` 时同样跟随前端页面主机并切换到 `18080` 端口。登录、鉴权和其他页面业务接口保持不变。其他旧接口继续由 `VITE_LEGACY_API_DISABLED` 控制，默认停用。
+`src/services/health.js` 使用独立请求通道，不携带 18080 服务的登录令牌。首页的新设备列表通过现有 `api.getMonitorDevices` 使用 18080 的登录令牌；没有新增监听会话或音频连接。未配置 `VITE_NEW_API_BASE_URL` 时，开发环境通过 Vite、生产环境通过 Nginx 同源代理连接 `66.66.66.4:18080`，避免浏览器跨域请求；监听 WebSocket 和录音地址也使用同一入口。登录、鉴权和其他页面业务接口保持不变。其他旧接口继续由 `VITE_LEGACY_API_DISABLED` 控制，默认停用。
 
 首页展示心跳、检查明细、数据库及点位状态、模块在线状态、历史/聚合表分区、缓存、配置文件和表维护记录。首页不使用静态预览数据；系统健康与模块在线状态分别统计。
 
@@ -56,7 +69,7 @@ npm run build
 
 历史查询结果仅用表格展示，包含采集时间、原始精度数值、单位和原始质量值；默认最新优先，支持时间排序与每页 20/50/100 条分页，分页不额外请求后端。实时数据继续使用折线图。
 
-开发环境新增 `/_telemetry-api` 同源代理，仅匹配上述四个接口；健康代理和声纹服务请求地址不变。生产环境与健康接口共用自动跟随页面主机的采集服务地址，也可用 `VITE_API_BASE_URL` 覆盖。其他旧接口仍默认禁用，不影响其他页面现有接入。
+开发和生产环境均使用 `/_telemetry-api` 同源代理，仅匹配上述四个接口；健康代理和声纹服务请求地址不变，也可用 `VITE_API_BASE_URL` 覆盖。其他旧接口仍默认禁用，不影响其他页面现有接入。
 
 ## 告警管理接入（第三步）
 
@@ -66,10 +79,69 @@ npm run build
 
 “趋势报警”通过 `GET /api/analysis/trend-alarms` 查询趋势报警事件。页面支持模块、点位、时间、活动状态和返回条数筛选，列表带分页；趋势变化折线图随查询结果同步更新，事件详情点击表格行后以浮层查看。
 
-开发环境中采集报警继续使用 `/_alarm-api`；新增趋势接口使用独立 `/_analysis-api` 白名单代理。生产环境默认跟随页面主机访问采集服务，也可用 `VITE_API_BASE_URL` 覆盖。采集服务请求不携带声纹服务令牌，声纹服务的 `/alarm/page`、录音、样本类别和每日统计继续使用原请求方法、参数及鉴权。
+开发和生产环境中采集报警使用 `/_alarm-api`，趋势接口使用独立 `/_analysis-api` 白名单代理，均由服务器同源转发到采集服务，也可用 `VITE_API_BASE_URL` 覆盖。采集服务请求不携带声纹服务令牌，声纹服务的 `/alarm/page`、录音、样本类别和每日统计继续使用原请求方法、参数及鉴权。
 
 ## 趋势分析（第四步）
 
 趋势分析页已接入 `GET /api/analysis/daily-limit-trends` 和 `GET /api/analysis/trend-insights`，按点位、时间范围和聚合分钟查询真实数据，展示每日最小值、均值、最大值、上下限、超限分钟以及后端风险洞察，不再使用静态趋势预览。
 
-2026-09-03 已对 `192.168.31.158:5158` 做只读联调：硬限值报警、每日限值趋势、趋势洞察和趋势报警接口均返回 HTTP 200。
+2026-09-03 曾对旧地址 `192.168.31.158:5158` 做只读联调：硬限值报警、每日限值趋势、趋势洞察和趋势报警接口均返回 HTTP 200。当前后端地址为 `66.66.66.4`。
+
+使用 `npm run preview` 运行生产构建时，Vite Preview 已配置与开发服务器相同的 5158 白名单代理。修改 `vite.config.js` 后必须停止并重新启动 Preview 进程，仅重新执行 `npm run build` 不会更新正在运行的代理配置。
+
+## Nginx 生产代理
+
+生产站点的 `server` 块需配置以下 5158 白名单。趋势接口使用精确匹配，因此即使现有 SPA 规则写成 `location ^~ /`，也不会把 API 请求回退为 `index.html`。查询参数不参与 Nginx `location` 匹配，无需写入规则。
+
+```nginx
+location = /_analysis-api/api/analysis/daily-limit-trends {
+    proxy_pass http://66.66.66.4:5158/api/analysis/daily-limit-trends;
+    include /etc/nginx/snippets/equipment-api-5158.conf;
+}
+
+location = /_analysis-api/api/analysis/trend-insights {
+    proxy_pass http://66.66.66.4:5158/api/analysis/trend-insights;
+    include /etc/nginx/snippets/equipment-api-5158.conf;
+}
+
+location = /_analysis-api/api/analysis/trend-alarms {
+    proxy_pass http://66.66.66.4:5158/api/analysis/trend-alarms;
+    include /etc/nginx/snippets/equipment-api-5158.conf;
+}
+
+location ~ ^/(?:_health-api/api/health(?:/detail|/table-maintenance)?|_telemetry-api/api/(?:configuration/modules(?:/[^/]+/points)?|realtime/latest|telemetry/history)|_alarm-api/api/analysis/(?:alarms|status))$ {
+    rewrite ^/_[^/]+(/api/.*)$ $1 break;
+    proxy_pass http://66.66.66.4:5158;
+    include /etc/nginx/snippets/equipment-api-5158.conf;
+}
+```
+
+新建 `/etc/nginx/snippets/equipment-api-5158.conf`，内容如下：
+
+```nginx
+    proxy_http_version 1.1;
+    proxy_set_header Host $proxy_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Authorization "";
+    proxy_set_header Cookie "";
+    proxy_cache off;
+    proxy_hide_header ETag;
+    proxy_hide_header Last-Modified;
+    add_header Cache-Control "no-store" always;
+    proxy_intercept_errors off;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 15s;
+    limit_except GET { deny all; }
+```
+
+然后在站点的 `server` 块中保留代理前缀兜底：
+
+```nginx
+location ~ ^/_(?:health|telemetry|alarm|analysis)-api(?:/|$) {
+    return 404;
+}
+```
+
+修改后依次执行 `nginx -t` 和 `nginx -s reload`。浏览器开发者工具中上述三个趋势接口应显示 `Content-Type: application/json`，响应体应分别包含 `days`、`insight`、`events`；若响应体是 `index.html`，说明请求仍被 SPA 静态规则接管。

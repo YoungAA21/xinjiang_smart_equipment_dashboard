@@ -13,15 +13,15 @@ const point = { pointId: 35, moduleId: 'PRESS01', channelId: 'AI01', pointCode: 
 const sample = (second, value = 0) => ({ ...point, collectedAt: `2026-08-28T10:00:${String(second).padStart(2,'0')}+08:00`, value })
 const query = { pointId: 35, start: '2026-08-28T10:00:00', end: '2026-08-28T10:10:00', limit: 5000 }
 
-test('four telemetry routes use 5158 without new service credentials; history only uses pointId', async () => {
+test('four telemetry routes use the same-origin 5158 proxy without credentials; history only uses pointId', async () => {
   const calls = []
   globalThis.fetch = async (url, options) => { calls.push({url,options}); return reply({}) }
   await telemetryApi.getModules(); await telemetryApi.getModulePoints('PRESS01'); await telemetryApi.getLatest(); await telemetryApi.getHistory({ ...query, moduleId:'must-not-send', channelId:'ignore', pointCode:'ignore' })
-  assert.equal(calls[0].url,'http://192.168.31.158:5158/api/configuration/modules')
-  assert.equal(calls[1].url,'http://192.168.31.158:5158/api/configuration/modules/PRESS01/points?includeLatest=false')
-  assert.equal(calls[2].url,'http://192.168.31.158:5158/api/realtime/latest')
-  const url = new URL(calls[3].url)
-  assert.equal(url.pathname, '/api/telemetry/history')
+  assert.equal(calls[0].url,'/_telemetry-api/api/configuration/modules')
+  assert.equal(calls[1].url,'/_telemetry-api/api/configuration/modules/PRESS01/points?includeLatest=false')
+  assert.equal(calls[2].url,'/_telemetry-api/api/realtime/latest')
+  const url = new URL(calls[3].url, 'http://frontend.test')
+  assert.equal(url.pathname, '/_telemetry-api/api/telemetry/history')
   assert.deepEqual([...url.searchParams.keys()], ['pointId','start','end','limit'])
   assert.equal(url.searchParams.get('start'), query.start)
   for (const call of calls) { assert.equal(call.options.headers.Authorization, undefined); assert.ok(call.options.signal instanceof AbortSignal) }
