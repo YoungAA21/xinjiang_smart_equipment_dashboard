@@ -175,7 +175,7 @@ onMounted(() => {
     clock.value = Date.now()
     if (autoLive.value && isLegacy.value && chartMode.value === 'live') telemetry.refreshLatest({ signal: pageController.signal })
   }, 2000)
-  metadataTimer = window.setInterval(() => telemetry.refreshModules({ signal: pageController.signal }), 15000)
+  metadataTimer = window.setInterval(() => { telemetry.refreshModules({ signal: pageController.signal }); loadMonitorDevices() }, 15000)
 })
 onBeforeUnmount(() => {
   pageController.abort()
@@ -209,7 +209,12 @@ onBeforeUnmount(() => {
         <div class="fleet-grid">
           <RouterLink v-for="entry in visibleEntries" :key="entry.key" class="fleet-card" :aria-label="(entry.source === 'legacy' ? '采集模块 ' : '声纹设备 ')+entry.id+' '+entry.name" :to="{ path: '/device/detail', query: { source: entry.source, device: entry.id, tab: availableTab(route.query.tab, entry.source) } }">
             <div class="fleet-card-top"><span class="fleet-kind"><component :is="entry.source === 'legacy' ? Server : Fan" :size="14" />{{ entry.source === 'legacy' ? '采集模块' : '声纹设备' }}</span><span class="fleet-status" :class="tone(entry.online)"><i></i>{{ status(entry.online) }}</span></div>
-            <EquipmentVisual :name="entry.name" :source="entry.source" :device-id="entry.id" />
+            <div class="fleet-stage">
+              <div class="fleet-stage-grid" aria-hidden="true"></div>
+              <div class="fleet-podium" aria-hidden="true"><span></span></div>
+              <EquipmentVisual :name="entry.name" :source="entry.source" :device-id="entry.id" :online="(entry.source === 'legacy' ? telemetry.errors.modules : monitorError) ? undefined : entry.online" />
+              <span class="fleet-stage-coordinate" aria-hidden="true">{{ entry.id }}</span>
+            </div>
             <div class="fleet-card-body"><span class="fleet-id">{{ entry.id }}</span><h3>{{ entry.name }}</h3><div class="fleet-card-metrics"><span>监测点位 <b>{{ entryPointCount(entry) }}<small> 个</small></b></span><span>{{ entry.source === 'legacy' ? '通讯协议' : '采集类型' }} <b>{{ entry.source === 'legacy' ? entry.raw.protocol || '—' : '声纹采集' }}</b></span></div></div>
             <footer><span>进入实时监测</span><span class="fleet-arrow" aria-hidden="true">↗</span></footer>
           </RouterLink>
@@ -219,7 +224,7 @@ onBeforeUnmount(() => {
       </section>
       <aside v-if="showingDetail && selected" class="device-profile device-info-card">
         <RouterLink class="back-link" :to="{ path: '/device', query: { source } }">‹ 返回设备列表</RouterLink>
-        <h2>{{ selected.name }}</h2><EquipmentVisual class="profile-equipment-visual" :name="selected.name" :source="selected.source" :device-id="selected.id" />
+        <h2>{{ selected.name }}</h2><EquipmentVisual class="profile-equipment-visual" :name="selected.name" :source="selected.source" :device-id="selected.id" :online="(isLegacy ? telemetry.errors.modules : monitorError) ? undefined : selected.online" :paused="!autoLive" />
         <dl><div><dt>设备编号</dt><dd>{{ selected.id }}</dd></div><div><dt>设备来源</dt><dd>{{ isLegacy ? '采集模块' : '声纹设备' }}</dd></div><div><dt>设备状态</dt><dd :class="tone(selected.online)">{{ status(selected.online) }}</dd></div><div><dt>监测点位</dt><dd>{{ isLegacy ? points.length : channels.length }} 个</dd></div><div v-if="isLegacy"><dt>通讯协议</dt><dd>{{ selected.raw.protocol || '—' }}</dd></div></dl>
       </aside>
       <main v-if="showingDetail" class="device-detail">
@@ -381,4 +386,37 @@ onBeforeUnmount(() => {
 @media (max-width: 1550px) { .fleet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }.fleet-overview { gap: 20px; padding: 24px; }.fleet-stats button { padding: 12px; } }
 @media (max-width: 1150px) { .fleet-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.fleet-overview { flex-direction: column; align-items: stretch; }.fleet-stats { min-width: 0; }.fleet-controls { flex-wrap: wrap; }.fleet-search { width: 100%; } }
 @media (max-width: 600px) { .fleet-grid { grid-template-columns: minmax(0, 1fr); }.fleet-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }.fleet-result { flex-wrap: wrap; }.fleet-source-tabs button { padding: 8px; }.fleet-intro h2 { font-size: 23px; } }
+/* Open equipment stands, with perspective confined to the model and pedestal. */
+.fleet-grid { gap: 24px 20px; padding: 8px 2px 20px; }
+.fleet-card { position: relative; isolation: isolate; overflow: visible; border: 0; border-radius: 0; background: transparent; }
+.fleet-card:hover, .fleet-card:focus-visible { transform: none; box-shadow: none; }
+.fleet-card:focus-visible { outline: 1px solid var(--directory-accent); outline-offset: 5px; border-radius: 8px; }
+.fleet-card-top { padding: 8px 12px 0; font-size: 10px; }
+.fleet-stage { position: relative; height: 195px; isolation: isolate; perspective: 700px; }
+.fleet-stage-grid { position: absolute; inset: 70px 5% 4px; z-index: -2; background-image: linear-gradient(var(--glass-border) 1px, transparent 1px), linear-gradient(90deg, var(--glass-border) 1px, transparent 1px); background-size: 24px 24px; transform: rotateX(65deg); mask-image: radial-gradient(ellipse, #0008, transparent 70%); }
+.fleet-podium { position: absolute; width: 68%; height: 110px; left: 16%; bottom: 5px; transform: rotateX(62deg) rotateZ(-12deg); transform-style: preserve-3d; border: 1px solid var(--control-border-active); border-radius: 18px; background: linear-gradient(135deg, var(--glass-highlight), var(--glass-card)), var(--page-bg); box-shadow: 0 1px 0 var(--glass-border), 0 3px 0 var(--page-bg), 0 5px 0 var(--glass-border), 0 10px 0 var(--page-bg), 0 12px 0 var(--glass-border), 8px 25px 20px #0004; transition: transform .45s, box-shadow .45s; }
+.fleet-podium span { position: absolute; inset: 10px; border: 1px solid var(--glass-border); border-radius: 12px; }
+.fleet-podium::after { content: ''; position: absolute; left: 25%; right: 25%; bottom: -8px; height: 2px; background: var(--directory-accent); box-shadow: 0 0 12px var(--directory-accent); opacity: .5; }
+.fleet-stage :deep(.equipment-visual) { position: absolute; inset: 0 0 16px; height: auto; background: none; overflow: visible; }
+.fleet-stage :deep(.equipment-visual::before), .fleet-stage :deep(.visual-baseline) { display: none; }
+.fleet-stage :deep(.equipment-symbol) { padding: 18px; border-radius: 9px; background: linear-gradient(135deg, var(--glass-highlight), var(--glass-card)), var(--page-bg); color: var(--text-soft); border-color: var(--control-border); transform: perspective(600px) rotateY(-24deg) rotateX(8deg) translateY(-8px); box-shadow: 2px 1px 0 var(--glass-border), 5px 3px 0 var(--page-bg), 7px 4px 0 var(--control-border), 12px 20px 20px #0004; transition: transform .45s, box-shadow .45s; }
+.fleet-stage :deep(.equipment-glyph) { width: 55px; height: 55px; }
+.fleet-stage :deep(img) { width: 85%; height: 145px; transform: perspective(600px) rotateY(-12deg) translateY(-8px); filter: drop-shadow(10px 20px 10px #0005); transition: transform .45s; }
+.fleet-stage :deep(.operation-ring) { z-index: 2; bottom: 2px; width: 70%; height: 40px; }
+.fleet-stage :deep(.operation-state) { right: 12px; bottom: 2px; }
+.fleet-stage-coordinate { position: absolute; left: 12px; bottom: 18px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; letter-spacing: 1px; color: var(--text-muted); opacity: .65; }
+.fleet-card:hover .fleet-podium, .fleet-card:focus-visible .fleet-podium { transform: rotateX(62deg) rotateZ(-5deg) translateY(-4px); }
+.fleet-card:hover :deep(.equipment-symbol), .fleet-card:focus-visible :deep(.equipment-symbol) { transform: perspective(600px) rotateY(-10deg) rotateX(4deg) translateY(-14px); }
+.fleet-card:hover :deep(img), .fleet-card:focus-visible :deep(img) { transform: perspective(600px) rotateY(-3deg) translateY(-14px); }
+.fleet-card-body { padding: 10px 14px 12px; border-top: 1px solid var(--glass-border); background: linear-gradient(180deg, var(--glass-card), transparent); }
+.fleet-card-body > .fleet-id { display: none; }
+.fleet-card h3 { margin: 0 0 10px; height: 40px; line-height: 20px; font-size: 15px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fleet-card-metrics { gap: 10px; }
+.fleet-card-metrics > span { font-size: 10px; }
+.fleet-card-metrics > span + span { padding-left: 12px; border-left: 1px solid var(--glass-border); }
+.fleet-card-metrics b { font-size: 13px; margin-top: 5px; }
+.fleet-card footer { margin: 0 14px; padding: 7px 0; background: transparent; font-size: 10px; }
+.fleet-arrow { font-size: 17px; transition: transform .3s; }
+.fleet-card:hover .fleet-arrow { transform: translate(2px, -2px); }
+@media (prefers-reduced-motion: reduce) { .fleet-card, .fleet-card *, .fleet-card :deep(*) { transition: none !important; } }
 </style>

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Activity, Search, RefreshCw, Radio, Server, Wifi } from 'lucide-vue-next'
 import EquipmentVisual from '../components/EquipmentVisual.vue'
 import HomePointCard from '../components/HomePointCard.vue'
@@ -8,7 +8,8 @@ import { useTelemetryStore } from '../stores/telemetry'
 import { useHomeDevicesStore } from '../stores/homeDevices'
 import { telemetryApi } from '../services/telemetry'
 import { pointKey } from '../charts/telemetry'
-import { isVibrationPoint, moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
+import { equipmentSceneLayout } from '../charts/equipmentScene.js'
+import { moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 
 const telemetry = useTelemetryStore()
 const monitor = useHomeDevicesStore()
@@ -23,13 +24,51 @@ const activeAcoustic = ref('')
 const switchingAcoustic = ref(false)
 const acousticPanel = ref(null)
 const controller = new AbortController()
-let sampleTimer, metadataTimer
+let sampleTimer, metadataTimer, sceneObserver
+const sceneViewport = ref(null)
+const sceneSize = ref({ width: 780, height: 540 })
 const colors = ['#39a9ff', '#ff9800', '#00c875']
 const devices = computed(() => [
   ...sortMonitoringModules(telemetry.modules || []).map(module => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', id: module.moduleId, name: moduleDisplayName(module), online: module.runtimeStatus?.isOnline, points: pointMap.value[module.moduleId] || [], raw: module })),
   ...(monitor.devices || []).map(device => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', id: device.deviceId, name: device.deviceName || device.deviceId, online: device.online, points: device.channels || [], raw: device })),
 ])
 const visibleDevices = computed(() => devices.value.filter(device => (source.value === 'all' || device.source === source.value) && `${device.name} ${device.id}`.toLowerCase().includes(search.value.trim().toLowerCase())))
+const sceneZoom = ref(1)
+const maxSceneZoom = computed(() => Math.max(1, Math.min(1.6, sceneSize.value.width / 310)))
+const effectiveSceneZoom = computed(() => Math.min(sceneZoom.value, maxSceneZoom.value))
+let drag = null, dragged = false
+const sceneExtent = computed(() => ({ width: sceneSize.value.width, height: Math.max(sceneSize.value.height, sceneLayout.value.height * effectiveSceneZoom.value) }))
+function beginSceneDrag(event) {
+  dragged = false
+  if (event.pointerType !== 'mouse' || event.button !== 0) return
+  drag = { y: event.clientY, top: sceneViewport.value.scrollTop }
+}
+function moveSceneDrag(event) {
+  if (!drag) return
+  const dy = event.clientY - drag.y
+  if (Math.abs(dy) > 6) dragged = true
+  if (dragged) {
+    sceneViewport.value.setPointerCapture(event.pointerId)
+    sceneViewport.value.scrollTop = drag.top - dy
+  }
+}
+function endSceneDrag(event) {
+  drag = null
+  if (sceneViewport.value?.hasPointerCapture(event.pointerId)) sceneViewport.value.releasePointerCapture(event.pointerId)
+}
+async function resetScene() {
+  sceneZoom.value = 1
+  await nextTick()
+  sceneViewport.value?.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
+}
+const sceneDevices = visibleDevices
+const sceneLayout = computed(() => equipmentSceneLayout(sceneDevices.value.length, sceneSize.value.width / effectiveSceneZoom.value, 600))
+watch(sceneDevices, async devices => {
+  if (activeAcoustic.value && !devices.some(device => device.source === 'monitor' && device.points.some(channel => connectionKey(device, channel) === activeAcoustic.value))) {
+    await acousticPanel.value?.[0]?.stopSession()
+    activeAcoustic.value = ''
+  }
+})
 const onlineCount = computed(() => devices.value.filter(device => device.online === true).length)
 const offlineCount = computed(() => devices.value.filter(device => device.online === false).length)
 const unknownCount = computed(() => devices.value.filter(device => device.online !== true && device.online !== false).length)
@@ -37,11 +76,6 @@ const pointCount = computed(() => devices.value.reduce((total, device) => total 
 const hasData = computed(() => telemetry.modules !== null || monitor.devices !== null)
 const currentTime = computed(() => new Date(now.value).toLocaleString('zh-CN', { hour12: false }))
 const connectionKey = (device, channel) => JSON.stringify([device.id, channel.channelId])
-const pointGroups = points => {
-  if (points.length <= 1) return [{ points, offset: 0 }]
-  const midpoint = Math.ceil(points.length / 2)
-  return [{ points: points.slice(0, midpoint), offset: 0 }, { points: points.slice(midpoint), offset: midpoint }]
-}
 const stateText = online => online === true ? '在线' : online === false ? '离线' : '状态未知'
 
 async function refresh() {
@@ -81,6 +115,10 @@ async function toggleLive(value) {
   } else await telemetry.refreshLatest({ signal: controller.signal })
 }
 onMounted(() => {
+  sceneObserver = new ResizeObserver(([entry]) => {
+    sceneSize.value = { width: entry.contentRect.width, height: entry.contentRect.height }
+  })
+  if (sceneViewport.value) sceneObserver.observe(sceneViewport.value)
   refresh()
   sampleTimer = window.setInterval(() => {
     now.value = Date.now()
@@ -89,6 +127,7 @@ onMounted(() => {
   metadataTimer = window.setInterval(() => { if (autoRefresh.value) refresh() }, 30000)
 })
 onBeforeUnmount(() => {
+  sceneObserver?.disconnect()
   controller.abort()
   window.clearInterval(sampleTimer)
   window.clearInterval(metadataTimer)
@@ -111,29 +150,36 @@ onBeforeUnmount(() => {
     </section>
     <div v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="wall-error" role="alert"><span v-if="telemetry.errors.modules">设备列表：{{ telemetry.errors.modules }}。</span><span v-if="telemetry.errors.latest">实时采样：{{ telemetry.errors.latest }}。</span><span v-if="monitor.error">声纹设备：{{ monitor.error }}。</span>保留最近成功数据，请留意采样时间。</div>
     <div class="wall-controls"><div role="group" aria-label="首页设备来源"><button v-for="item in [{id:'all',label:'全部设备'}, {id:'legacy',label:'采集模块'}, {id:'monitor',label:'声纹设备'}]" :key="item.id" :class="{active: source === item.id}" :aria-pressed="source === item.id" @click="source = item.id">{{ item.label }}</button></div><label><Search :size="16" /><input v-model="search" aria-label="搜索设备名称或编号" placeholder="搜索设备名称 / 编号" /></label><span>{{ visibleDevices.length }} 台设备 · 2 秒更新</span></div>
-    <div class="wall-device-grid">
-      <article v-for="(device, deviceIndex) in visibleDevices" :key="device.key" class="wall-device" :style="{ '--entry-delay': Math.min(deviceIndex, 6) * 70 + 'ms' }">
-        <header class="module-stage-header">
-          <div class="module-topline"><span>{{ device.source === 'legacy' ? '采集模块' : '声纹设备' }} / {{ device.id }}</span><RouterLink :to="{ path:'/device/detail', query:{source:device.source, device:device.id, tab:'live'} }" :aria-label="'查看' + device.name + '详情'">详情 ↗</RouterLink></div>
-          <div class="module-stage"><div class="stage-orbit" aria-hidden="true"></div><EquipmentVisual class="stage-equipment" :name="device.name" :source="device.source" :device-id="device.id" /><div class="stage-plinth" aria-hidden="true"></div></div>
-          <div class="module-caption"><h2 :title="device.name">{{ device.name }}</h2><p><span class="module-state" :class="device.online === true ? 'online' : device.online === false ? 'offline' : ''"><i></i>{{ stateText(device.online) }}</span><span>{{ device.points.length }} 个点位</span><span v-if="device.source === 'legacy' && device.points.some(isVibrationPoint)">振动 {{ device.points.filter(isVibrationPoint).length }} 项</span><span v-else>{{ device.source === 'legacy' ? device.raw.protocol || '采集模块' : '声纹采集' }}</span></p></div>
-        </header>
-        <div class="parameter-heading"><span>实时点位 <b>{{ device.points.length }}</b></span><span>{{ device.points.length > 4 ? '上下滚动查看全部 ↓' : '独立采样 · 实时曲线' }}</span></div>
-        <div class="parameter-viewport" tabindex="0" role="region" :aria-label="device.name + '实时点位，可上下滚动'" :class="{ 'single-point': device.points.length === 1, 'few-points': device.points.length <= 2 }">
-        <div v-if="pointErrors[device.id] && device.source === 'legacy'" class="wall-error" role="alert">{{ pointErrors[device.id] }}</div>
-        <div class="wall-points module-parameters">
-          <div v-for="(group, groupIndex) in pointGroups(device.points)" :key="groupIndex" class="parameter-column" :aria-label="groupIndex === 0 ? '左侧参数' : '右侧参数'">
-          <template v-if="device.source === 'legacy'"><HomePointCard compact v-for="(point, index) in group.points" :key="pointKey(point)" :point="point" :samples="telemetry.buffers[pointKey(point)] || []" :color="colors[(group.offset + index) % colors.length]" :now="now" :paused="!autoRefresh" /></template>
-          <template v-else><template v-for="(channel, index) in group.points" :key="connectionKey(device, channel)">
-            <SpectrumPage v-if="activeAcoustic === connectionKey(device, channel)" ref="acousticPanel" embedded compact :device="device.raw" :channel-id="channel.channelId" :accent-color="colors[(group.offset + index) % colors.length]" display-mode="live" />
-            <section v-else class="wall-acoustic-point"><header><h3>{{ channel.name || channel.channelName || channel.channelId }}</h3><span>{{ stateText(channel.online) }}</span></header><strong>— <small>波形 RMS</small></strong><div class="acoustic-placeholder"><Activity :size="30" /><span>{{ channel.online === false ? '点位离线' : '连接后显示实时波形' }}</span></div><button :disabled="!autoRefresh || channel.online !== true || device.online === false || switchingAcoustic" @click="selectAcoustic(device, channel)">监听此点位 →</button></section>
-          </template></template>
+    <div class="scene-workspace">
+      <section class="equipment-scene" aria-label="设备空间总览">
+        <header class="scene-heading"><div><span>设备空间总览 · {{ sceneDevices.length }} 台</span><small>示意布局 · 点位直接展示 · 每行两项 · 超过四项内部滚动</small></div><div class="scene-tools"><button aria-label="缩小场景" :disabled="effectiveSceneZoom <= 1" @click="sceneZoom = Math.max(1, effectiveSceneZoom - .15)">−</button><span>{{ Math.round(effectiveSceneZoom * 100) }}%</span><button aria-label="放大场景" :disabled="effectiveSceneZoom >= maxSceneZoom" @click="sceneZoom = Math.min(maxSceneZoom, effectiveSceneZoom + .15)">+</button><button @click="resetScene">回到总览</button></div></header>
+        <div ref="sceneViewport" class="scene-scroll" tabindex="0" aria-label="设备场景，可上下拖动或使用上下方向键滚动" @pointerdown="beginSceneDrag" @pointermove="moveSceneDrag" @pointerup="endSceneDrag" @pointercancel="endSceneDrag" @lostpointercapture="drag = null">
+          <div class="scene-extent" :style="{ width: sceneExtent.width + 'px', height: sceneExtent.height + 'px' }">
+          <div class="scene-world" :style="{ width: sceneLayout.width + 'px', height: sceneLayout.height + 'px', transform: 'scale(' + effectiveSceneZoom + ')', '--scene-node-width': sceneLayout.nodeWidth + 'px' }">
+            <div class="scene-floor" aria-hidden="true"><div class="scene-route"></div><span class="scene-floor-label">EQUIPMENT MONITORING</span></div>
+            <article v-for="(device, index) in sceneDevices" :key="device.key" class="scene-node" :class="{ offline: device.online === false }" :style="{ left: sceneLayout.positions[index].left + 'px', top: sceneLayout.positions[index].top + 'px' }" :aria-label="device.name + '实时监测'">
+              <span class="scene-node-id">{{ device.id }} <i>{{ stateText((device.source === 'legacy' ? telemetry.errors.modules : monitor.error) ? undefined : device.online) }}</i></span>
+              <span class="scene-pedestal" aria-hidden="true"></span>
+              <EquipmentVisual :name="device.name" :source="device.source" :device-id="device.id" :online="(device.source === 'legacy' ? telemetry.errors.modules : monitor.error) ? undefined : device.online" :paused="!autoRefresh" />
+              <h2 class="scene-node-name" :title="device.name">{{ device.name }}</h2>
+              <div class="scene-point-heading"><span>{{ device.points.length }} 个点位</span><span v-if="device.points.length > 4">上下滚动查看 ↓</span><RouterLink :to="{ path: '/device/detail', query: { source: device.source, device: device.id, tab: 'live' } }" :aria-label="device.name + '设备详情'">详情 ↗</RouterLink></div>
+              <div class="scene-point-viewport" tabindex="0" role="region" :aria-label="device.name + '全部点位，上下滚动查看'" @pointerdown.stop @pointermove.stop @pointerup.stop @wheel.stop>
+                <div v-if="device.source === 'legacy' && pointErrors[device.id]" class="wall-error" role="alert">{{ pointErrors[device.id] }}</div>
+                <template v-if="device.source === 'legacy'">
+                  <HomePointCard v-for="(point, pointIndex) in device.points" :key="pointKey(point)" compact :point="point" :samples="telemetry.buffers[pointKey(point)] || []" :color="colors[pointIndex % colors.length]" :now="now" :paused="!autoRefresh" />
+                </template>
+                <template v-else><template v-for="(channel, channelIndex) in device.points" :key="connectionKey(device, channel)">
+                  <SpectrumPage v-if="activeAcoustic === connectionKey(device, channel)" ref="acousticPanel" embedded compact :device="device.raw" :channel-id="channel.channelId" :accent-color="colors[channelIndex % colors.length]" display-mode="live" />
+                  <section v-else class="scene-acoustic-point"><header><h3>{{ channel.name || channel.channelName || channel.channelId }}</h3><span>{{ stateText(channel.online) }}</span></header><p>— <small>波形 RMS</small></p><button :disabled="!autoRefresh || channel.online !== true || device.online === false || switchingAcoustic" @click="selectAcoustic(device, channel)">{{ channel.online === false ? '点位离线' : '监听此点位' }}</button></section>
+                </template></template>
+                <p v-if="!device.points.length" class="wall-empty">{{ refreshing ? '正在加载点位…' : '暂无监测点位' }}</p>
+              </div>
+            </article>
+          </div>
           </div>
         </div>
-        <p v-if="!device.points.length" class="wall-empty">{{ refreshing ? '正在加载点位…' : '该设备暂无监测点位' }}</p>
-        </div>
-        <footer class="wall-device-footer"><span class="signal-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span>{{ device.source === 'legacy' ? '各点位独立采样 · 最近 300 个时间点' : '声纹实时监听 · 同时监听一个点位' }}</span><span>{{ autoRefresh ? '实时监测' : '刷新已暂停' }}</span></footer>
-      </article>
+        <footer class="scene-legend"><span><i></i>在线采集</span><span><i></i>离线</span><span>各设备独立监测 · 曲线来自实时采样</span></footer>
+      </section>
     </div>
     <div v-if="!visibleDevices.length" class="wall-empty"><Server :size="34" /><p>{{ refreshing ? '正在加载设备…' : '暂无匹配设备，请调整筛选或刷新重试' }}</p></div>
     <footer class="wall-footer"><span><i></i>设备状态与采样时间独立展示</span><span>蓝 · 橙 · 绿 / 多点位实时趋势</span></footer>
@@ -194,9 +240,11 @@ onBeforeUnmount(() => {
 .module-topline a { color: var(--wall-accent); font-size: 10px; text-decoration: none; }
 .module-stage { position: relative; height: 112px; display: grid; place-items: center; isolation: isolate; }
 .module-stage .stage-equipment { position: relative; width: 180px; height: 100px; overflow: visible; z-index: 2; background: none; }
+.stage-equipment :deep(.operation-ring) { height: 35px; bottom: 0; }
+.stage-equipment :deep(.operation-state) { right: -22px; bottom: 8px; }
 .stage-equipment :deep(img) { width: 100%; height: 100%; filter: drop-shadow(0 10px 8px #0005); }
 .stage-equipment :deep(.equipment-symbol) { padding: 10px; border-radius: 10px; color: var(--text-soft); background: var(--glass-card); border-color: var(--glass-border); }
-.stage-equipment :deep(svg) { width: 43px; height: 43px; }
+.stage-equipment :deep(.equipment-glyph) { width: 43px; height: 43px; }
 .stage-equipment :deep(.visual-baseline), .stage-equipment::before { display: none; }
 .stage-plinth { position: absolute; z-index: 1; width: 158px; height: 30px; bottom: 0; border: 1px solid var(--control-border-active); border-radius: 50%; background: radial-gradient(ellipse, #46907c25, #46907c04 70%); box-shadow: 0 4px 0 var(--page-bg), 0 5px 0 var(--glass-border), 0 10px 20px #0003; }
 .stage-orbit { position: absolute; bottom: 0; width: 210px; height: 45px; border: 1px dashed #46907c30; border-radius: 50%; transform: rotate(-7deg); }
@@ -227,10 +275,129 @@ onBeforeUnmount(() => {
 .few-points .module-parameters .acoustic-placeholder { display: flex; height: 75px; }
 .parameter-viewport .wall-empty { margin: 0; padding: 65px 12px; font-size: 12px; }
 .wall-device-footer { padding: 4px 12px 0; opacity: .75; }
-.spatial-view .stage-equipment { animation: equipment-hover 6s ease-in-out infinite; animation-delay: var(--entry-delay); transform-origin: center bottom; }.spatial-view .stage-orbit { animation: stage-breathe 4s ease-in-out infinite; }
+.spatial-view .module-stage.is-running .stage-equipment { animation: equipment-hover 6s ease-in-out infinite; animation-delay: var(--entry-delay); transform-origin: center bottom; }.spatial-view .module-stage.is-running .stage-orbit { animation: stage-breathe 4s ease-in-out infinite; }
 .spatial-view .wall-device:nth-child(2n) .module-stage { perspective: 600px; }.spatial-view .wall-device:hover .stage-plinth { box-shadow: 0 4px 0 var(--page-bg), 0 5px 0 var(--control-border-active), 0 0 22px #46907c25; }
 @keyframes equipment-hover { 0%,100% { transform: perspective(650px) translateY(-2px) rotateY(-7deg); } 50% { transform: perspective(650px) translateY(-7px) rotateY(7deg); } }
 @keyframes stage-breathe { 0%,100% { opacity: .4; transform: scale(.95) rotate(-7deg); } 50% { opacity: 1; transform: scale(1.03) rotate(7deg); } }
 .is-paused .stage-equipment, .is-paused .stage-orbit { animation-play-state: paused; }
-@media (prefers-reduced-motion: reduce) { .spatial-view .stage-equipment, .spatial-view .stage-orbit { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .spatial-view .stage-equipment, .spatial-view .module-stage.is-running .stage-orbit { animation: none; } }
+.scene-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 16px; min-height: 600px; }
+.equipment-scene { min-width: 0; position: relative; display: flex; flex-direction: column; border: 1px solid var(--glass-border); border-radius: 10px; overflow: hidden; background: radial-gradient(ellipse at 50% 55%, #46907c12, transparent 70%), var(--page-bg); }
+.scene-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 15px 18px; z-index: 1; }
+.scene-heading > div:first-child { display: grid; gap: 5px; font-size: 14px; }
+.scene-heading small { font-size: 10px; color: var(--wall-muted); }
+.scene-device-count { font-size: 10px; color: var(--wall-accent); white-space: nowrap; }
+.scene-scroll { position: relative; flex: 1; min-width: 0; min-height: 460px; overflow: hidden; }
+.scene-world { position: absolute; left: 50%; top: 50%; transform-origin: center; perspective: 900px; isolation: isolate; }
+.scene-floor { position: absolute; inset: 35px 10px -10px; z-index: -1; transform: rotateX(35deg) rotateZ(-8deg); border: 1px solid var(--control-border); border-radius: 20px; background: linear-gradient(var(--glass-border) 1px, transparent 1px), linear-gradient(90deg, var(--glass-border) 1px, transparent 1px), var(--glass-card-soft); background-size: 38px 38px; box-shadow: 0 8px 0 var(--page-bg), 0 9px 0 var(--glass-border), 0 30px 50px #0003; }
+.scene-route { position: absolute; top: 48%; left: 6%; right: 6%; height: 15px; border-top: 1px solid #39a9ff45; border-bottom: 1px dashed #39a9ff25; background: linear-gradient(90deg, transparent, #39a9ff12, transparent); }
+.scene-floor-label { position: absolute; bottom: 17px; right: 20px; font-size: 11px; letter-spacing: 5px; color: var(--wall-muted); opacity: .3; }
+.scene-node { position: absolute; width: 205px; padding: 0; border: 0; background: transparent; color: var(--text-main); cursor: pointer; text-align: left; isolation: isolate; transition: transform .3s; }
+.scene-node:focus-visible { outline: 1px solid var(--wall-accent); outline-offset: 7px; border-radius: 8px; }
+.scene-node:hover { transform: translateY(-4px); }
+.scene-node-id { display: flex; justify-content: space-between; align-items: center; font-size: 9px; letter-spacing: 1px; color: var(--wall-muted); }
+.scene-node-id i { font-style: normal; color: var(--wall-accent); letter-spacing: 0; }
+.scene-node.offline .scene-node-id i { color: #ff9800; }
+.scene-node :deep(.equipment-visual) { height: 115px; overflow: visible; background: none; }
+.scene-node :deep(.equipment-visual::before), .scene-node :deep(.visual-baseline), .scene-node :deep(.operation-state) { display: none; }
+.scene-node :deep(.equipment-symbol) { padding: 13px; border-radius: 6px; background: linear-gradient(135deg, var(--glass-highlight), var(--glass-card)), var(--page-bg); transform: perspective(500px) rotateY(-25deg) rotateX(9deg); box-shadow: 3px 2px 0 var(--glass-border), 6px 4px 0 var(--page-bg), 7px 5px 0 var(--control-border), 12px 17px 12px #0004; color: var(--text-soft); }
+.scene-node :deep(.equipment-glyph) { width: 43px; height: 43px; }
+.scene-node :deep(img) { height: 100px; width: 165px; transform: perspective(500px) rotateY(-15deg); }
+.scene-node :deep(.operation-ring) { height: 30px; bottom: 0; }
+.scene-pedestal { position: absolute; width: 150px; height: 65px; top: 76px; left: 27px; z-index: -1; transform: perspective(500px) rotateX(55deg) rotateZ(-12deg); border-radius: 12px; border: 1px solid var(--control-border); background: linear-gradient(var(--glass-card), var(--glass-card)), var(--page-bg); box-shadow: 0 5px 0 var(--page-bg), 0 6px 0 var(--glass-border), 0 10px 0 var(--page-bg), 0 11px 0 var(--glass-border), 6px 16px 18px #0004; transition: box-shadow .3s, border-color .3s; }
+.scene-node.selected .scene-pedestal { border-color: var(--wall-accent); box-shadow: 0 5px 0 var(--page-bg), 0 6px 0 var(--control-border-active), 0 10px 0 var(--page-bg), 0 11px 0 var(--control-border-active), 0 0 25px #00c87520; }
+.scene-node-name { display: block; margin-top: 8px; font-size: 11px; line-height: 17px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.scene-node.selected .scene-node-name { color: var(--wall-accent); }
+.scene-reading { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 3px; }
+.scene-reading > span { color: #39a9ff; font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.scene-reading small { font-size: 9px; color: var(--wall-muted); }
+.scene-reading svg { width: 98px; height: 26px; overflow: visible; }
+.scene-reading path { fill: none; stroke: #39a9ff; stroke-width: 1.3; }
+.scene-reading-label { display: block; font-size: 9px; color: var(--wall-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 18px; font-size: 10px; color: var(--wall-muted); }
+.scene-legend i { display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: #00c875; }
+.scene-legend > span:nth-child(2) i { background: #ff9800; }
+.scene-inspector.wall-device-grid { display: block; padding: 12px 8px; border: 1px solid var(--glass-border); border-radius: 10px; background: var(--glass-card-soft); }
+.scene-inspector .parameter-viewport { height: 320px; }
+.scene-inspector .module-stage { height: 95px; }
+.scene-inspector .module-stage .stage-equipment { height: 85px; }
+.scene-inspector .module-caption h2 { font-size: 13px; }
+@media (min-width: 1800px) { .scene-workspace { grid-template-columns: minmax(0, 1fr) 390px; min-height: 680px; } }
+@media (max-width: 1150px) { .scene-workspace { grid-template-columns: minmax(0, 1fr); } .scene-inspector .parameter-viewport { height: 224px; } .scene-inspector .module-stage { display: none; } .scene-inspector .module-caption h2 { height: auto; } }
+/* Touchscreen presentation: readable equipment, expandable world, bottom detail dock. */
+.scene-workspace { position: relative; display: block; height: max(650px, calc(100dvh - 235px)); min-height: 650px; }
+.equipment-scene { height: 100%; box-sizing: border-box; }
+.details-open .equipment-scene { padding-bottom: 310px; }
+.scene-tools { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.scene-tools button, .close-inspector { min-width: 44px; min-height: 44px; padding: 0 13px; border: 1px solid var(--control-border); border-radius: 6px; color: var(--text-main); background: var(--page-bg); cursor: pointer; font-size: 14px; }
+.scene-tools button:disabled { opacity: .35; cursor: default; }
+.scene-heading > div:first-child { font-size: 18px; }
+.scene-heading small { font-size: 12px; }
+.scene-scroll { min-height: 0; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--control-border-active) transparent; cursor: grab; user-select: none; }
+.scene-scroll:active { cursor: grabbing; }
+.scene-scroll:focus-visible { outline: 1px solid var(--wall-accent); outline-offset: -2px; }
+.scene-extent { position: relative; }
+.scene-world { left: 0; top: 0; transform-origin: top left; }
+.scene-node { width: var(--scene-node-width, 270px); }
+.scene-node.selected { transform: translateY(-3px) scale(1.06); z-index: 2; }
+.scene-node-id { font-size: 13px; }
+.scene-node :deep(.equipment-visual) { height: 145px; }
+.scene-node :deep(.equipment-glyph) { width: 64px; height: 64px; }
+.scene-node :deep(.equipment-symbol) { padding: 18px; }
+.scene-node :deep(img) { width: 225px; height: 135px; pointer-events: none; }
+.scene-pedestal { width: 200px; height: 80px; top: 98px; left: 35px; }
+.scene-node-name { font-size: 16px; line-height: 24px; }
+.scene-reading > span { font-size: 26px; }
+.scene-reading small { font-size: 13px; }
+.scene-reading svg { width: 115px; height: 32px; }
+.scene-reading-label { font-size: 12px; line-height: 20px; }
+.scene-legend { font-size: 12px; }
+.scene-inspector.wall-device-grid { position: absolute; bottom: 0; left: 0; right: 0; height: 300px; box-sizing: border-box; padding: 12px 18px; background: var(--page-bg); border-color: var(--control-border-active); box-shadow: 0 -12px 35px #0003; z-index: 5; }
+.dock-actions { position: absolute; top: 10px; right: 14px; z-index: 2; display: flex; align-items: center; gap: 12px; }
+.dock-actions a { display: inline-flex; align-items: center; min-height: 44px; color: var(--wall-accent); font-size: 14px; text-decoration: none; }
+.scene-inspector .module-stage, .scene-inspector .module-topline, .scene-inspector .wall-device-footer { display: none; }
+.scene-inspector .module-stage-header { padding: 0 210px 0 0; }
+.scene-inspector .module-caption { display: flex; align-items: center; gap: 20px; padding: 0 0 8px; text-align: left; }
+.scene-inspector .module-caption h2 { height: auto; margin: 0; font-size: 18px; line-height: 28px; }
+.scene-inspector .module-caption p { font-size: 12px; }
+.scene-inspector .parameter-heading { height: 26px; font-size: 12px; padding-left: 0; }
+.scene-inspector .parameter-viewport { height: 210px; }
+.scene-inspector .module-parameters { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.scene-inspector .parameter-column { display: contents; }
+.scene-inspector .module-parameters::before { display: none; }
+.scene-inspector .module-parameters :deep(.home-point.compact) { height: 185px; grid-template-rows: 36px 37px 100px; }
+.scene-inspector .module-parameters :deep(.compact h3) { font-size: 14px; line-height: 18px; }
+.scene-inspector .module-parameters :deep(.compact .home-point-value) { height: 33px; }
+.scene-inspector .module-parameters :deep(.compact .home-point-value strong) { font-size: 28px; }
+.scene-inspector .module-parameters :deep(.compact .home-point-chart) { height: 100px; }
+.scene-inspector .single-point .module-parameters { grid-template-columns: minmax(0, 1fr); }
+.wall-metrics article { padding: 6px 14px; }
+.wall-heading { padding-bottom: 6px; }
+.wall-heading p, .wall-eyebrow { display: none; }
+@media (max-width: 900px) { .scene-heading { flex-wrap: wrap; } .scene-inspector .module-caption { display: block; } .scene-inspector .module-caption p { justify-content: flex-start; } .scene-inspector .module-parameters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .scene-inspector .parameter-viewport { height: 180px; } }
+.scene-node { cursor: default; }
+.scene-node:hover { transform: none; }
+.scene-node-name { margin: 8px 0 0; font-weight: 500; }
+.scene-point-heading { display: flex; align-items: center; gap: 8px; height: 38px; color: var(--wall-muted); font-size: 12px; }
+.scene-point-heading > span:nth-child(2) { font-size: 11px; }
+.scene-point-heading a { margin-left: auto; color: var(--wall-accent); text-decoration: none; padding: 10px 0; }
+.scene-point-viewport { height: 257px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 128px; align-content: start; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; scrollbar-width: thin; scrollbar-color: var(--control-border-active) transparent; scrollbar-gutter: stable; border-top: 1px solid var(--glass-border); background: linear-gradient(180deg, var(--glass-card), transparent), var(--page-bg); cursor: auto; user-select: text; }
+.scene-point-viewport > .wall-error, .scene-point-viewport > .wall-empty { grid-column: 1 / -1; }
+.scene-node .scene-pedestal { left: calc(50% - 100px); }
+.scene-point-viewport:focus-visible { outline: 1px solid var(--wall-accent); outline-offset: 2px; }
+.scene-point-viewport :deep(.home-point.compact) { box-sizing: border-box; height: 128px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 31px 28px 56px; padding: 6px 8px; border: 0; border-bottom: 1px solid var(--glass-border); border-radius: 0; background: transparent; }
+.scene-point-viewport :deep(.compact header) { align-items: flex-start; }
+.scene-point-viewport :deep(.compact h3) { font-size: 14px; line-height: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.scene-point-viewport :deep(.compact .home-point-value) { height: 28px; margin: 0; }
+.scene-point-viewport :deep(.compact .home-point-value strong) { font-size: 26px; }
+.scene-point-viewport :deep(.compact .home-point-chart) { grid-column: 1; grid-row: 3; height: 56px; }
+.scene-acoustic-point { height: 128px; box-sizing: border-box; padding: 8px; border-bottom: 1px solid var(--glass-border); }
+.scene-acoustic-point header { display: flex; justify-content: space-between; gap: 8px; }
+.scene-acoustic-point h3 { margin: 0; font-size: 14px; }
+.scene-acoustic-point header span, .scene-acoustic-point small { font-size: 11px; color: var(--wall-muted); }
+.scene-acoustic-point p { font-size: 24px; margin: 7px 0; }
+.scene-acoustic-point button { min-height: 36px; width: 100%; color: var(--wall-accent); background: var(--control-bg); border: 1px solid var(--control-border); border-radius: 4px; cursor: pointer; }
+.scene-acoustic-point button:disabled { opacity: .4; cursor: default; }
+.scene-point-viewport :deep(.acoustic-point-card) { margin: 0; border-radius: 0; padding: 8px; }
+.scene-point-viewport :deep(.compact-waveform) { height: 56px; }
 </style>
