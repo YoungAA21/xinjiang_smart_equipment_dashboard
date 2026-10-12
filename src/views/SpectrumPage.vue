@@ -1,5 +1,4 @@
 <script setup>
-import { isDemoMode } from '../services/dataMode.js'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Activity, AudioLines, CircleStop, Headphones, RefreshCcw } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
@@ -11,6 +10,7 @@ import { auth } from '../services/auth'
 const props = defineProps({
   embedded: Boolean,
   compact: Boolean,
+  showAddress: Boolean,
   accentColor: { type: String, default: '#39a9ff' },
   device: { type: Object, default: null },
   channelId: { type: String, default: '' },
@@ -62,6 +62,12 @@ const channelOptions = computed(() => selectedDevice.value?.channels || [])
 const selectedChannels = computed(() =>
   channelOptions.value.filter((channel) => channel.channelId === selectedChannelId.value))
 
+const channelIp = computed(() => {
+  const channel = channelOptions.value.find(item => item.channelId === (props.channelId || selectedChannelId.value))
+  const collectors = selectedDevice.value?.collectors || []
+  const collector = channel?.collectorId != null ? collectors.find(item => item.collectorId === channel.collectorId) : collectors.length === 1 ? collectors[0] : null
+  return collector?.ip || '未提供'
+})
 const canStart = computed(() => selectedDevice.value?.online !== false && selectedChannels.value.some((channel) => channel.online) && !session.value && !starting.value)
 const frameLive = computed(() => Boolean(session.value) && lastFrameAt.value > 0 && Date.now() - lastFrameAt.value < 3000)
 const rollingEnvelope = computed(() => {
@@ -340,7 +346,7 @@ const playPcmChunk = async (buffer) => {
 }
 
 const connectSignalWs = async (version = sessionVersion) => {
-  const Socket = isDemoMode ? (await import('../demo/socket.js')).DemoSocket : WebSocket
+  const Socket = WebSocket
   if (disposed || version !== sessionVersion) return
   const sessionId = getSessionId(session.value)
   if (!sessionId) {
@@ -384,7 +390,7 @@ const connectSignalWs = async (version = sessionVersion) => {
 }
 
 const connectAudioWs = async (version = sessionVersion) => {
-  const Socket = isDemoMode ? (await import('../demo/socket.js')).DemoSocket : WebSocket
+  const Socket = WebSocket
   if (disposed || version !== sessionVersion) return
   const sessionId = getSessionId(session.value)
   if (!audioEnabled.value || !sessionId) {
@@ -497,6 +503,7 @@ onBeforeUnmount(() => { disposed = true; stopSession() })
   <article v-if="compact" class="acoustic-point-card" :style="{ '--point-color': accentColor }">
     <header><h3>{{ selectedChannels[0]?.name || selectedChannels[0]?.channelName || channelId }}</h3><span>{{ signalStatus }}</span></header>
     <div class="acoustic-value">{{ waveformSamples.length ? Math.sqrt(waveformSamples.reduce((sum, item) => sum + item[1] ** 2, 0) / waveformSamples.length).toFixed(3) : '—' }} <small>波形 RMS</small></div>
+    <p v-if="showAddress">网关 IP：{{ channelIp }}</p>
     <p>声纹实时波形 · {{ stats.sampleRate }} Hz</p>
     <div class="compact-waveform" role="img" :aria-label="channelId + '实时波形'"><EChart v-if="waveformSamples.length" :option="waveformOption" /><div v-else class="compact-empty">{{ starting ? '正在连接点位…' : '等待声纹采样' }}</div></div>
     <footer><span>{{ lastFrameAt ? new Date(lastFrameAt).toLocaleTimeString('zh-CN') : '暂无采样' }}</span><el-button v-if="!session" size="small" :loading="starting" :disabled="!canStart" @click="startSession">连接点位</el-button><el-button v-else size="small" @click="stopSession">暂停</el-button></footer>
@@ -506,6 +513,7 @@ onBeforeUnmount(() => { disposed = true; stopSession() })
     <article class="panel spectrum-live-panel">
       <h2>{{ embedded && displayMode === 'live' ? '实时声纹监测' : '实时频谱分析' }}</h2>
 
+      <p v-if="showAddress">网关 IP：{{ channelIp }}</p>
       <div class="spectrum-live-toolbar">
         <el-select v-if="!embedded" v-model="selectedDeviceId" filterable placeholder="选择设备" :disabled="Boolean(session)">
           <el-option v-for="device in devices" :key="device.deviceId" :label="device.deviceName || device.deviceId" :value="device.deviceId" />

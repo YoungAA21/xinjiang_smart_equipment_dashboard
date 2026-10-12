@@ -32,6 +32,28 @@ test('module route encodes IDs and HTTP errors are not accepted as samples', asy
   await assert.rejects(() => telemetryApi.getModulePoints('A/B #'), /404/)
 })
 
+test('point configuration retries a transient timeout once and returns the real response', async () => {
+  let attempts = 0
+  globalThis.fetch = async () => {
+    if (++attempts === 1) throw new DOMException('Timed out', 'TimeoutError')
+    return reply({ moduleId: 'PRESS01', points: [point] })
+  }
+  assert.deepEqual(await telemetryApi.getModulePoints('PRESS01'), { moduleId: 'PRESS01', points: [point] })
+  assert.equal(attempts, 2)
+})
+
+test('point configuration stops after two network failures and never retries navigation cancellation', async () => {
+  let attempts = 0
+  globalThis.fetch = async () => { attempts++; throw new TypeError('Failed to fetch') }
+  await assert.rejects(telemetryApi.getModulePoints('PRESS01'), /Failed to fetch/)
+  assert.equal(attempts, 2)
+  const controller = new AbortController()
+  attempts = 0
+  globalThis.fetch = async () => { attempts++; controller.abort(); throw new DOMException('Timed out', 'TimeoutError') }
+  await assert.rejects(telemetryApi.getModulePoints('PRESS01', { signal: controller.signal }), { name: 'TimeoutError' })
+  assert.equal(attempts, 1)
+})
+
 test('history rejects invalid point IDs, times and limits before fetching', async () => {
   globalThis.fetch = () => { throw new Error('Should not fetch') }
   for (const invalid of [{pointId:0},{pointId:-1},{pointId:1.5},{start:'bad'}, {end:query.start},{limit:0},{limit:100001},{limit:2.5}]) assert.throws(()=>validateHistoryQuery({...query,...invalid}))
@@ -119,4 +141,40 @@ test('unmount clear prevents late sample response contaminating the next visit',
   globalThis.fetch=async()=>{await new Promise(r=>release=r);return reply([sample(1)])}
   const pending=store.refreshLatest();store.clear();release();await pending
   assert.equal(store.latest.length,0);assert.deepEqual(store.buffers,{})
+})
+
+test('home history fills a bounded window, merges concurrent live data and rolls oldest samples out', async () => {
+  setActivePinia(createPinia()); const store = useTelemetryStore(); let release
+  const start = Date.parse('2026-10-12T10:00:00+08:00')
+  const at = (i, value = i) => ({ ...point, collectedAt: new Date(start + i * 1000).toISOString(), value })
+  globalThis.fetch = async url => {
+    if (url.includes('/history')) { await new Promise(resolve => release = resolve); return reply({ points: Array.from({ length: 310 }, (_, i) => at(i)).reverse() }) }
+    return reply([at(309, 999), at(310)])
+  }
+  const loading = store.seedRecentPoints(point)
+  await store.refreshLatest(); release(); await loading
+  const key = pointKey(point)
+  assert.equal(store.buffers[key].length, 300)
+  assert.equal(store.buffers[key][0].value, 11)
+  assert.equal(store.buffers[key].at(-2).value, 999)
+  assert.equal(store.buffers[key].at(-1).value, 310)
+  globalThis.fetch = async () => reply([at(311)])
+  await store.refreshLatest()
+  assert.equal(store.buffers[key].length, 300)
+  assert.equal(store.buffers[key][0].value, 12)
+  assert.equal(store.buffers[key].at(-1).value, 311)
+  globalThis.fetch = async () => reply([])
+  await store.refreshLatest()
+  assert.equal(store.buffers[key].length, 300)
+})
+
+test('home history does not fabricate samples or restore data after leaving the page', async () => {
+  setActivePinia(createPinia()); const store = useTelemetryStore(); let release
+  globalThis.fetch = async () => reply({ points: [] })
+  await store.seedRecentPoints(point)
+  assert.deepEqual(store.buffers[pointKey(point)], [])
+  globalThis.fetch = async () => { await new Promise(resolve => release = resolve); return reply({ points: [sample(1)] }) }
+  const loading = store.seedRecentPoints(point)
+  store.clear(); release(); await loading
+  assert.deepEqual(store.buffers, {})
 })

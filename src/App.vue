@@ -1,6 +1,5 @@
 <script setup>
-import DataModeControl from './components/DataModeControl.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ChevronDown, Fan, Maximize2, Minimize2, Moon, PanelLeftClose, PanelLeftOpen, Sun, UserRound } from 'lucide-vue-next'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -11,6 +10,14 @@ const route = useRoute()
 const router = useRouter()
 const dashboard = useDashboardStore()
 const sidebarCollapsed = ref(localStorage.getItem('dashboard-sidebar') === 'collapsed')
+const homeControlsExpanded = ref(false)
+provide('homeControlsExpanded', homeControlsExpanded)
+watch(() => route.path, path => {
+  if (path === '/') {
+    sidebarCollapsed.value = true
+    homeControlsExpanded.value = false
+  }
+}, { immediate: true })
 const isLightTheme = ref(localStorage.getItem('dashboard-theme') === 'light')
 const isFullscreen = ref(false)
 
@@ -98,13 +105,12 @@ onBeforeUnmount(() => {
     </aside>
 
     <section class="screen" :class="{ 'device-monitor-screen': route.name === 'device-detail' }">
-      <header class="topbar">
+      <header v-show="route.path !== '/' || homeControlsExpanded" class="topbar">
         <div class="top-title">
           <span class="title-glow"></span>
           <strong>{{ pageTitle }}</strong>
         </div>
         <div class="top-actions">
-          <DataModeControl />
           <button class="top-icon-btn" type="button" :title="isLightTheme ? '切换当前主题色' : '切换亮色主题'" @click="toggleTheme">
             <component :is="isLightTheme ? Moon : Sun" :size="17" />
           </button>
@@ -123,7 +129,7 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <section class="page-stage">
+      <section class="page-stage" :style="route.path === '/' && !homeControlsExpanded ? { height: '100vh' } : undefined">
         <router-view />
       </section>
     </section>

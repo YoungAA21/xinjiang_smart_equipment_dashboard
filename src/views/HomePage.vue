@@ -1,133 +1,291 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Activity, Search, RefreshCw, Radio, Server, Wifi } from 'lucide-vue-next'
-import EquipmentVisual from '../components/EquipmentVisual.vue'
-import HomePointCard from '../components/HomePointCard.vue'
-import SpectrumPage from './SpectrumPage.vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ElDialog } from 'element-plus'
+import { Search, RefreshCw, Activity, AudioLines, Thermometer, Gauge, Eye, EyeOff } from 'lucide-vue-next'
+import HomeMonitorTile from '../components/HomeMonitorTile.vue'
+import HomeDeviceDialog from '../components/HomeDeviceDialog.vue'
+import { createSoundPreview } from '../services/soundPreview.js'
+import { api } from '../services/api'
+import { auth } from '../services/auth'
 import { useTelemetryStore } from '../stores/telemetry'
 import { useHomeDevicesStore } from '../stores/homeDevices'
 import { telemetryApi } from '../services/telemetry'
 import { pointKey } from '../charts/telemetry'
-import { equipmentSceneLayout } from '../charts/equipmentScene.js'
-import { moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
+import { groupMachineDevices } from '../charts/machineGroups.js'
+import { isMeasurementPoint, moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 
 const telemetry = useTelemetryStore()
+const homeControlsExpanded = inject('homeControlsExpanded', ref(false))
 const monitor = useHomeDevicesStore()
 const pointMap = ref({})
+const pointLoadedAt = new Map()
 const pointErrors = ref({})
 const search = ref('')
 const source = ref('all')
 const autoRefresh = ref(true)
 const refreshing = ref(false)
 const now = ref(Date.now())
-const activeAcoustic = ref('')
 const switchingAcoustic = ref(false)
-const acousticPanel = ref(null)
 const controller = new AbortController()
-let sampleTimer, metadataTimer, sceneObserver
-const sceneViewport = ref(null)
-const sceneSize = ref({ width: 780, height: 540 })
-const colors = ['#39a9ff', '#ff9800', '#00c875']
+let sampleTimer, metadataTimer
+const dialogOpen = ref(false)
+const deviceDialog = ref(null)
+async function closeDeviceDialog(done) {
+  await deviceDialog.value?.stopSession()
+  done()
+}
+const dialogDeviceKey = ref('')
+const dialogDevice = computed(() => devices.value.find(device => device.key === dialogDeviceKey.value))
+async function openDeviceDialog(device) {
+  if (switchingAcoustic.value) return
+  switchingAcoustic.value = true
+  try {
+    await preview.stop()
+    dialogDeviceKey.value = device.key
+    dialogOpen.value = true
+  } finally { switchingAcoustic.value = false }
+}
 const devices = computed(() => [
   ...sortMonitoringModules(telemetry.modules || []).map(module => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', id: module.moduleId, name: moduleDisplayName(module), online: module.runtimeStatus?.isOnline, points: pointMap.value[module.moduleId] || [], raw: module })),
   ...(monitor.devices || []).map(device => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', id: device.deviceId, name: device.deviceName || device.deviceId, online: device.online, points: device.channels || [], raw: device })),
 ])
-const visibleDevices = computed(() => devices.value.filter(device => (source.value === 'all' || device.source === source.value) && `${device.name} ${device.id}`.toLowerCase().includes(search.value.trim().toLowerCase())))
-const sceneZoom = ref(1)
-const maxSceneZoom = computed(() => Math.max(1, Math.min(1.6, sceneSize.value.width / 310)))
-const effectiveSceneZoom = computed(() => Math.min(sceneZoom.value, maxSceneZoom.value))
-let drag = null, dragged = false
-const sceneExtent = computed(() => ({ width: sceneSize.value.width, height: Math.max(sceneSize.value.height, sceneLayout.value.height * effectiveSceneZoom.value) }))
-function beginSceneDrag(event) {
-  dragged = false
-  if (event.pointerType !== 'mouse' || event.button !== 0) return
-  drag = { y: event.clientY, top: sceneViewport.value.scrollTop }
-}
-function moveSceneDrag(event) {
-  if (!drag) return
-  const dy = event.clientY - drag.y
-  if (Math.abs(dy) > 6) dragged = true
-  if (dragged) {
-    sceneViewport.value.setPointerCapture(event.pointerId)
-    sceneViewport.value.scrollTop = drag.top - dy
-  }
-}
-function endSceneDrag(event) {
-  drag = null
-  if (sceneViewport.value?.hasPointerCapture(event.pointerId)) sceneViewport.value.releasePointerCapture(event.pointerId)
-}
-async function resetScene() {
-  sceneZoom.value = 1
-  await nextTick()
-  sceneViewport.value?.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
-}
-const sceneDevices = visibleDevices
-const sceneLayout = computed(() => equipmentSceneLayout(sceneDevices.value.length, sceneSize.value.width / effectiveSceneZoom.value, 600))
-watch(sceneDevices, async devices => {
-  if (activeAcoustic.value && !devices.some(device => device.source === 'monitor' && device.points.some(channel => connectionKey(device, channel) === activeAcoustic.value))) {
-    await acousticPanel.value?.[0]?.stopSession()
-    activeAcoustic.value = ''
-  }
-})
-const onlineCount = computed(() => devices.value.filter(device => device.online === true).length)
-const offlineCount = computed(() => devices.value.filter(device => device.online === false).length)
-const unknownCount = computed(() => devices.value.filter(device => device.online !== true && device.online !== false).length)
-const pointCount = computed(() => devices.value.reduce((total, device) => total + device.points.length, 0))
-const hasData = computed(() => telemetry.modules !== null || monitor.devices !== null)
-const currentTime = computed(() => new Date(now.value).toLocaleString('zh-CN', { hour12: false }))
+const machineData = computed(() => groupMachineDevices(devices.value))
+const activeMachineId = ref('ZJ117')
+const activeMachine = computed(() => machineData.value.groups.find(machine => machine.id === activeMachineId.value) || machineData.value.groups[0])
 const connectionKey = (device, channel) => JSON.stringify([device.id, channel.channelId])
-const stateText = online => online === true ? '在线' : online === false ? '离线' : '状态未知'
+const currentTime = computed(() => new Date(now.value).toLocaleTimeString('zh-CN', { hour12: false }))
+const machineState = machine => machine.members.some(member => member.source === 'legacy' ? telemetry.errors.modules : monitor.error) ? '状态待确认' : machine.status
+const categories = [
+  { id: 'vibration', name: '振动监测', color: '#368ce8', icon: Activity },
+  { id: 'temperature', name: '温度监测', color: '#db8b2b', icon: Thermometer },
+  { id: 'pressure', name: '负压监测', color: '#18a99a', icon: Gauge },
+  { id: 'other', name: '电机与其他参数', color: '#8875d9', icon: Gauge },
+  { id: 'acoustic', name: '声纹监测', color: '#688bea', icon: AudioLines },
+]
+const categoryOf = (point, member) => member.source === 'monitor' ? 'acoustic' : String(point.metricType || '').startsWith('Vibration') ? 'vibration' : point.metricType === 'Temperature' ? 'temperature' : point.metricType === 'NegativePressure' ? 'pressure' : 'other'
+const allRows = computed(() => activeMachine.value.members.flatMap(member => member.points.map(point => ({ member, point, key: member.source === 'legacy' ? pointKey(point) : connectionKey(member, point), category: categoryOf(point, member) }))))
+const sections = computed(() => categories.map(category => ({ ...category, rows: allRows.value.filter(row => row.category === category.id && (source.value === 'all' || row.member.source === source.value) && `${row.member.name} ${row.member.id} ${row.point.name || row.point.channelName || ''} ${row.point.pointCode || row.point.channelId}`.toLowerCase().includes(search.value.trim().toLowerCase())) })).filter(category => category.rows.length))
+const staleCount = computed(() => allRows.value.filter(row => {
+  if (row.member.source !== 'legacy') return false
+  const last = telemetry.buffers[row.key]?.at(-1)
+  return last && now.value - Date.parse(last.collectedAt) > 10000
+}).length)
+const acousticCount = computed(() => allRows.value.filter(row => row.member.source === 'monitor').length)
+const activeErrors = computed(() => activeMachine.value.members.filter(member => pointErrors.value[member.id]).map(member => `${member.id}：${pointErrors.value[member.id]}`))
+const historyState = ref({})
+let warmingHistory = false
+const historyLoading = computed(() => allRows.value.some(row => historyState.value[row.key] === 'loading'))
+const historyFailed = computed(() => allRows.value.some(row => historyState.value[row.key] === 'error'))
+async function warmHistory() {
+  if (warmingHistory || controller.signal.aborted) return
+  warmingHistory = true
+  try {
+    while (!controller.signal.aborted) {
+      const batch = allRows.value.filter(row => row.member.source === 'legacy' && Number.isSafeInteger(Number(row.point.pointId)) && !historyState.value[row.key]).slice(0, 2)
+      if (!batch.length) break
+      await Promise.all(batch.map(async row => {
+        historyState.value[row.key] = 'loading'
+        try {
+          await telemetry.seedRecentPoints(row.point, { signal: controller.signal })
+          if (!controller.signal.aborted) historyState.value[row.key] = 'ready'
+        } catch {
+          if (!controller.signal.aborted) historyState.value[row.key] = 'error'
+        }
+      }))
+    }
+  } finally { warmingHistory = false }
+}
+function retryHistory() {
+  for (const key of Object.keys(historyState.value)) if (historyState.value[key] === 'error') delete historyState.value[key]
+  warmHistory()
+}
+watch(allRows, warmHistory)
+async function selectMachine(id) {
+  if (id === activeMachineId.value || switchingAcoustic.value || dialogOpen.value) return
+  switchingAcoustic.value = true
+  try {
+    await preview.stop()
+    activeMachineId.value = id
+    search.value = ''
+    source.value = 'all'
+  } finally { switchingAcoustic.value = false }
+}
+async function navigateTab(event, index) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const tabs = machineData.value.groups
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
+  const parent = event.currentTarget.parentElement
+  await selectMachine(tabs[next].id)
+  await nextTick()
+  parent.querySelector(`[id="machine-tab-${activeMachineId.value}"]`)?.focus()
+}
+const displayRows = computed(() => {
+  const rows = sections.value.flatMap(section => section.rows.map(row => ({ ...row, color: section.color, categoryName: section.name })))
+  const pairs = [
+    { moduleId: 'SC01', speedCode: 'MAIN_SPEED', currentCode: 'MAIN_CURRENT', title: '主机运行参数', speedName: '主机车速', currentName: '主机电流' },
+    { moduleId: 'SC02', speedCode: 'AUX_SPEED', currentCode: 'AUX_CURRENT', title: '辅机运行参数', speedName: '辅机车速', currentName: '辅机电流' },
+  ]
+  for (const pair of pairs) {
+    const speedIndex = rows.findIndex(row => row.member.id === pair.moduleId && row.point.pointCode === pair.speedCode)
+    const currentIndex = rows.findIndex(row => row.member.id === pair.moduleId && row.point.pointCode === pair.currentCode)
+    if (speedIndex < 0 || currentIndex < 0) continue
+    const speed = rows[speedIndex], current = rows[currentIndex]
+    rows.splice(Math.max(speedIndex, currentIndex), 1)
+    rows.splice(Math.min(speedIndex, currentIndex), 1)
+    rows.push({
+      key: `${pair.moduleId}-COMBINED-READINGS`, member: speed.member, point: speed.point,
+      category: speed.category, categoryName: pair.title, color: speed.color,
+      combined: { ...pair, speed: { ...speed.point, key: speed.key }, current: { ...current.point, key: current.key } },
+    })
+  }
+  return rows.map(row => row.member.source === 'monitor'
+    ? { ...row, soundFrame: soundFrames.value[row.key], soundStatus: soundCardStatus(row) }
+    : row)
+})
+const soundFrames = ref({})
+const soundStatus = ref('等待连接')
+const preview = createSoundPreview({ api, token: () => auth.getToken(), Socket: WebSocket,
+  onFrame(deviceId, channelId, data) {
+    const key = JSON.stringify([deviceId, channelId])
+    const previous = soundFrames.value[key] || { rows: [], sampleRate: 22000 }
+    const row = Array.isArray(data.waterfallRow) ? data.waterfallRow : null
+    soundFrames.value[key] = {
+      rows: row ? [...previous.rows.slice(-219), row] : previous.rows,
+      sampleRate: Number(data.sampleRate || data.sample_rate || data.audioSampleRate) || previous.sampleRate,
+      receivedAt: Date.now(),
+    }
+  },
+  onStatus(value) { soundStatus.value = value },
+})
+const soundTargets = computed(() => {
+  if (!autoRefresh.value || dialogOpen.value || switchingAcoustic.value || monitor.error) return []
+  const targets = new Map()
+  for (const row of displayRows.value) {
+    if (row.member.source !== 'monitor' || row.point.online !== true || row.member.online === false) continue
+    if (!targets.has(row.member.id)) targets.set(row.member.id, { deviceId: row.member.id, channelIds: [] })
+    targets.get(row.member.id).channelIds.push(row.point.channelId)
+  }
+  return [...targets.values()]
+})
+let soundTargetIndex = 0, soundTimer
+const targetSignature = computed(() => JSON.stringify(soundTargets.value))
+watch(targetSignature, () => {
+  soundTargetIndex = 0
+  preview.setTarget(soundTargets.value[0]).catch(() => {})
+})
+function soundCardStatus(row) {
+  if (monitor.error) return '状态待确认'
+  if (row.point.online === false || row.member.online === false) return '离线'
+  if (!autoRefresh.value) return '已暂停'
+  const frame = soundFrames.value[row.key]
+  return frame ? now.value - frame.receivedAt > 10000 ? '未更新' : '实时' : soundStatus.value
+}
+function collectorIp(row) {
+  const collectors = row.member.raw?.collectors || []
+  const collector = collectors.find(item => item.collectorId === row.point.collectorId)
+  return collector?.ip || (collectors.length === 1 ? collectors[0].ip : '')
+}
+function fanGroupOf(row) {
+  if (row.member.source === 'legacy' && row.member.id === 'VSE03') {
+    const suffix = row.point.pointCode?.match(/_v_(\d+)$/)?.[1]
+    if (['01', '02', '08', '09'].includes(suffix)) return 've'
+    if (['03', '04', '10', '11'].includes(suffix)) return 'max'
+  }
+  if (row.member.source === 'legacy' && row.member.id === 'TEMP02') {
+    if (['BEARING_TEMP_07', 'BEARING_TEMP_08'].includes(row.point.pointCode)) return 've'
+    if (['BEARING_TEMP_09', 'BEARING_TEMP_10'].includes(row.point.pointCode)) return 'max'
+  }
+  if (row.member.source === 'monitor') {
+    const ip = collectorIp(row)
+    if (ip === '192.168.4.119') return 've'
+    if (ip === '192.168.4.111') {
+      const channel = `${row.point.channelId || ''} ${row.point.channelName || row.point.name || ''}`
+      return /(?:CH(?:ANNEL)?[-_ ]?0?1\b|通道\s*1\b)/i.test(channel) ? 've' : 'max'
+    }
+  }
+  return ''
+}
+const isFanLayout = computed(() => activeMachineId.value === 'ZJ117')
+const isZb25Layout = computed(() => activeMachineId.value === 'ZB25')
+const fanGroups = computed(() => [
+  { id: 've', title: 'VE 风机', rows: displayRows.value.filter(row => fanGroupOf(row) === 've') },
+  { id: 'max', title: 'MAX 风机', rows: displayRows.value.filter(row => fanGroupOf(row) === 'max') },
+].filter(group => group.rows.length))
+const pressureRows = computed(() => isFanLayout.value ? displayRows.value.filter(row => row.category === 'pressure') : [])
+const fanRemainderRows = computed(() => isFanLayout.value ? displayRows.value.filter(row => !fanGroupOf(row) && row.category !== 'pressure') : [])
+const zb25PressureRows = computed(() => isZb25Layout.value ? displayRows.value.filter(row => row.category === 'pressure') : [])
+const zb25Rows = computed(() => {
+  if (!isZb25Layout.value) return []
+  const rows = displayRows.value.filter(row => row.category !== 'pressure')
+  const mainParameters = rows.filter(row => row.combined?.moduleId === 'SC01')
+  const motorDrive = rows.filter(row => row.member.id === 'VSE04' && row.point.pointCode === 'SE04_v_01')
+  const placed = new Set([...mainParameters, ...motorDrive].map(row => row.key))
+  const ordered = [...mainParameters, ...rows.filter(row => !placed.has(row.key)), ...motorDrive]
+  const motorDriveIndex = ordered.findIndex(row => motorDrive.some(motorRow => motorRow.key === row.key))
+  const fourthRowSecondColumn = 13
+  if (motorDriveIndex >= 0 && ordered.length > fourthRowSecondColumn) {
+    ;[ordered[fourthRowSecondColumn], ordered[motorDriveIndex]] = [ordered[motorDriveIndex], ordered[fourthRowSecondColumn]]
+  }
+  return ordered
+})
 
-async function refresh() {
+async function refresh({ reloadPoints = true } = {}) {
   if (refreshing.value || controller.signal.aborted) return
   refreshing.value = true
   try {
     await Promise.all([telemetry.refreshModules({ signal: controller.signal }), monitor.refresh({ signal: controller.signal }), telemetry.refreshLatest({ signal: controller.signal })])
-    const modules = telemetry.modules || []
-    for (let offset = 0; offset < modules.length && !controller.signal.aborted; offset += 4) {
-      await Promise.all(modules.slice(offset, offset + 4).map(async module => {
+    const activeModules = telemetry.modules || []
+    const activeIds = new Set(activeModules.map(module => module.moduleId))
+    for (const id of Object.keys(pointMap.value)) {
+      if (!activeIds.has(id)) { delete pointMap.value[id]; delete pointErrors.value[id]; pointLoadedAt.delete(id) }
+    }
+    // Configuration changes slowly; automatic refresh reuses successful loads for five minutes.
+    const modules = activeModules.filter(module => reloadPoints || !pointLoadedAt.has(module.moduleId) || Date.now() - pointLoadedAt.get(module.moduleId) >= 300000)
+    for (let offset = 0; offset < modules.length && !controller.signal.aborted; offset += 2) {
+      await Promise.all(modules.slice(offset, offset + 2).map(async module => {
         try {
           const result = await telemetryApi.getModulePoints(module.moduleId, { signal: controller.signal })
           if (controller.signal.aborted) return
           if (!Array.isArray(result?.points) || result.moduleId !== module.moduleId) throw new Error('点位返回格式不正确')
-          pointMap.value[module.moduleId] = sortMonitoringPoints(result.points)
+          // Home charts and counts include measurements only.
+          pointMap.value[module.moduleId] = sortMonitoringPoints(result.points.filter(isMeasurementPoint))
+          pointLoadedAt.set(module.moduleId, Date.now())
           delete pointErrors.value[module.moduleId]
         } catch (error) {
-          if (!controller.signal.aborted) pointErrors.value[module.moduleId] = error.message || '点位获取失败'
+          if (!controller.signal.aborted) {
+            pointLoadedAt.delete(module.moduleId)
+            const reason = error.name === 'TimeoutError' ? '点位配置请求超时，已重试' : error.message || '点位获取失败'
+            pointErrors.value[module.moduleId] = `${reason}。${pointMap.value[module.moduleId] ? '保留上次点位，稍后自动重试' : '稍后自动重试，也可点击刷新数据'}`
+          }
         }
       }))
     }
   } finally { refreshing.value = false }
 }
-async function selectAcoustic(device, channel) {
-  if (switchingAcoustic.value || controller.signal.aborted) return
-  switchingAcoustic.value = true
-  try {
-    // The monitor service grants one session per user. Close it before switching.
-    await acousticPanel.value?.[0]?.stopSession()
-    if (!controller.signal.aborted) activeAcoustic.value = connectionKey(device, channel)
-  } finally { switchingAcoustic.value = false }
-}
 async function toggleLive(value) {
-  if (!value) {
-    await acousticPanel.value?.[0]?.stopSession()
-    activeAcoustic.value = ''
-  } else await telemetry.refreshLatest({ signal: controller.signal })
+  if (!value) await preview.stop().catch(() => {})
+  else await telemetry.refreshLatest({ signal: controller.signal })
 }
 onMounted(() => {
-  sceneObserver = new ResizeObserver(([entry]) => {
-    sceneSize.value = { width: entry.contentRect.width, height: entry.contentRect.height }
-  })
-  if (sceneViewport.value) sceneObserver.observe(sceneViewport.value)
+  soundTimer = window.setInterval(() => {
+    const targets = soundTargets.value
+    if (!targets.length) return
+    if (targets.length > 1 || ['连接断开', '连接异常', '连接失败'].includes(soundStatus.value)) {
+      soundTargetIndex = (soundTargetIndex + 1) % targets.length
+      preview.setTarget(targets[soundTargetIndex]).catch(() => {})
+    }
+  }, 10000)
   refresh()
   sampleTimer = window.setInterval(() => {
     now.value = Date.now()
     if (autoRefresh.value) telemetry.refreshLatest({ signal: controller.signal })
   }, 2000)
-  metadataTimer = window.setInterval(() => { if (autoRefresh.value) refresh() }, 30000)
+  metadataTimer = window.setInterval(() => { if (autoRefresh.value) refresh({ reloadPoints: false }) }, 30000)
 })
 onBeforeUnmount(() => {
-  sceneObserver?.disconnect()
+  window.clearInterval(soundTimer)
+  preview.stop().catch(() => {})
   controller.abort()
   window.clearInterval(sampleTimer)
   window.clearInterval(metadataTimer)
@@ -137,267 +295,133 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page live-wall spatial-view" :class="{ 'is-paused': !autoRefresh }">
-    <header class="wall-heading">
-      <div><span class="wall-eyebrow">REALTIME EQUIPMENT CENTER</span><h1>设备实时监测中心 <span class="wall-live"><i></i>{{ autoRefresh ? 'LIVE' : 'PAUSED' }}</span></h1><p>全域设备 · 多点位感知 · 实时运行态势</p></div>
-      <div class="wall-actions"><time>{{ currentTime }}</time><div><el-switch v-model="autoRefresh" aria-label="首页实时刷新" @change="toggleLive" /><span>实时刷新</span><el-button :icon="RefreshCw" :loading="refreshing" @click="refresh">刷新数据</el-button></div></div>
-    </header>
-    <section class="wall-metrics" aria-label="实时监测概览">
-      <article><Server :size="23" /><div><span>接入设备</span><strong>{{ hasData ? devices.length : '—' }}<small>台</small></strong></div><b>01</b></article>
-      <article><Wifi :size="23" /><div><span>在线设备</span><strong class="green">{{ hasData ? onlineCount : '—' }}<small>台</small></strong></div><b>02</b></article>
-      <article><Radio :size="23" /><div><span>已加载监测点位</span><strong>{{ hasData ? pointCount : '—' }}<small>个</small></strong></div><b>03</b></article>
-      <article><Activity :size="23" /><div><span>离线设备</span><strong class="orange">{{ hasData ? offlineCount : '—' }}<small>台</small></strong></div><span class="unknown-note">未知 {{ unknownCount }}</span><b>04</b></article>
-    </section>
-    <div v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="wall-error" role="alert"><span v-if="telemetry.errors.modules">设备列表：{{ telemetry.errors.modules }}。</span><span v-if="telemetry.errors.latest">实时采样：{{ telemetry.errors.latest }}。</span><span v-if="monitor.error">声纹设备：{{ monitor.error }}。</span>保留最近成功数据，请留意采样时间。</div>
-    <div class="wall-controls"><div role="group" aria-label="首页设备来源"><button v-for="item in [{id:'all',label:'全部设备'}, {id:'legacy',label:'采集模块'}, {id:'monitor',label:'声纹设备'}]" :key="item.id" :class="{active: source === item.id}" :aria-pressed="source === item.id" @click="source = item.id">{{ item.label }}</button></div><label><Search :size="16" /><input v-model="search" aria-label="搜索设备名称或编号" placeholder="搜索设备名称 / 编号" /></label><span>{{ visibleDevices.length }} 台设备 · 2 秒更新</span></div>
-    <div class="scene-workspace">
-      <section class="equipment-scene" aria-label="设备空间总览">
-        <header class="scene-heading"><div><span>设备空间总览 · {{ sceneDevices.length }} 台</span><small>示意布局 · 点位直接展示 · 每行两项 · 超过四项内部滚动</small></div><div class="scene-tools"><button aria-label="缩小场景" :disabled="effectiveSceneZoom <= 1" @click="sceneZoom = Math.max(1, effectiveSceneZoom - .15)">−</button><span>{{ Math.round(effectiveSceneZoom * 100) }}%</span><button aria-label="放大场景" :disabled="effectiveSceneZoom >= maxSceneZoom" @click="sceneZoom = Math.min(maxSceneZoom, effectiveSceneZoom + .15)">+</button><button @click="resetScene">回到总览</button></div></header>
-        <div ref="sceneViewport" class="scene-scroll" tabindex="0" aria-label="设备场景，可上下拖动或使用上下方向键滚动" @pointerdown="beginSceneDrag" @pointermove="moveSceneDrag" @pointerup="endSceneDrag" @pointercancel="endSceneDrag" @lostpointercapture="drag = null">
-          <div class="scene-extent" :style="{ width: sceneExtent.width + 'px', height: sceneExtent.height + 'px' }">
-          <div class="scene-world" :style="{ width: sceneLayout.width + 'px', height: sceneLayout.height + 'px', transform: 'scale(' + effectiveSceneZoom + ')', '--scene-node-width': sceneLayout.nodeWidth + 'px' }">
-            <div class="scene-floor" aria-hidden="true"><div class="scene-route"></div><span class="scene-floor-label">EQUIPMENT MONITORING</span></div>
-            <article v-for="(device, index) in sceneDevices" :key="device.key" class="scene-node" :class="{ offline: device.online === false }" :style="{ left: sceneLayout.positions[index].left + 'px', top: sceneLayout.positions[index].top + 'px' }" :aria-label="device.name + '实时监测'">
-              <span class="scene-node-id">{{ device.id }} <i>{{ stateText((device.source === 'legacy' ? telemetry.errors.modules : monitor.error) ? undefined : device.online) }}</i></span>
-              <span class="scene-pedestal" aria-hidden="true"></span>
-              <EquipmentVisual :name="device.name" :source="device.source" :device-id="device.id" :online="(device.source === 'legacy' ? telemetry.errors.modules : monitor.error) ? undefined : device.online" :paused="!autoRefresh" />
-              <h2 class="scene-node-name" :title="device.name">{{ device.name }}</h2>
-              <div class="scene-point-heading"><span>{{ device.points.length }} 个点位</span><span v-if="device.points.length > 4">上下滚动查看 ↓</span><RouterLink :to="{ path: '/device/detail', query: { source: device.source, device: device.id, tab: 'live' } }" :aria-label="device.name + '设备详情'">详情 ↗</RouterLink></div>
-              <div class="scene-point-viewport" tabindex="0" role="region" :aria-label="device.name + '全部点位，上下滚动查看'" @pointerdown.stop @pointermove.stop @pointerup.stop @wheel.stop>
-                <div v-if="device.source === 'legacy' && pointErrors[device.id]" class="wall-error" role="alert">{{ pointErrors[device.id] }}</div>
-                <template v-if="device.source === 'legacy'">
-                  <HomePointCard v-for="(point, pointIndex) in device.points" :key="pointKey(point)" compact :point="point" :samples="telemetry.buffers[pointKey(point)] || []" :color="colors[pointIndex % colors.length]" :now="now" :paused="!autoRefresh" />
-                </template>
-                <template v-else><template v-for="(channel, channelIndex) in device.points" :key="connectionKey(device, channel)">
-                  <SpectrumPage v-if="activeAcoustic === connectionKey(device, channel)" ref="acousticPanel" embedded compact :device="device.raw" :channel-id="channel.channelId" :accent-color="colors[channelIndex % colors.length]" display-mode="live" />
-                  <section v-else class="scene-acoustic-point"><header><h3>{{ channel.name || channel.channelName || channel.channelId }}</h3><span>{{ stateText(channel.online) }}</span></header><p>— <small>波形 RMS</small></p><button :disabled="!autoRefresh || channel.online !== true || device.online === false || switchingAcoustic" @click="selectAcoustic(device, channel)">{{ channel.online === false ? '点位离线' : '监听此点位' }}</button></section>
-                </template></template>
-                <p v-if="!device.points.length" class="wall-empty">{{ refreshing ? '正在加载点位…' : '暂无监测点位' }}</p>
-              </div>
-            </article>
-          </div>
-          </div>
-        </div>
-        <footer class="scene-legend"><span><i></i>在线采集</span><span><i></i>离线</span><span>各设备独立监测 · 曲线来自实时采样</span></footer>
-      </section>
+  <section class="page home-monitor" :class="{ paused: !autoRefresh }">
+    <div class="station-bar">
+    <nav class="machine-tabs" role="tablist" aria-label="选择监测设备">
+      <button v-for="(machine, index) in machineData.groups" :id="'machine-tab-'+machine.id" :key="machine.id" role="tab" :aria-selected="activeMachineId === machine.id" :aria-controls="'machine-panel-'+machine.id" :tabindex="activeMachineId === machine.id ? 0 : -1" :class="{ active: activeMachineId === machine.id }" :disabled="switchingAcoustic" @click="selectMachine(machine.id)" @keydown="navigateTab($event, index)"><span class="tab-number">0{{ index + 1 }}</span><span class="tab-title"><strong>{{ machine.name }}</strong><small>{{ machineState(machine) }}</small></span><span class="tab-dot" :class="{ online: machineState(machine) === '采集在线', warning: ['部分离线', '采集离线'].includes(machineState(machine)) }"></span></button>
+    </nav>
+    <div class="station-actions"><span class="refresh-indicator"><i></i>{{ autoRefresh ? '实时' : '暂停' }} · {{ currentTime }}</span><button class="plain-button view-settings" :aria-label="homeControlsExpanded ? '隐藏设置' : '显示设置'" :title="homeControlsExpanded ? '隐藏设置' : '显示设置'" :aria-expanded="homeControlsExpanded" @click="homeControlsExpanded = !homeControlsExpanded"><EyeOff v-if="homeControlsExpanded" :size="18"/><Eye v-else :size="18"/></button><el-button :icon="RefreshCw" :loading="refreshing" @click="refresh">刷新</el-button></div>
     </div>
-    <div v-if="!visibleDevices.length" class="wall-empty"><Server :size="34" /><p>{{ refreshing ? '正在加载设备…' : '暂无匹配设备，请调整筛选或刷新重试' }}</p></div>
-    <footer class="wall-footer"><span><i></i>设备状态与采样时间独立展示</span><span>蓝 · 橙 · 绿 / 多点位实时趋势</span></footer>
+    <div v-if="homeControlsExpanded" class="home-controls"><label><Search :size="16"/><input v-model="search" aria-label="搜索当前设备点位" placeholder="搜索当前设备点位" /></label><select v-model="source" aria-label="点位来源"><option value="all">全部点位</option><option value="legacy">数值监测</option><option value="monitor">声纹通道</option></select><el-switch v-model="autoRefresh" aria-label="自动刷新" @change="toggleLive" /><span>自动刷新</span></div>
+    <p v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="home-warning" role="alert">{{ [telemetry.errors.modules, telemetry.errors.latest, monitor.error].filter(Boolean).join('；') }}。保留最近数据，请留意采样时间。</p>
+    <Transition name="machine-fade" mode="out-in">
+      <main :id="'machine-panel-'+activeMachineId" :key="activeMachineId" role="tabpanel" :aria-labelledby="'machine-tab-'+activeMachineId" class="machine-panel">
+        <header class="device-summary"><span>{{ activeMachine.pointCount }} 个点位 · 声纹 {{ acousticCount }} 路 <b v-if="staleCount">· {{ staleCount }} 个未更新</b></span><span>{{ historyLoading ? '正在载入最近10分钟采样…' : '最近300个真实采样 · 新数据滚动替换' }}</span><RouterLink :to="{ path: '/device', query: { machine: activeMachineId } }">设备详情 ↗</RouterLink></header>
+        <p v-if="historyFailed" class="home-warning">部分历史采样未加载，暂显示已收到的数据。<button @click="retryHistory">重试历史</button></p>
+        <p v-for="error in activeErrors" :key="error" class="home-warning">{{ error }}</p>
+        <div v-if="isFanLayout" class="fan-layout">
+          <section v-for="group in fanGroups" :key="group.id" class="fan-group" :class="group.id">
+            <header class="fan-group-heading"><h2>{{ group.title }}</h2><span>{{ group.rows.length }} 个监测点</span></header>
+            <div class="fan-grid"><HomeMonitorTile v-for="row in group.rows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
+          </section>
+          <section v-if="pressureRows.length" class="pressure-span">
+            <header class="fan-group-heading pressure-heading"><h2>负压监测</h2><span>{{ pressureRows.length }} 个点位</span></header>
+            <div class="pressure-grid"><HomeMonitorTile v-for="row in pressureRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
+          </section>
+          <div v-if="fanRemainderRows.length" class="monitor-grid"><HomeMonitorTile v-for="row in fanRemainderRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
+        </div>
+        <div v-else-if="isZb25Layout" class="zb25-layout">
+          <div class="monitor-grid zb25-grid"><HomeMonitorTile v-for="row in zb25Rows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
+          <section v-if="zb25PressureRows.length" class="zb25-pressure-span">
+            <header class="fan-group-heading pressure-heading"><h2>负压监测</h2><span>{{ zb25PressureRows.length }} 个点位</span></header>
+            <div class="pressure-grid"><HomeMonitorTile v-for="row in zb25PressureRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
+          </section>
+        </div>
+        <div v-else class="monitor-grid"><HomeMonitorTile v-for="row in displayRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
+        <div v-if="!displayRows.length" class="home-empty"><Activity :size="32"/><h3>{{ refreshing ? '正在加载监测点位' : '暂无可展示的点位' }}</h3><p>{{ search || source !== 'all' ? '请调整筛选条件。' : '点位配置获取成功后会自动展示。' }}</p></div>
+      </main>
+    </Transition>
+    <aside v-if="machineData.pending.members.length" class="pending-note">另有 {{ machineData.pending.members.length }} 个采集来源待确认归属 <RouterLink :to="{ path: '/device', query: { machine: 'pending' } }">查看 ↗</RouterLink></aside>
+    <el-dialog v-model="dialogOpen" :before-close="closeDeviceDialog" :title="dialogDevice?.name || '设备详情'" width="94vw" top="3vh" class="home-device-dialog" append-to-body append-to=".dashboard-shell" destroy-on-close>
+      <HomeDeviceDialog ref="deviceDialog" v-if="dialogDevice && dialogOpen" :key="dialogDevice.key" :device="dialogDevice" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :error="dialogDevice.source === 'legacy' ? pointErrors[dialogDevice.id] || telemetry.errors.latest || telemetry.errors.modules : monitor.error" />
+    </el-dialog>
   </section>
 </template>
 
 <style scoped>
-.live-wall { --wall-text: var(--text-main); --wall-muted: var(--text-muted); --wall-line: var(--glass-border); --wall-point: var(--glass-card-soft); --wall-card: var(--glass-card); --wall-accent: #8ee6a8; padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; background: var(--page-bg); color: var(--wall-text); }
-.wall-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--wall-line); position: relative; }
-.wall-heading::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 120px; height: 2px; background: linear-gradient(90deg, transparent, var(--wall-accent), transparent); animation: heading-scan 9s ease-in-out infinite; }
-.wall-eyebrow { font-size: 10px; letter-spacing: 4px; color: var(--text-soft); }.wall-heading h1 { display: flex; gap: 18px; align-items: center; font-size: 28px; font-weight: 500; letter-spacing: 2px; margin: 10px 0; }.wall-heading p { font-size: 12px; color: var(--wall-muted); margin: 0; letter-spacing: 2px; }
-.wall-live { display: flex; gap: 7px; align-items: center; font-size: 10px; letter-spacing: 2px; color: var(--wall-accent); padding: 5px 9px; border: 1px solid var(--control-border-active); border-radius: 4px; }.wall-live i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: beacon 2s ease-out infinite; }
-.wall-actions { display: grid; gap: 12px; justify-items: end; }.wall-actions time { color: var(--text-soft); font-size: 16px; font-variant-numeric: tabular-nums; letter-spacing: 1px; }.wall-actions > div { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--wall-muted); }
-.wall-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }.wall-metrics article { display: flex; align-items: center; gap: 20px; padding: 18px 22px; border: 1px solid var(--wall-line); background: linear-gradient(110deg, rgba(70, 144, 124, .07), transparent), var(--wall-card); border-radius: 7px; position: relative; overflow: hidden; }.wall-metrics article > svg { color: var(--wall-accent); }.wall-metrics article > b { position: absolute; right: 12px; top: 8px; color: var(--glass-border); font-size: 26px; font-weight: 400; }.wall-metrics article div > span { font-size: 12px; color: var(--wall-muted); }.wall-metrics strong { display: block; color: var(--text-soft); font-size: 34px; font-weight: 500; margin-top: 5px; font-variant-numeric: tabular-nums; }.wall-metrics small { font-size: 12px; margin-left: 8px; color: var(--wall-muted); }.wall-metrics .green { color: var(--wall-accent); }.wall-metrics .orange { color: #e4a260; }.unknown-note { margin-left: auto; color: var(--wall-muted); font-size: 11px; align-self: end; }
-.wall-controls { display: flex; align-items: center; gap: 20px; }.wall-controls > div { display: flex; gap: 5px; }.wall-controls button { background: transparent; color: var(--wall-muted); border: 1px solid transparent; padding: 8px 16px; border-radius: 4px; font-size: 13px; }.wall-controls button.active { background: var(--control-bg-active); border-color: var(--control-border-active); color: var(--wall-accent); }.wall-controls label { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--wall-line); border-radius: 4px; color: var(--wall-muted); }.wall-controls input { background: transparent; color: var(--wall-text); border: 0; outline: none; font-size: 12px; width: 180px; }.wall-controls label:focus-within { border-color: var(--wall-accent); }.wall-controls > span { font-size: 11px; color: var(--wall-muted); margin-left: auto; }
-.wall-device-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
-.wall-device { min-width: 0; background: var(--wall-card); border: 1px solid var(--wall-line); border-radius: 9px; position: relative; overflow: hidden; box-shadow: inset 0 1px 0 var(--glass-highlight), 0 12px 30px #0002; animation: card-arrive .6s both; animation-delay: var(--entry-delay); transition: border-color .25s, box-shadow .25s; }.wall-device:hover { border-color: var(--control-border-active); box-shadow: 0 0 24px rgba(70, 144, 124, .08); }.wall-device::before { content: ''; position: absolute; top: 0; left: 0; width: 90px; height: 1px; background: linear-gradient(90deg, transparent, var(--wall-accent), transparent); animation: card-scan 8s linear infinite; animation-delay: var(--entry-delay); }
-.wall-device-header { display: flex; align-items: center; gap: 12px; padding: 12px 18px 12px 10px; border-bottom: 1px solid var(--wall-line); }.wall-device .wall-device-photo { width: 100px; height: 82px; flex-shrink: 0; }.wall-device-photo :deep(.equipment-symbol) { padding: 8px; border-radius: 8px; }.wall-device-photo :deep(.equipment-symbol) { color: var(--text-soft); background: var(--glass-card); border-color: var(--glass-border); }
-.wall-device-photo :deep(svg) { width: 42px; height: 42px; }.wall-device-photo :deep(.visual-baseline) { bottom: 0; }.wall-device-title { min-width: 0; flex: 1; }.wall-device-title > span { font-size: 10px; letter-spacing: 1px; color: var(--wall-muted); overflow-wrap: anywhere; }.wall-device-title h2 { font-size: 18px; margin: 6px 0 9px; font-weight: 500; overflow-wrap: anywhere; }.wall-device-title p { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--wall-muted); margin: 0; }.wall-device-title p > span { margin-left: 10px; }.wall-device-title i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-muted); }.wall-device-title i.online { background: #00c875; box-shadow: 0 0 8px #00c87550; }.wall-device-title i.offline { background: #ff9800; }.wall-device-header > a { color: var(--wall-accent); text-decoration: none; font-size: 11px; white-space: nowrap; }
-.wall-points { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px; }.wall-device-footer { display: flex; align-items: center; gap: 9px; padding: 0 16px 13px; font-size: 10px; color: var(--wall-muted); }.wall-device-footer > span:last-child { margin-left: auto; }.signal-bars { display: flex; align-items: center; gap: 2px; height: 12px; }.signal-bars i { background: #46907C; width: 2px; height: 8px; animation: signal-wave 1.4s ease-in-out infinite alternate; }.signal-bars i:nth-child(2n) { animation-delay: -.5s; }.signal-bars i:nth-child(3n) { animation-delay: -.9s; }
-.wall-acoustic-point { min-width: 0; padding: 13px 12px; border: 1px solid var(--wall-line); border-radius: 7px; background: var(--wall-point); }.wall-acoustic-point header { display: flex; justify-content: space-between; gap: 8px; }.wall-acoustic-point h3 { font-size: 13px; margin: 0; font-weight: 500; }.wall-acoustic-point header span { font-size: 10px; color: var(--wall-muted); }.wall-acoustic-point > strong { display: block; font-size: 28px; color: var(--wall-accent); margin-top: 12px; font-weight: 400; }.wall-acoustic-point small { font-size: 11px; color: var(--wall-muted); }.acoustic-placeholder { height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--wall-muted); font-size: 11px; }.acoustic-placeholder svg { opacity: .35; }.wall-acoustic-point button { width: 100%; background: rgba(70, 144, 124, .08); color: var(--wall-accent); border: 1px solid var(--control-border); padding: 7px; font-size: 11px; border-radius: 4px; }.wall-acoustic-point button:disabled { opacity: .4; cursor: not-allowed; }
-.wall-error { color: #e4a260; border: 1px solid #e4a26030; background: #e4a26008; padding: 10px 14px; font-size: 12px; line-height: 1.7; }.wall-empty { color: var(--wall-muted); text-align: center; padding: 35px; font-size: 14px; }.wall-footer { display: flex; justify-content: space-between; gap: 15px; font-size: 11px; color: var(--wall-muted); padding: 8px 0; }.is-paused .signal-bars i, .is-paused .wall-live i, .is-paused .wall-heading::after, .is-paused .wall-device::before { animation-play-state: paused; }
-@keyframes card-arrive { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }@keyframes heading-scan { 0%,100% { left: 0; opacity: .3; } 50% { left: calc(100% - 120px); opacity: 1; } }@keyframes card-scan { from { left: -90px; } to { left: 100%; } }@keyframes beacon { 0% { box-shadow: 0 0 0 0 rgba(142, 230, 168, .27); } 100% { box-shadow: 0 0 0 7px rgba(142, 230, 168, 0); } }@keyframes signal-wave { from { transform: scaleY(.35); } to { transform: scaleY(1.3); } }
-:global(.light-theme .live-wall) { --wall-accent: #237f76; }
-@media (min-width: 2100px) { .wall-device-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 1200px) { .wall-device-grid { grid-template-columns: minmax(0, 1fr); }.wall-metrics article { padding: 14px; gap: 10px; }.wall-controls { flex-wrap: wrap; }.wall-controls > span { margin-left: 0; } }
-@media (max-width: 650px) { .live-wall { padding: 14px; }.wall-heading { align-items: start; flex-direction: column; }.wall-heading h1 { font-size: 22px; letter-spacing: 0; }.wall-actions { justify-items: start; }.wall-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.wall-metrics article > svg { display: none; }.wall-points { grid-template-columns: minmax(0, 1fr); }.wall-device-photo { width: 72px; }.wall-device-header { gap: 6px; }.wall-device-title h2 { font-size: 15px; }.wall-footer { flex-wrap: wrap; } }
-@media (prefers-reduced-motion: reduce) { .live-wall *, .live-wall *::before, .live-wall *::after { animation: none !important; transition: none !important; } }
-
-/* Dense responsive layout. */
-.live-wall { padding: 16px 20px; gap: 12px; }
-.wall-heading { padding-bottom: 10px; }.wall-heading h1 { font-size: 23px; margin: 5px 0; }.wall-heading p { font-size: 11px; }.wall-eyebrow { font-size: 9px; letter-spacing: 3px; }.wall-actions { gap: 5px; }.wall-actions time { font-size: 13px; }
-.wall-metrics { gap: 12px; }.wall-metrics article { padding: 10px 16px; gap: 12px; }.wall-metrics article > div { display: flex; align-items: center; gap: 16px; }.wall-metrics strong { font-size: 27px; margin: 0; }.wall-metrics article > b { font-size: 18px; opacity: .6; }.wall-metrics .unknown-note { font-size: 10px; }
-.wall-controls { gap: 10px; }.wall-controls button { padding: 6px 10px; font-size: 12px; }.wall-controls label { padding: 6px 10px; }.wall-controls input { width: 150px; }.wall-controls > span { margin-left: 0; font-size: 10px; }
-.wall-device-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 6px 3px 18px; }
-.wall-device { background: linear-gradient(140deg, var(--glass-card), transparent 75%), var(--page-bg); border-radius: 7px; animation-name: compact-arrive; transition: transform .32s ease, border-color .25s, box-shadow .3s; }
-.wall-device-header { padding: 8px 10px 8px 7px; gap: 7px; }.wall-device .wall-device-photo { width: 55px; height: 48px; }.wall-device-photo :deep(svg) { width: 27px; height: 27px; }.wall-device-photo :deep(.equipment-symbol) { padding: 5px; }.wall-device-title > span { font-size: 9px; letter-spacing: .5px; }.wall-device-title h2 { font-size: 14px; margin: 3px 0 5px; }.wall-device-title p { font-size: 10px; gap: 5px; }.wall-device-header > a { font-size: 10px; }
-.wall-points { grid-template-columns: minmax(0, 1fr); gap: 5px; padding: 8px; }.wall-device-footer { padding: 0 10px 8px; gap: 5px; font-size: 9px; }.wall-device-footer > span:last-child { display: none; }
-.spatial-view .wall-device { --depth-y: 0px; --tilt-y: -1deg; transform: perspective(1000px) translateY(var(--depth-y)) rotateY(var(--tilt-y)) rotateX(1deg); transform-origin: center; box-shadow: 3px 4px 0 var(--control-bg), 5px 6px 0 var(--glass-border), 0 16px 24px #0003, inset 0 1px 0 var(--glass-highlight); }
-.spatial-view .wall-device:nth-child(3n + 2) { --depth-y: 12px; --tilt-y: 0deg; }
-.spatial-view .wall-device:nth-child(3n) { --tilt-y: 1deg; }
-.spatial-view .wall-device:hover, .spatial-view .wall-device:focus-within { transform: perspective(1000px) translateY(calc(var(--depth-y) - 4px)) rotateY(0) rotateX(0); border-color: var(--control-border-active); box-shadow: 2px 3px 0 var(--control-bg), 3px 4px 0 var(--glass-border), 0 20px 30px #0004, 0 0 18px #46907c12; z-index: 1; }
-.wall-acoustic-point { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; padding: 8px 10px; }.wall-acoustic-point header { grid-column: 1; }.wall-acoustic-point h3 { font-size: 11px; }.wall-acoustic-point > strong { grid-column: 1; margin-top: 5px; font-size: 21px; }.wall-acoustic-point .acoustic-placeholder { display: none; }.wall-acoustic-point > button { grid-column: 2; grid-row: 1 / 3; align-self: center; font-size: 10px; }
-.wall-points :deep(.acoustic-point-card) { padding: 10px; }.wall-points :deep(.acoustic-point-card h3) { font-size: 12px; }.wall-points :deep(.acoustic-value) { font-size: 22px; margin-top: 6px; }.wall-points :deep(.compact-waveform) { height: 85px; }
-.wall-footer { font-size: 10px; padding: 0; }
-@keyframes compact-arrive { from { opacity: 0; } to { opacity: 1; } }
-@media (min-width: 1800px) { .wall-device-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }.spatial-view .wall-device:nth-child(n) { --depth-y: 0px; --tilt-y: -1deg; }.spatial-view .wall-device:nth-child(4n + 2), .spatial-view .wall-device:nth-child(4n + 3) { --depth-y: 12px; --tilt-y: 0deg; }.spatial-view .wall-device:nth-child(4n) { --tilt-y: 1deg; } }
-@media (max-width: 1250px) { .wall-device-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.spatial-view .wall-device:nth-child(n) { --depth-y: 0px; --tilt-y: 0deg; }.spatial-view .wall-device:nth-child(even) { --depth-y: 10px; }.wall-controls { flex-wrap: wrap; }.wall-metrics article > div { gap: 8px; }.wall-metrics article > svg { display: none; } }
-@media (max-width: 700px) { .wall-device-grid { grid-template-columns: minmax(0, 1fr); }.spatial-view .wall-device:nth-child(n) { transform: none; --depth-y: 0px; }.wall-heading { flex-wrap: wrap; }.live-wall { padding: 12px; }.wall-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (prefers-reduced-motion: reduce) { .wall-device { animation: none; transition: none; }.spatial-view .wall-device:hover, .spatial-view .wall-device:focus-within { transform: perspective(1000px) translateY(var(--depth-y)) rotateY(var(--tilt-y)) rotateX(1deg); } }
-
-/* Equipment stands: depth is applied to the equipment, not the data panels. */
-.wall-device-grid { gap: 20px 18px; }
-.wall-device, .spatial-view .wall-device:nth-child(n), .spatial-view .wall-device:hover, .spatial-view .wall-device:focus-within { transform: none; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
-.wall-device::before { display: none; }
-.module-stage-header { padding: 0 10px; }
-.module-topline { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 9px; color: var(--wall-muted); letter-spacing: .6px; }
-.module-topline a { color: var(--wall-accent); font-size: 10px; text-decoration: none; }
-.module-stage { position: relative; height: 112px; display: grid; place-items: center; isolation: isolate; }
-.module-stage .stage-equipment { position: relative; width: 180px; height: 100px; overflow: visible; z-index: 2; background: none; }
-.stage-equipment :deep(.operation-ring) { height: 35px; bottom: 0; }
-.stage-equipment :deep(.operation-state) { right: -22px; bottom: 8px; }
-.stage-equipment :deep(img) { width: 100%; height: 100%; filter: drop-shadow(0 10px 8px #0005); }
-.stage-equipment :deep(.equipment-symbol) { padding: 10px; border-radius: 10px; color: var(--text-soft); background: var(--glass-card); border-color: var(--glass-border); }
-.stage-equipment :deep(.equipment-glyph) { width: 43px; height: 43px; }
-.stage-equipment :deep(.visual-baseline), .stage-equipment::before { display: none; }
-.stage-plinth { position: absolute; z-index: 1; width: 158px; height: 30px; bottom: 0; border: 1px solid var(--control-border-active); border-radius: 50%; background: radial-gradient(ellipse, #46907c25, #46907c04 70%); box-shadow: 0 4px 0 var(--page-bg), 0 5px 0 var(--glass-border), 0 10px 20px #0003; }
-.stage-orbit { position: absolute; bottom: 0; width: 210px; height: 45px; border: 1px dashed #46907c30; border-radius: 50%; transform: rotate(-7deg); }
-.module-caption { position: relative; text-align: center; padding: 7px 0 9px; }
-.module-caption h2 { font-size: 14px; line-height: 20px; height: 40px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 500; margin: 0 0 6px; overflow-wrap: anywhere; }.module-caption p { display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; gap: 10px; height: 16px; font-size: 10px; color: var(--wall-muted); margin: 0; }
-.module-state { display: inline-flex; align-items: center; gap: 5px; }.module-state i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }.module-state.online { color: var(--wall-accent); }.module-state.offline { color: #ff9800; }
-.parameter-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 28px; padding: 0 12px; border-top: 1px solid var(--glass-border); color: var(--wall-muted); font-size: 10px; }
-.parameter-heading b { margin-left: 5px; color: var(--text-soft); font-weight: 500; font-variant-numeric: tabular-nums; }
-.parameter-heading > span:last-child { font-size: 9px; }
-.parameter-viewport { height: 224px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--control-border-active) transparent; scrollbar-gutter: stable; background: linear-gradient(180deg, var(--glass-card), transparent); }
-.parameter-viewport:focus-visible { outline: 1px solid var(--control-border-active); outline-offset: 2px; }
-.wall-points.module-parameters { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 4px 8px 6px; }
-.module-parameters::before { content: ''; position: absolute; top: 8px; bottom: 8px; width: 1px; left: 50%; background: linear-gradient(transparent, var(--glass-border), transparent); }
-.parameter-column { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-.module-parameters :deep(.home-point.compact) { box-sizing: border-box; flex: 0 0 103px; height: 103px; grid-template-columns: minmax(0, 1fr); grid-template-rows: 32px 27px 31px; padding: 6px 7px 3px; border: 0; border-bottom: 1px solid var(--glass-border); background: transparent; border-radius: 0; }
-.module-parameters :deep(.compact header) { align-items: flex-start; }
-.module-parameters :deep(.compact h3) { line-height: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.module-parameters :deep(.compact .home-point-value) { margin-top: 4px; height: 23px; }.module-parameters :deep(.compact .home-point-value strong) { font-size: 21px; }
-.module-parameters :deep(.compact .home-point-chart) { grid-column: 1; grid-row: 3; height: 31px; }
-.module-parameters .wall-acoustic-point { display: block; padding: 7px; border: 0; border-bottom: 1px solid var(--glass-border); background: transparent; }.module-parameters .wall-acoustic-point > button { margin-top: 8px; }
-.module-parameters :deep(.acoustic-point-card) { border: 0; border-bottom: 1px solid var(--glass-border); border-radius: 0; background: transparent; padding: 7px; }.module-parameters :deep(.acoustic-point-card header) { flex-wrap: wrap; gap: 3px; }.module-parameters :deep(.compact-waveform) { height: 75px; }
-.single-point .module-parameters { grid-template-columns: minmax(0, 1fr); }
-.single-point .module-parameters::before { display: none; }
-.few-points .module-parameters :deep(.home-point.compact) { height: 207px; flex-basis: 207px; grid-template-rows: 32px 40px 120px; }
-.few-points .module-parameters :deep(.compact .home-point-value) { height: 36px; }
-.few-points .module-parameters :deep(.compact .home-point-value strong) { font-size: 28px; }
-.few-points .module-parameters :deep(.compact .home-point-chart) { height: 120px; }
-.few-points .module-parameters .acoustic-placeholder { display: flex; height: 75px; }
-.parameter-viewport .wall-empty { margin: 0; padding: 65px 12px; font-size: 12px; }
-.wall-device-footer { padding: 4px 12px 0; opacity: .75; }
-.spatial-view .module-stage.is-running .stage-equipment { animation: equipment-hover 6s ease-in-out infinite; animation-delay: var(--entry-delay); transform-origin: center bottom; }.spatial-view .module-stage.is-running .stage-orbit { animation: stage-breathe 4s ease-in-out infinite; }
-.spatial-view .wall-device:nth-child(2n) .module-stage { perspective: 600px; }.spatial-view .wall-device:hover .stage-plinth { box-shadow: 0 4px 0 var(--page-bg), 0 5px 0 var(--control-border-active), 0 0 22px #46907c25; }
-@keyframes equipment-hover { 0%,100% { transform: perspective(650px) translateY(-2px) rotateY(-7deg); } 50% { transform: perspective(650px) translateY(-7px) rotateY(7deg); } }
-@keyframes stage-breathe { 0%,100% { opacity: .4; transform: scale(.95) rotate(-7deg); } 50% { opacity: 1; transform: scale(1.03) rotate(7deg); } }
-.is-paused .stage-equipment, .is-paused .stage-orbit { animation-play-state: paused; }
-@media (prefers-reduced-motion: reduce) { .spatial-view .stage-equipment, .spatial-view .module-stage.is-running .stage-orbit { animation: none; } }
-.scene-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 16px; min-height: 600px; }
-.equipment-scene { min-width: 0; position: relative; display: flex; flex-direction: column; border: 1px solid var(--glass-border); border-radius: 10px; overflow: hidden; background: radial-gradient(ellipse at 50% 55%, #46907c12, transparent 70%), var(--page-bg); }
-.scene-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 15px 18px; z-index: 1; }
-.scene-heading > div:first-child { display: grid; gap: 5px; font-size: 14px; }
-.scene-heading small { font-size: 10px; color: var(--wall-muted); }
-.scene-device-count { font-size: 10px; color: var(--wall-accent); white-space: nowrap; }
-.scene-scroll { position: relative; flex: 1; min-width: 0; min-height: 460px; overflow: hidden; }
-.scene-world { position: absolute; left: 50%; top: 50%; transform-origin: center; perspective: 900px; isolation: isolate; }
-.scene-floor { position: absolute; inset: 35px 10px -10px; z-index: -1; transform: rotateX(35deg) rotateZ(-8deg); border: 1px solid var(--control-border); border-radius: 20px; background: linear-gradient(var(--glass-border) 1px, transparent 1px), linear-gradient(90deg, var(--glass-border) 1px, transparent 1px), var(--glass-card-soft); background-size: 38px 38px; box-shadow: 0 8px 0 var(--page-bg), 0 9px 0 var(--glass-border), 0 30px 50px #0003; }
-.scene-route { position: absolute; top: 48%; left: 6%; right: 6%; height: 15px; border-top: 1px solid #39a9ff45; border-bottom: 1px dashed #39a9ff25; background: linear-gradient(90deg, transparent, #39a9ff12, transparent); }
-.scene-floor-label { position: absolute; bottom: 17px; right: 20px; font-size: 11px; letter-spacing: 5px; color: var(--wall-muted); opacity: .3; }
-.scene-node { position: absolute; width: 205px; padding: 0; border: 0; background: transparent; color: var(--text-main); cursor: pointer; text-align: left; isolation: isolate; transition: transform .3s; }
-.scene-node:focus-visible { outline: 1px solid var(--wall-accent); outline-offset: 7px; border-radius: 8px; }
-.scene-node:hover { transform: translateY(-4px); }
-.scene-node-id { display: flex; justify-content: space-between; align-items: center; font-size: 9px; letter-spacing: 1px; color: var(--wall-muted); }
-.scene-node-id i { font-style: normal; color: var(--wall-accent); letter-spacing: 0; }
-.scene-node.offline .scene-node-id i { color: #ff9800; }
-.scene-node :deep(.equipment-visual) { height: 115px; overflow: visible; background: none; }
-.scene-node :deep(.equipment-visual::before), .scene-node :deep(.visual-baseline), .scene-node :deep(.operation-state) { display: none; }
-.scene-node :deep(.equipment-symbol) { padding: 13px; border-radius: 6px; background: linear-gradient(135deg, var(--glass-highlight), var(--glass-card)), var(--page-bg); transform: perspective(500px) rotateY(-25deg) rotateX(9deg); box-shadow: 3px 2px 0 var(--glass-border), 6px 4px 0 var(--page-bg), 7px 5px 0 var(--control-border), 12px 17px 12px #0004; color: var(--text-soft); }
-.scene-node :deep(.equipment-glyph) { width: 43px; height: 43px; }
-.scene-node :deep(img) { height: 100px; width: 165px; transform: perspective(500px) rotateY(-15deg); }
-.scene-node :deep(.operation-ring) { height: 30px; bottom: 0; }
-.scene-pedestal { position: absolute; width: 150px; height: 65px; top: 76px; left: 27px; z-index: -1; transform: perspective(500px) rotateX(55deg) rotateZ(-12deg); border-radius: 12px; border: 1px solid var(--control-border); background: linear-gradient(var(--glass-card), var(--glass-card)), var(--page-bg); box-shadow: 0 5px 0 var(--page-bg), 0 6px 0 var(--glass-border), 0 10px 0 var(--page-bg), 0 11px 0 var(--glass-border), 6px 16px 18px #0004; transition: box-shadow .3s, border-color .3s; }
-.scene-node.selected .scene-pedestal { border-color: var(--wall-accent); box-shadow: 0 5px 0 var(--page-bg), 0 6px 0 var(--control-border-active), 0 10px 0 var(--page-bg), 0 11px 0 var(--control-border-active), 0 0 25px #00c87520; }
-.scene-node-name { display: block; margin-top: 8px; font-size: 11px; line-height: 17px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.scene-node.selected .scene-node-name { color: var(--wall-accent); }
-.scene-reading { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 3px; }
-.scene-reading > span { color: #39a9ff; font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.scene-reading small { font-size: 9px; color: var(--wall-muted); }
-.scene-reading svg { width: 98px; height: 26px; overflow: visible; }
-.scene-reading path { fill: none; stroke: #39a9ff; stroke-width: 1.3; }
-.scene-reading-label { display: block; font-size: 9px; color: var(--wall-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scene-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 18px; font-size: 10px; color: var(--wall-muted); }
-.scene-legend i { display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: #00c875; }
-.scene-legend > span:nth-child(2) i { background: #ff9800; }
-.scene-inspector.wall-device-grid { display: block; padding: 12px 8px; border: 1px solid var(--glass-border); border-radius: 10px; background: var(--glass-card-soft); }
-.scene-inspector .parameter-viewport { height: 320px; }
-.scene-inspector .module-stage { height: 95px; }
-.scene-inspector .module-stage .stage-equipment { height: 85px; }
-.scene-inspector .module-caption h2 { font-size: 13px; }
-@media (min-width: 1800px) { .scene-workspace { grid-template-columns: minmax(0, 1fr) 390px; min-height: 680px; } }
-@media (max-width: 1150px) { .scene-workspace { grid-template-columns: minmax(0, 1fr); } .scene-inspector .parameter-viewport { height: 224px; } .scene-inspector .module-stage { display: none; } .scene-inspector .module-caption h2 { height: auto; } }
-/* Touchscreen presentation: readable equipment, expandable world, bottom detail dock. */
-.scene-workspace { position: relative; display: block; height: max(650px, calc(100dvh - 235px)); min-height: 650px; }
-.equipment-scene { height: 100%; box-sizing: border-box; }
-.details-open .equipment-scene { padding-bottom: 310px; }
-.scene-tools { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-.scene-tools button, .close-inspector { min-width: 44px; min-height: 44px; padding: 0 13px; border: 1px solid var(--control-border); border-radius: 6px; color: var(--text-main); background: var(--page-bg); cursor: pointer; font-size: 14px; }
-.scene-tools button:disabled { opacity: .35; cursor: default; }
-.scene-heading > div:first-child { font-size: 18px; }
-.scene-heading small { font-size: 12px; }
-.scene-scroll { min-height: 0; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--control-border-active) transparent; cursor: grab; user-select: none; }
-.scene-scroll:active { cursor: grabbing; }
-.scene-scroll:focus-visible { outline: 1px solid var(--wall-accent); outline-offset: -2px; }
-.scene-extent { position: relative; }
-.scene-world { left: 0; top: 0; transform-origin: top left; }
-.scene-node { width: var(--scene-node-width, 270px); }
-.scene-node.selected { transform: translateY(-3px) scale(1.06); z-index: 2; }
-.scene-node-id { font-size: 13px; }
-.scene-node :deep(.equipment-visual) { height: 145px; }
-.scene-node :deep(.equipment-glyph) { width: 64px; height: 64px; }
-.scene-node :deep(.equipment-symbol) { padding: 18px; }
-.scene-node :deep(img) { width: 225px; height: 135px; pointer-events: none; }
-.scene-pedestal { width: 200px; height: 80px; top: 98px; left: 35px; }
-.scene-node-name { font-size: 16px; line-height: 24px; }
-.scene-reading > span { font-size: 26px; }
-.scene-reading small { font-size: 13px; }
-.scene-reading svg { width: 115px; height: 32px; }
-.scene-reading-label { font-size: 12px; line-height: 20px; }
-.scene-legend { font-size: 12px; }
-.scene-inspector.wall-device-grid { position: absolute; bottom: 0; left: 0; right: 0; height: 300px; box-sizing: border-box; padding: 12px 18px; background: var(--page-bg); border-color: var(--control-border-active); box-shadow: 0 -12px 35px #0003; z-index: 5; }
-.dock-actions { position: absolute; top: 10px; right: 14px; z-index: 2; display: flex; align-items: center; gap: 12px; }
-.dock-actions a { display: inline-flex; align-items: center; min-height: 44px; color: var(--wall-accent); font-size: 14px; text-decoration: none; }
-.scene-inspector .module-stage, .scene-inspector .module-topline, .scene-inspector .wall-device-footer { display: none; }
-.scene-inspector .module-stage-header { padding: 0 210px 0 0; }
-.scene-inspector .module-caption { display: flex; align-items: center; gap: 20px; padding: 0 0 8px; text-align: left; }
-.scene-inspector .module-caption h2 { height: auto; margin: 0; font-size: 18px; line-height: 28px; }
-.scene-inspector .module-caption p { font-size: 12px; }
-.scene-inspector .parameter-heading { height: 26px; font-size: 12px; padding-left: 0; }
-.scene-inspector .parameter-viewport { height: 210px; }
-.scene-inspector .module-parameters { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.scene-inspector .parameter-column { display: contents; }
-.scene-inspector .module-parameters::before { display: none; }
-.scene-inspector .module-parameters :deep(.home-point.compact) { height: 185px; grid-template-rows: 36px 37px 100px; }
-.scene-inspector .module-parameters :deep(.compact h3) { font-size: 14px; line-height: 18px; }
-.scene-inspector .module-parameters :deep(.compact .home-point-value) { height: 33px; }
-.scene-inspector .module-parameters :deep(.compact .home-point-value strong) { font-size: 28px; }
-.scene-inspector .module-parameters :deep(.compact .home-point-chart) { height: 100px; }
-.scene-inspector .single-point .module-parameters { grid-template-columns: minmax(0, 1fr); }
-.wall-metrics article { padding: 6px 14px; }
-.wall-heading { padding-bottom: 6px; }
-.wall-heading p, .wall-eyebrow { display: none; }
-@media (max-width: 900px) { .scene-heading { flex-wrap: wrap; } .scene-inspector .module-caption { display: block; } .scene-inspector .module-caption p { justify-content: flex-start; } .scene-inspector .module-parameters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .scene-inspector .parameter-viewport { height: 180px; } }
-.scene-node { cursor: default; }
-.scene-node:hover { transform: none; }
-.scene-node-name { margin: 8px 0 0; font-weight: 500; }
-.scene-point-heading { display: flex; align-items: center; gap: 8px; height: 38px; color: var(--wall-muted); font-size: 12px; }
-.scene-point-heading > span:nth-child(2) { font-size: 11px; }
-.scene-point-heading a { margin-left: auto; color: var(--wall-accent); text-decoration: none; padding: 10px 0; }
-.scene-point-viewport { height: 257px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 128px; align-content: start; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; scrollbar-width: thin; scrollbar-color: var(--control-border-active) transparent; scrollbar-gutter: stable; border-top: 1px solid var(--glass-border); background: linear-gradient(180deg, var(--glass-card), transparent), var(--page-bg); cursor: auto; user-select: text; }
-.scene-point-viewport > .wall-error, .scene-point-viewport > .wall-empty { grid-column: 1 / -1; }
-.scene-node .scene-pedestal { left: calc(50% - 100px); }
-.scene-point-viewport:focus-visible { outline: 1px solid var(--wall-accent); outline-offset: 2px; }
-.scene-point-viewport :deep(.home-point.compact) { box-sizing: border-box; height: 128px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 31px 28px 56px; padding: 6px 8px; border: 0; border-bottom: 1px solid var(--glass-border); border-radius: 0; background: transparent; }
-.scene-point-viewport :deep(.compact header) { align-items: flex-start; }
-.scene-point-viewport :deep(.compact h3) { font-size: 14px; line-height: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.scene-point-viewport :deep(.compact .home-point-value) { height: 28px; margin: 0; }
-.scene-point-viewport :deep(.compact .home-point-value strong) { font-size: 26px; }
-.scene-point-viewport :deep(.compact .home-point-chart) { grid-column: 1; grid-row: 3; height: 56px; }
-.scene-acoustic-point { height: 128px; box-sizing: border-box; padding: 8px; border-bottom: 1px solid var(--glass-border); }
-.scene-acoustic-point header { display: flex; justify-content: space-between; gap: 8px; }
-.scene-acoustic-point h3 { margin: 0; font-size: 14px; }
-.scene-acoustic-point header span, .scene-acoustic-point small { font-size: 11px; color: var(--wall-muted); }
-.scene-acoustic-point p { font-size: 24px; margin: 7px 0; }
-.scene-acoustic-point button { min-height: 36px; width: 100%; color: var(--wall-accent); background: var(--control-bg); border: 1px solid var(--control-border); border-radius: 4px; cursor: pointer; }
-.scene-acoustic-point button:disabled { opacity: .4; cursor: default; }
-.scene-point-viewport :deep(.acoustic-point-card) { margin: 0; border-radius: 0; padding: 8px; }
-.scene-point-viewport :deep(.compact-waveform) { height: 56px; }
+.home-monitor { --wall-text: var(--text-main); --wall-muted: var(--text-muted); --wall-line: var(--glass-border); --wall-point: transparent; padding: 24px 28px; overflow-y: auto; color: var(--text-main); background: var(--page-bg); display: flex; flex-direction: column; gap: 22px; }
+h1,h2,h3,h4,p { margin: 0; } button, a, input, select { -webkit-tap-highlight-color: transparent; } button { cursor: pointer; } button:disabled { cursor: default; opacity: .5; } button:focus-visible, a:focus-visible { outline: 2px solid #368ce8; outline-offset: 3px; }
+a { color: var(--text-soft); text-decoration: none; }.home-topbar, .top-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }.eyebrow { font-size: 11px; letter-spacing: 2px; color: var(--text-muted); }.home-topbar h1 { margin-top: 5px; font-size: 26px; font-weight: 600; }.refresh-indicator { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }.refresh-indicator i { width: 6px; height: 6px; border-radius: 50%; background: #18a99a; animation: breathe 2.8s ease-in-out infinite; }.paused .refresh-indicator i { animation: none; background: var(--text-muted); }
+.plain-button { background: transparent; color: var(--text-muted); border: 0; padding: 8px; }
+.machine-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }.machine-tabs button { position: relative; text-align: left; display: flex; align-items: center; gap: 16px; padding: 20px; color: var(--text-main); background: var(--glass-card); border: 1px solid var(--glass-border); border-radius: 12px; transition: background .2s, border-color .2s, transform .2s; overflow: hidden; }.machine-tabs button:hover { transform: translateY(-2px); border-color: var(--control-border-active); }.machine-tabs button.active { background: linear-gradient(110deg,#368ce815,transparent), var(--glass-card); border-color: #368ce8; }.machine-tabs button::after { content:''; position:absolute; bottom:0; left:20px; right:20px; height:3px; background:#368ce8; transform:scaleX(0); transition:transform .25s; }.machine-tabs button.active::after { transform:scaleX(1); }.tab-number { font-size:26px; font-weight:300; color:var(--text-muted); opacity:.55; }.active .tab-number { color:#368ce8; opacity:1; }.tab-title { display:grid; gap:7px; }.tab-title strong { font-size:18px; font-weight:600; }.tab-title small { font-size:12px; color:var(--text-muted); }.tab-dot { margin-left:auto; flex:none; width:7px; height:7px; border-radius:50%; background:var(--text-muted); }.tab-dot.online { background:#18a99a; }.tab-dot.warning { background:#db8b2b; }
+.home-controls { display:flex; flex-wrap:wrap; align-items:center; gap:12px; font-size:13px; color:var(--text-muted); }.home-controls label { display:flex; align-items:center; gap:8px; }.home-controls input,.home-controls select { color:var(--text-main); background:var(--glass-card); border:1px solid var(--glass-border); border-radius:6px; padding:9px 12px; }
+.device-summary { display:flex; align-items:center; flex-wrap:wrap; gap:24px; margin-bottom:26px; }.device-summary h2 { font-size:22px; }.device-summary p { font-size:12px; color:var(--text-muted); margin-top:8px; }.device-summary > a { margin-left:auto; font-size:13px; }.summary-values { display:flex; gap:32px; margin-left:auto; }.summary-values > div { display:grid; gap:4px; }.summary-values strong { font-size:26px; font-weight:600; font-variant-numeric:tabular-nums; }.summary-values span { color:var(--text-muted); font-size:11px; }.summary-values .attention strong { color:#db8b2b; }
+.metric-section { margin-bottom:26px; }.section-heading { display:flex; align-items:center; gap:10px; margin-bottom:14px; }.category-icon { color:var(--category-color); display:grid; place-items:center; background:color-mix(in srgb,var(--category-color) 12%,transparent); width:32px; height:32px; border-radius:9px; }.section-heading h3 { font-size:16px; font-weight:600; }.section-count { color:var(--text-muted); font-size:12px; }.heading-line { height:1px; background:var(--glass-border); flex:1; margin-left:6px; }
+.point-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }.point-grid.sparse { grid-template-columns:repeat(2,minmax(0,1fr)); }.point-grid.acoustic { grid-template-columns:repeat(3,minmax(0,1fr)); }.point-tile { min-width:0; background:var(--glass-card); border:1px solid var(--glass-border); border-radius:12px; overflow:hidden; transition:border-color .2s, box-shadow .2s, transform .2s; }.point-tile:hover { border-color:color-mix(in srgb,var(--category-color) 50%,var(--glass-border)); transform:translateY(-2px); box-shadow:0 8px 24px #0000000c; }.point-context { padding:12px 16px 0; display:flex; align-items:center; justify-content:space-between; gap:10px; color:var(--text-muted); font-size:11px; }.point-context > span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }.point-context button { border:0; background:transparent; color:var(--text-muted); white-space:nowrap; font-size:11px; padding:4px 0; }
+.point-tile :deep(.home-point.compact) { padding:10px 16px 14px; border:0; background:transparent; grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto 72px; gap:9px; }.point-tile :deep(.compact header) { grid-column:1; grid-row:1; align-items:start; gap:8px; }.point-tile :deep(.compact h3) { font-size:14px; line-height:21px; min-height:42px; }.point-tile :deep(.compact header span) { margin-top:3px; font-size:10px; }.point-tile :deep(.compact .home-point-value) { grid-column:1; grid-row:2; height:auto; margin:0; flex-wrap:wrap; gap:7px; }.point-tile :deep(.compact .home-point-value strong) { font-size:34px; font-weight:600; letter-spacing:-1px; animation:none; }.point-tile :deep(.compact .home-point-value small) { font-size:12px; }.point-tile :deep(.compact .home-point-chart) { grid-column:1; grid-row:3; width:100%; height:72px; }.point-grid.sparse :deep(.home-point.compact) { grid-template-rows:auto auto 104px; }.point-grid.sparse :deep(.compact .home-point-chart) { height:104px; }
+.acoustic-tile { padding:12px 16px 16px; }.acoustic-tile header { display:flex; gap:10px; justify-content:space-between; }.acoustic-tile h4 { font-size:15px; line-height:1.5; }.acoustic-tile header span { color:var(--text-muted); font-size:11px; white-space:nowrap; }.sound-placeholder { display:flex; gap:12px; align-items:center; justify-content:center; height:92px; color:var(--category-color); }.sound-placeholder span { color:var(--text-muted); font-size:12px; }.acoustic-tile > button { width:100%; min-height:38px; border:1px solid var(--glass-border); background:var(--control-bg); color:var(--text-soft); border-radius:7px; }.point-tile :deep(.acoustic-point-card) { border:0; background:transparent; }.home-warning { color:#c68733; background:#db8b2b0a; border:1px solid #db8b2b35; padding:12px 16px; border-radius:8px; font-size:13px; margin-bottom:12px; }.home-empty { padding:60px 20px; display:grid; justify-items:center; gap:14px; color:var(--text-muted); }.pending-note { font-size:12px; color:var(--text-muted); padding:12px 0; }.pending-note a { margin-left:16px; }
+.machine-fade-enter-active,.machine-fade-leave-active { transition:opacity .18s,transform .18s; }.machine-fade-enter-from { opacity:0; transform:translateY(8px); }.machine-fade-leave-to { opacity:0; transform:translateY(-4px); }@keyframes breathe { 50% { opacity:.45; } }
+:global(.home-device-dialog.el-dialog) { height:94vh; display:flex; flex-direction:column; margin-bottom:0; background:var(--page-bg); color:var(--text-main); border:1px solid var(--control-border-active); border-radius:12px; }:global(.home-device-dialog .el-dialog__body) { flex:1; min-height:0; overflow-y:auto; }:global(.home-device-dialog .el-dialog__title) { color:var(--text-main); }
+@media(min-width:1800px) { .point-grid { grid-template-columns:repeat(5,minmax(0,1fr)); } }
+@media(max-width:1150px) { .point-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }.machine-tabs button { padding:16px 12px; gap:10px; }.tab-title strong { font-size:16px; }.tab-number { font-size:20px; }.point-grid.acoustic { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:800px) { .home-monitor { padding:18px; }.point-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.home-topbar { flex-wrap:wrap; }.tab-number { display:none; }.tab-title strong { font-size:14px; }.machine-tabs { gap:8px; }.tab-dot { display:none; }.summary-values { gap:22px; }.device-summary { gap:16px; } }
+@media(max-width:520px) { .home-monitor { padding:12px; }.point-grid,.point-grid.sparse,.point-grid.acoustic { grid-template-columns:minmax(0,1fr); }.tab-title strong { font-size:12px; }.tab-title small { font-size:10px; }.machine-tabs button { padding:14px 8px; }.top-actions { gap:8px; flex-wrap:wrap; }.summary-values { margin-left:0; }.device-summary > a { margin-left:0; }.refresh-indicator { font-size:11px; } }
+@media(prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none!important; transition:none!important; } .point-tile:hover,.machine-tabs button:hover { transform:none; } }
+/* Dense industrial overview: tabs occupy the first row, measurements use the rest. */
+.home-monitor { padding: 8px 14px 12px; gap: 10px; }
+.station-bar { display:flex; align-items:center; gap:20px; flex:none; position:sticky; top:-8px; z-index:10; background:var(--page-bg); padding:4px 0 8px; border-bottom:1px solid var(--glass-border); }
+.station-bar .machine-tabs { flex:1; gap:8px; }
+.station-bar .machine-tabs button { padding:10px 16px; border-radius:6px; gap:10px; }
+.station-bar .tab-number { display:none; }
+.station-bar .tab-title { display:flex; align-items:center; gap:14px; }
+.station-bar .tab-title strong { font-size:16px; }
+.station-bar .tab-title small { font-size:11px; }
+.station-actions { display:flex; align-items:center; gap:10px; }
+.station-actions .view-settings { display:grid; place-items:center; padding:8px; border-radius:6px; }
+.station-actions .view-settings:hover { color:var(--text-main); background:var(--glass-card); }
+.machine-panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 16px; align-content:start; }
+.device-summary,.machine-panel > .home-warning,.machine-panel > .home-empty { grid-column:1 / -1; }
+.device-summary { gap:20px; margin:0; font-size:11px; color:var(--text-muted); }
+.device-summary b { color:#db8b2b; font-weight:500; }
+.device-summary > a { font-size:11px; }
+.metric-section { margin:0; min-width:0; }
+.metric-section.wide-section { grid-column:1 / -1; }
+.section-heading { gap:7px; margin-bottom:7px; }
+.category-icon { width:23px; height:23px; border-radius:5px; }
+.section-heading h3 { font-size:13px; }.section-count { font-size:10px; }
+.point-grid,.point-grid.sparse,.point-grid.acoustic { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.wide-section .point-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.point-grid.sparse { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.point-tile { border-radius:6px; }.point-tile:hover { transform:none; }
+.point-context { padding:8px 14px 0; font-size:11px; }.point-context button { padding:0; font-size:11px; }
+.point-tile :deep(.home-point.compact),.point-grid.sparse :deep(.home-point.compact) { padding:6px 14px 10px; grid-template-columns:minmax(82px,.85fr) minmax(90px,1.15fr); grid-template-rows:minmax(28px,auto) 66px; column-gap:8px; row-gap:4px; }
+.point-tile :deep(.compact header) { grid-column:1 / -1; grid-row:1; align-items:center; }
+.point-tile :deep(.compact h3) { font-size:14px; line-height:21px; min-height:0; }
+.point-tile :deep(.compact .home-point-value) { grid-column:1; grid-row:2; align-self:center; margin:0; height:auto; flex-wrap:wrap; gap:4px; }
+.point-tile :deep(.compact header span) { font-size:11px; }
+.point-tile :deep(.compact .home-point-value strong) { font-size:30px; }
+.point-tile :deep(.compact .home-point-value small) { font-size:11px; }
+.point-tile :deep(.compact .home-point-chart),.point-grid.sparse :deep(.compact .home-point-chart) { grid-column:2; grid-row:2; width:100%; height:66px; align-self:center; }
+.acoustic-tile { padding:12px 14px; }.acoustic-tile h4 { font-size:14px; }.sound-placeholder { height:80px; gap:10px; }.sound-placeholder svg { width:30px; }.sound-placeholder span { font-size:12px; }.acoustic-tile > button { min-height:34px; font-size:13px; }.point-tile :deep(.compact-waveform) { height:80px; }
+.machine-fade-enter-active,.machine-fade-leave-active { transition:opacity .1s; }
+.machine-fade-enter-from,.machine-fade-leave-to { transform:none; }
+@media(max-width:1200px) { .station-bar { flex-wrap:wrap; gap:6px; }.station-bar .machine-tabs { flex-basis:100%; }.station-actions { margin-left:auto; }.station-bar .tab-title { display:grid; gap:3px; }.wide-section .point-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }.point-grid,.point-grid.acoustic { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:650px) { .machine-panel { grid-template-columns:minmax(0,1fr); }.wide-section .point-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.station-bar .machine-tabs button { padding:9px 6px; }.station-bar .tab-title strong { font-size:12px; }.device-summary { gap:8px; } }
+.monitor-grid { grid-column:1 / -1; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; align-items:stretch; }
+.fan-layout { grid-column:1 / -1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }
+.fan-group { min-width:0; padding:10px; border:1px solid color-mix(in srgb,#368ce8 28%,var(--glass-border)); border-radius:8px; background:color-mix(in srgb,#368ce8 3%,transparent); }
+.fan-group.max { border-color:color-mix(in srgb,#18a99a 30%,var(--glass-border)); background:color-mix(in srgb,#18a99a 3%,transparent); }
+.fan-group-heading { display:flex; align-items:center; gap:10px; margin:0 0 10px; padding:0 2px 8px; border-bottom:1px solid var(--glass-border); }
+.fan-group-heading h2 { color:var(--text-main); font-size:15px; font-weight:600; }
+.fan-group-heading span { color:var(--text-muted); font-size:11px; }
+.fan-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.pressure-span { grid-column:1 / -1; min-width:0; }
+.pressure-heading { margin-bottom:8px; }.pressure-grid { display:grid; grid-template-columns:minmax(0,1fr); }
+.pressure-grid .point-tile { min-height:210px; }
+.pressure-grid .point-tile :deep(.home-point.compact) { grid-template-columns:minmax(160px,17%) minmax(0,1fr); grid-template-rows:minmax(28px,auto) 126px; }
+.pressure-grid .point-tile :deep(.compact .home-point-chart) { height:126px; }
+.zb25-layout { grid-column:1 / -1; min-width:0; display:grid; gap:12px; }
+.zb25-layout .zb25-grid { position:relative; grid-template-columns:repeat(4,minmax(0,1fr)); padding:32px 10px 10px; isolation:isolate; }
+.zb25-grid::before,.zb25-grid::after { position:absolute; top:0; bottom:0; z-index:-1; width:calc(50% - 7px); box-sizing:border-box; padding:8px 12px; border:1px solid color-mix(in srgb,#368ce8 34%,var(--glass-border)); border-radius:8px; background:color-mix(in srgb,#368ce8 3%,transparent); color:var(--text-muted); font-size:13px; font-weight:600; pointer-events:none; }
+.zb25-grid::before { left:0; content:'主电机'; }
+.zb25-grid::after { right:0; content:'其他'; border-color:color-mix(in srgb,#18a99a 34%,var(--glass-border)); background:color-mix(in srgb,#18a99a 3%,transparent); }
+.zb25-pressure-span { min-width:0; }
+.point-context > span { display:flex; align-items:center; gap:6px; }
+.point-context i { width:6px; height:6px; flex:none; border-radius:50%; background:var(--category-color); }
+@media(max-width:1100px) { .monitor-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:800px) { .monitor-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:650px) { .fan-layout { grid-template-columns:minmax(0,1fr); }.pressure-span { grid-column:1; }.zb25-layout .zb25-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.zb25-grid::before,.zb25-grid::after { width:calc(50% - 6px); } }
+@media(max-width:480px) { .zb25-layout .zb25-grid { grid-template-columns:minmax(0,1fr); }.zb25-grid::before,.zb25-grid::after { width:100%; }.zb25-grid::after { display:none; } }
+@media(max-width:800px) { .pressure-grid .point-tile :deep(.home-point.compact) { grid-template-columns:minmax(120px,34%) minmax(0,1fr); } }
+@media(max-width:480px) { .monitor-grid,.fan-grid { grid-template-columns:minmax(0,1fr); } }
 </style>

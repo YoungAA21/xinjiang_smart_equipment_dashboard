@@ -1,5 +1,4 @@
 <script setup>
-import DataModeControl from '../components/DataModeControl.vue'
 import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { LockKeyhole, RadioTower, ScanLine, ShieldCheck, UserRound } from 'lucide-vue-next'
@@ -75,7 +74,6 @@ const submit = async () => {
     </section>
 
     <section class="login-panel">
-      <div class="login-data-mode"><DataModeControl /></div>
       <header>
         <span><ShieldCheck :size="15" /> 安全登录</span>
         <strong>欢迎回来</strong>
@@ -124,5 +122,4 @@ const submit = async () => {
 </template>
 
 <style scoped>
-.login-data-mode { display: flex; justify-content: flex-end; margin-bottom: 16px; }
 </style>

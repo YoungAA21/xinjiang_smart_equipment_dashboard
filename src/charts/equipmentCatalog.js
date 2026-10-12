@@ -1,15 +1,17 @@
 // Installation locations come from the supplied point list; metric values and units stay with the API.
 const moduleNames = {
   VSE03: 'ZJ117 卷接机 · VE/MAX 风机振动',
-  VSE04: 'ZB25 小盒包装机 · 电机与封签振动',
-  VSE05: 'ZB25 小盒包装机 · 轴承与铝纸切刀振动',
-  VSE08: 'YB65 硬条包装机 · 辅机振动',
-  TEMP01: 'YB65 硬条包装机 · 辅机温度',
+  VSE04: 'ZB25 小盒包装机 · 电机与铝纸切刀振动',
+  VSE05: 'ZB25 小盒包装机 · 主传动与封签振动',
+  VSE08: 'YB55 硬条包装机 · 辅机振动',
+  TEMP01: 'YB55 硬条包装机 · 辅机温度',
   TEMP02: 'ZJ117 卷接机 · VE/MAX 风机温度',
   TEMP03: 'ZB25 小盒包装机 · 主传动温度',
+  PRESS01: 'ZB25 小盒包装机 · 负压',
+  PRESS03: 'YB55 硬条包装机 · 主负压源',
   PRESS02: 'ZJ117 卷接机 · 蜘蛛手负压',
   SC01: 'ZB25 小盒包装机 · 主电机控制',
-  SC02: 'YB65 硬条包装机 · 辅机控制',
+  SC02: 'YB55 硬条包装机 · 辅机控制',
 }
 
 const vibrationLocations = {
@@ -19,17 +21,19 @@ const vibrationLocations = {
     SE01_v_03: 'MAX 风机轴承座',
     SE01_v_04: 'MAX 风机电机驱动端',
   },
+  // Confirmed document: SE04 is the cutter; SE05 is the sealing component.
+  // Translate display labels only; preserve point IDs, codes, axis suffixes and samples.
   VSE04: {
     SE04_v_01: '主电机驱动端',
-    SE04_v_02: '封签部件 X 轴',
-    SE04_v_03: '封签部件 Y 轴',
-    SE04_v_04: '封签部件 Z 轴',
+    SE04_v_02: '铝纸切刀 X 轴',
+    SE04_v_03: '铝纸切刀 Y 轴',
+    SE04_v_04: '铝纸切刀 Z 轴',
   },
   VSE05: {
     SE05_v_01: '皮带轮轴承座',
-    SE05_v_02: '铝纸切刀 X 轴',
-    SE05_v_03: '铝纸切刀 Y 轴',
-    SE05_v_04: '铝纸切刀 Z 轴',
+    SE05_v_02: '封签部件 X 轴',
+    SE05_v_03: '封签部件 Y 轴',
+    SE05_v_04: '封签部件 Z 轴',
   },
   VSE08: {
     SE08_v_02: '辅机电机驱动端',
@@ -49,6 +53,8 @@ export function monitoringPointName(point) {
 }
 
 export const isVibrationPoint = point => point?.metricType === 'VibrationRms' || point?.metricType === 'VibrationUnbalance'
+
+export const isMeasurementPoint = point => !['AlarmStatus', 'SelfTestResult'].includes(point?.metricType)
 
 export function sortMonitoringPoints(points = []) {
   const priority = point => isVibrationPoint(point) ? 0 : ['AlarmStatus', 'SelfTestResult'].includes(point?.metricType) ? 2 : 1

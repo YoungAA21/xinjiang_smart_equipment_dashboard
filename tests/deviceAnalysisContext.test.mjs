@@ -16,7 +16,7 @@ async function mountView(name, props, dependencies) {
   const context = vm.createContext({ console, Date, URL, AbortController, AbortSignal })
   const code = new vm.SourceTextModule(compiled.content, { context })
   await code.link((specifier) => {
-    const exports = specifier === '../services/dataMode.js' ? { isDemoMode: false } : specifier === 'vue' ? vue : specifier.endsWith('.vue') ? { default: {} }
+    const exports = specifier === 'vue' ? vue : specifier.endsWith('.vue') ? { default: {} }
       : specifier.endsWith('.css') ? {} : dependencies[specifier]
     assert.ok(exports, `Unexpected dependency: ${specifier}`)
     return new vm.SyntheticModule(Object.keys(exports), function () {

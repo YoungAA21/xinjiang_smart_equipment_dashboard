@@ -26,10 +26,8 @@ async function loadApi(fetch, env = {}, location) {
   await endpoints.link(() => { throw new Error('Unexpected endpoint dependency') })
   await health.link((specifier) => specifier === './endpoints.js' ? endpoints : Promise.reject(new Error(`Unexpected health dependency: ${specifier}`)))
   const auth = new vm.SyntheticModule(['auth'], function () { this.setExport('auth', { getToken: () => 'test-token' }) }, { context })
-  const dataMode = await makeModule('../src/services/dataMode.js')
-  await dataMode.link(() => { throw new Error('Unexpected data mode dependency') })
   const api = await makeModule('../src/services/api.js')
-  await api.link((specifier) => specifier === './dataMode.js' ? dataMode : specifier === './auth' ? auth : specifier === './health' ? health : endpoints)
+  await api.link((specifier) => specifier === './auth' ? auth : specifier === './health' ? health : endpoints)
   await api.evaluate()
   return api.namespace.api
 }

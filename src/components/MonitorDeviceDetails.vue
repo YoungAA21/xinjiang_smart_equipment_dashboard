@@ -1,4 +1,5 @@
 <script setup>
+import { acousticPointIp } from '../charts/pointAddress.js'
 import { computed } from 'vue'
 const props = defineProps({ device: { type: Object, required: true } })
 const collectorRows = computed(() => props.device.collectors || [])
@@ -48,6 +49,7 @@ const runtimeStateText = (runtime) => {
             <el-table-column prop="name" label="通道名称" min-width="240" />
             <el-table-column prop="channelId" label="通道ID" min-width="190" />
             <el-table-column prop="collectorId" label="网关ID" min-width="190" />
+            <el-table-column label="网关 IP" min-width="150"><template #default="{ row }">{{ acousticPointIp(device, row) }}</template></el-table-column>
             <el-table-column prop="number" label="编号" width="80" />
             <el-table-column label="状态" width="90">
               <template #default="{ row }">

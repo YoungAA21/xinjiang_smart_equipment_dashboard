@@ -1,4 +1,3 @@
-import { isDemoMode } from './dataMode.js'
 import { auth } from './auth'
 import { healthApi } from './health'
 import { resolveServiceBase } from './endpoints.js'
@@ -167,7 +166,7 @@ export const api = {
   getRecordingVisualization: (recordingId, params = {}) =>
     newApiRequest(`/recordings/${encodeURIComponent(recordingId)}/visualization`, params),
   getRecordingContentUrl: (recordingId, { download = false } = {}) =>
-    isDemoMode ? `${import.meta.env?.BASE_URL || '/'}demo-audio.wav` : newApiUrl(`/recordings/${encodeURIComponent(recordingId)}/content`, {
+    newApiUrl(`/recordings/${encodeURIComponent(recordingId)}/content`, {
       token: tokenQueryValue(),
       download: download ? 'true' : '',
     }),

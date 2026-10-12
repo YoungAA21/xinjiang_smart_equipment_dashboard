@@ -1,11 +1,28 @@
 import { defineStore } from 'pinia'
 import { telemetryApi } from '../services/telemetry.js'
-import { appendSamples } from '../charts/telemetry.js'
+import { appendSamples, pointKey, localInputTime } from '../charts/telemetry.js'
 
 const message = (error) => error.name === 'TimeoutError' ? '请求超时（10 秒）' : error.message || '请求失败'
 export const useTelemetryStore = defineStore('telemetryMonitor', {
   state: () => ({ modules: null, moduleTime: null, latest: [], latestTime: null, buffers: {}, points: [], pointModuleId: '', history: null, errors: {}, loadingModules: false, loadingLatest: false, loadingPoints: false, loadingHistory: false, pointVersion: 0, historyVersion: 0, generation: 0 }),
   actions: {
+    async seedRecentPoints(point, { signal } = {}) {
+      const generation = this.generation
+      const end = new Date()
+      const result = await telemetryApi.getHistory({ pointId: point.pointId, start: localInputTime(new Date(end.getTime() - 600000)), end: localInputTime(end), limit: 10000 }, { signal })
+      if (signal?.aborted || generation !== this.generation) return
+      if (!Array.isArray(result?.points) || (result.pointId != null && Number(result.pointId) !== Number(point.pointId))) throw new Error('历史点位返回格式不正确')
+      const key = pointKey(point)
+      const byTime = new Map()
+      for (const sample of result.points) {
+        if (sample.moduleId != null && pointKey(sample) !== key) continue
+        if (!Number.isFinite(Date.parse(sample.collectedAt))) continue
+        byTime.set(Date.parse(sample.collectedAt), { ...sample, moduleId: point.moduleId, channelId: point.channelId, pointCode: point.pointCode, unit: point.unit })
+      }
+      // Live samples received during the history request take precedence.
+      for (const sample of this.buffers[key] || []) byTime.set(Date.parse(sample.collectedAt), sample)
+      this.buffers = { ...this.buffers, [key]: [...byTime.values()].sort((a, b) => Date.parse(a.collectedAt) - Date.parse(b.collectedAt)).slice(-300) }
+    },
     async refreshModules({ signal } = {}) {
       if (this.loadingModules || signal?.aborted) return
       const generation = this.generation
@@ -29,7 +46,8 @@ export const useTelemetryStore = defineStore('telemetryMonitor', {
         if (signal?.aborted || generation !== this.generation) return
         if (!Array.isArray(samples)) throw new Error('实时接口返回格式不正确')
         this.latest = samples
-        this.buffers = appendSamples(this.buffers, samples)
+        // A temporarily absent latest point must not erase its loaded history.
+        this.buffers = { ...this.buffers, ...appendSamples(this.buffers, samples) }
         this.latestTime = new Date().toISOString()
         delete this.errors.latest
       } catch (error) { if (!signal?.aborted && generation === this.generation) this.errors.latest = message(error) }

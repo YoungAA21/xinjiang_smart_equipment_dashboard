@@ -12,9 +12,10 @@ test('equipment stays readable as the world grows, with every device accessible 
       assert.equal(layout.columns, 3)
       for (const [index, position] of layout.positions.entries()) {
         assert.ok(position.left >= 0 && position.left + layout.nodeWidth <= layout.width)
-        assert.ok(position.top >= 0 && position.top + 510 <= layout.height)
+        assert.ok(position.top >= 0 && position.top + layout.nodeHeight <= layout.height + .001)
+        if (index < 9) assert.ok(position.top + layout.nodeHeight <= height + .001)
         for (const other of layout.positions.slice(index + 1)) {
-          assert.ok(Math.abs(position.left - other.left) >= layout.nodeWidth || Math.abs(position.top - other.top) >= 510)
+          assert.ok(Math.abs(position.left - other.left) >= layout.nodeWidth + 20 || Math.abs(position.top - other.top) >= layout.nodeHeight + 11)
         }
       }
     }

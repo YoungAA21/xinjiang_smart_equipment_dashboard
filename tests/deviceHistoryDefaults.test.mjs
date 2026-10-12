@@ -30,7 +30,6 @@ async function mountMonitor(query = { source: 'legacy', device: 'PRESS02' }) {
   const context = vm.createContext({ console, Date: Clock, AbortController, AbortSignal, window: { setInterval: () => 1, clearInterval: () => {} } })
   const dependencies = {
     vue,
-    '../services/dataMode.js': { isDemoMode: false },
     'vue-router': { useRoute: () => ({ query }) },
     'lucide-vue-next': Object.fromEntries(['Activity', 'Database', 'Fan', 'RefreshCcw', 'Search', 'Server'].map((key) => [key, {}])),
     '../services/api': { api: { getMonitorDevices: async () => [] } },
@@ -91,6 +90,13 @@ test('reentering history uses current time while manual queries preserve the cho
   await flush()
   assert.equal(calls.at(-1).query.start, '2026-08-28T11:55:00')
   assert.equal(calls.at(-1).query.end, '2026-08-28T12:05:00')
+})
+
+test('whole-machine history link selects the requested point rather than the first point', async (t) => {
+  const { app, state, calls } = await mountMonitor({ source: 'legacy', device: 'PRESS02', machine: 'ZJ117', pointId: '38', tab: 'history' })
+  t.after(() => app.unmount())
+  assert.equal(state.selectedPointId, 38)
+  assert.equal(calls.at(-1).query.pointId, 38)
 })
 
 test('only the live chart remains in the device view, with a history table and loading state', () => {

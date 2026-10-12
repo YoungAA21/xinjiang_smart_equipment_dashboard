@@ -3,10 +3,10 @@ import { monitoringPointName } from '../charts/equipmentCatalog.js'
 import { computed } from 'vue'
 import EChart from './EChart.vue'
 import { numericValue, telemetryLine } from '../charts/telemetry.js'
-const props = defineProps({ point: { type: Object, required: true }, samples: { type: Array, default: () => [] }, color: { type: String, default: '#39a9ff' }, now: Number, paused: Boolean, compact: Boolean })
+const props = defineProps({ point: { type: Object, required: true }, samples: { type: Array, default: () => [] }, color: { type: String, default: '#39a9ff' }, now: Number, paused: Boolean, compact: Boolean, sourceIp: String })
 const label = computed(() => monitoringPointName(props.point))
 const latest = computed(() => props.samples.at(-1))
-const value = computed(() => numericValue(latest.value?.value) === null ? '—' : latest.value.value.toFixed(3))
+const value = computed(() => numericValue(latest.value?.value) === null ? '—' : latest.value.value.toFixed(2))
 const stale = computed(() => latest.value && props.now - Date.parse(latest.value.collectedAt) > 10000)
 const option = computed(() => {
   const result = telemetryLine(props.samples, { ...props.point, name: label.value }, { color: props.color })
@@ -31,7 +31,8 @@ const option = computed(() => {
 </script>
 <template>
   <section class="home-point" :class="{ compact }" :title="label + (latest ? ' · 采样时间 ' + new Date(latest.collectedAt).toLocaleString('zh-CN') : ' · 暂无采样')" :style="{ '--signal': color }">
-    <header><h3>{{ label }}</h3><span :class="{ stale }">{{ paused ? '已暂停' : stale ? '未更新' : latest ? '实时' : '待采样' }}</span></header>
+    <header><h3>{{ label }}</h3><span :class="{ stale, 'is-live': !paused && !stale && latest }">{{ paused ? '已暂停' : stale ? '未更新' : latest ? '实时' : '待采样' }}</span></header>
+    <p v-if="sourceIp !== undefined" class="point-address">采集 IP：{{ sourceIp || '未提供' }}</p>
     <div class="home-point-value"><strong :key="latest?.collectedAt">{{ value }}</strong><small>{{ point.unit }}</small></div>
     <div class="home-point-chart" role="img" :aria-label="label + '实时折线，' + samples.length + '个样本'"><EChart :option="option" /></div>
     <footer><span>{{ point.channelId }} · {{ point.pointCode }}</span><time>{{ latest ? new Date(latest.collectedAt).toLocaleTimeString('zh-CN', { hour12: false }) : '暂无数据' }}</time></footer>
@@ -51,4 +52,5 @@ const option = computed(() => {
 .compact header { grid-column: 1; align-items: center; gap: 4px; }.compact h3 { font-size: 11px; }.compact header span { font-size: 9px; }
 .compact .home-point-value { grid-column: 1; margin-top: 3px; height: 22px; gap: 4px; }.compact .home-point-value strong { font-size: 21px; }.compact .home-point-value small { font-size: 10px; }
 .compact .home-point-chart { grid-column: 2; grid-row: 1 / 3; height: 38px; align-self: center; }.compact footer { display: none; }
+.point-address { margin: 10px 0 0; font-size: 13px; color: var(--text-muted); overflow-wrap: anywhere; user-select: text; }
 </style>

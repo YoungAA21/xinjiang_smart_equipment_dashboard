@@ -6,9 +6,11 @@ export function equipmentSceneLayout(count, viewportWidth, viewportHeight) {
   const rows = Math.ceil(total / columns)
   const cellWidth = width / columns
   const nodeWidth = Math.max(1, cellWidth - 24)
-  const best = { columns, rows, width, height: rows * 540 + 60, scale: 1, nodeWidth }
+  const rowPitch = Math.max(1, viewportHeight) / 3
+  const nodeHeight = Math.max(1, rowPitch - 12)
+  const best = { columns, rows, width, height: rows * rowPitch, scale: 1, nodeWidth, nodeHeight, rowPitch }
   return { ...best, positions: Array.from({ length: count }, (_, index) => ({
     left: (index % columns) * cellWidth + (cellWidth - nodeWidth) / 2,
-    top: 30 + Math.floor(index / best.columns) * 540,
+    top: 6 + Math.floor(index / best.columns) * rowPitch,
   })) }
 }

@@ -1,5 +1,4 @@
 <script setup>
-import { isDemoMode } from '../services/dataMode.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import TrendPage from './TrendPage.vue'
@@ -12,9 +11,8 @@ import TelemetryHistoryList from '../components/TelemetryHistoryList.vue'
 import { api } from '../services/api'
 import { useTelemetryStore } from '../stores/telemetry'
 import { localInputTime, numericValue, pointKey, telemetryLine } from '../charts/telemetry'
-import { isVibrationPoint, moduleDisplayName, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
+import { isVibrationPoint, isMeasurementPoint, moduleDisplayName, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 
-const demoMode = isDemoMode
 const route = useRoute()
 const telemetry = useTelemetryStore()
 const monitorDevices = ref(null)
@@ -73,7 +71,7 @@ watch([chartMode, detailTabs], () => {
   if (!detailTabs.value.some(tab => tab.id === chartMode.value)) chartMode.value = 'live'
 }, { immediate: true })
 const points = computed(() => isLegacy.value && telemetry.pointModuleId === selected.value.id
-  ? sortMonitoringPoints(telemetry.points).map(point => ({ ...point, name: monitoringPointName(point) })) : [])
+  ? sortMonitoringPoints(telemetry.points.filter(isMeasurementPoint)).map(point => ({ ...point, name: monitoringPointName(point) })) : [])
 const selectedPoint = computed(() => points.value.find((point) => point.pointId === selectedPointId.value) || points.value[0] || null)
 const pointPalette = ['#39a9ff', '#ff9800', '#00c875']
 const pointColors = new Map()
@@ -118,7 +116,7 @@ async function loadMonitorDevices() {
     if (!pageController.signal.aborted) monitorError.value = error.name === 'TimeoutError' ? '设备请求超时（10 秒）' : error.message || '设备请求失败'
   } finally { loadingMonitor.value = false }
 }
-async function loadPoints(preferredPointId = null) {
+async function loadPoints(preferredPointId = Number(route.query.pointId) || null) {
   pointController?.abort()
   historyController?.abort()
   telemetry.clearHistory()
@@ -149,7 +147,7 @@ function recentRange(minutes) {
 }
 watch(() => selected.value?.key, async (key, previousKey) => {
   if (previousKey) chartMode.value = 'live'
-  selectedChannelId.value = channels.value.find((channel) => channel.online)?.channelId || channels.value[0]?.channelId || ''
+  selectedChannelId.value = channels.value.find(channel => channel.channelId === route.query.channelId)?.channelId || channels.value.find((channel) => channel.online)?.channelId || channels.value[0]?.channelId || ''
   await loadPoints()
   if (isLegacy.value && !pageController.signal.aborted) await telemetry.refreshLatest({ signal: pageController.signal })
 })
@@ -166,6 +164,10 @@ watch(() => route.query, async (query) => {
   source.value = ['legacy', 'monitor'].includes(query.source) ? query.source : 'all'
   if (!['live', 'trend', 'spectrum', 'history', 'info'].includes(query.tab)) return
   await nextTick()
+  const requestedPoint = points.value.find(point => point.pointId === Number(query.pointId))
+  if (requestedPoint) selectedPointId.value = requestedPoint.pointId
+  const requestedChannel = channels.value.find(channel => channel.channelId === query.channelId)
+  if (requestedChannel) selectedChannelId.value = requestedChannel.channelId
   chartMode.value = availableTab(query.tab, selected.value?.source || query.source)
 })
 watch(autoLive, (enabled) => { if (enabled && isLegacy.value) telemetry.refreshLatest({ signal: pageController.signal }) })
@@ -223,7 +225,7 @@ onBeforeUnmount(() => {
         <p class="fleet-footnote">设备状态以最近一次接口返回为准{{ telemetry.errors.modules || monitorError ? ' · 部分来源获取失败，当前展示已获取的数据' : '' }}</p>
       </section>
       <aside v-if="showingDetail && selected" class="device-profile device-info-card">
-        <RouterLink class="back-link" :to="{ path: '/device', query: { source } }">‹ 返回设备列表</RouterLink>
+        <RouterLink class="back-link" :to="{ path: '/device', query: route.query.machine ? { machine: route.query.machine } : {} }">‹ {{ route.query.machine ? '返回整机监测' : '返回设备列表' }}</RouterLink>
         <h2>{{ selected.name }}</h2><EquipmentVisual class="profile-equipment-visual" :name="selected.name" :source="selected.source" :device-id="selected.id" :online="(isLegacy ? telemetry.errors.modules : monitorError) ? undefined : selected.online" :paused="!autoLive" />
         <dl><div><dt>设备编号</dt><dd>{{ selected.id }}</dd></div><div><dt>设备来源</dt><dd>{{ isLegacy ? '采集模块' : '声纹设备' }}</dd></div><div><dt>设备状态</dt><dd :class="tone(selected.online)">{{ status(selected.online) }}</dd></div><div><dt>监测点位</dt><dd>{{ isLegacy ? points.length : channels.length }} 个</dd></div><div v-if="isLegacy"><dt>通讯协议</dt><dd>{{ selected.raw.protocol || '—' }}</dd></div></dl>
       </aside>
@@ -236,6 +238,7 @@ onBeforeUnmount(() => {
             <template v-if="isLegacy"><button v-for="point in points" :key="point.pointId" :class="{active: selectedPoint?.pointId === point.pointId}" :aria-pressed="selectedPoint?.pointId === point.pointId" @click="selectedPointId = point.pointId">{{ point.name || point.pointCode }}</button></template>
             <template v-else><button v-for="channel in channels" :key="channel.channelId" :class="{active: selectedChannel?.channelId === channel.channelId}" :aria-pressed="selectedChannel?.channelId === channel.channelId" @click="selectedChannelId = channel.channelId">{{ channel.name || channel.channelName || channel.channelId }}</button></template>
           </div>
+          <p v-if="isLegacy && chartMode !== 'live' && chartMode !== 'info'" class="point-meta">采集 IP：{{ selected.raw.host || '未提供' }}</p>
           <section :id="'device-panel-'+chartMode" role="tabpanel" :aria-labelledby="'device-tab-'+chartMode" class="device-tab-content">
             <template v-if="chartMode === 'info'">
               <article class="device-info-card"><h3>设备信息</h3><dl><div><dt>设备名称</dt><dd>{{ selected.name }}</dd></div><div><dt>设备编号</dt><dd>{{ selected.id }}</dd></div><div><dt>设备来源</dt><dd>{{ isLegacy ? '采集模块' : '声纹设备' }}</dd></div><div><dt>运行状态</dt><dd :class="tone(selected.online)">{{ status(selected.online) }}</dd></div><div v-if="isLegacy"><dt>通讯协议</dt><dd>{{ selected.raw.protocol || '—' }}</dd></div><div v-if="isLegacy"><dt>连接地址</dt><dd>{{ selected.raw.host || '—' }}{{ selected.raw.port ? ':'+selected.raw.port : '' }}</dd></div><div><dt>监测点位</dt><dd>{{ isLegacy ? points.length : channels.length }} 个</dd></div></dl></article>
@@ -254,12 +257,13 @@ onBeforeUnmount(() => {
                     <article v-for="card in pointCards" :key="pointKey(card.point)" class="live-point-card" :style="{ '--point-color': card.color }">
                       <header><h3>{{ card.point.name || card.point.pointCode }}</h3><span :class="card.stale ? 'warn' : 'muted'">{{ card.stale ? '数据未更新' : card.latest ? '实时采样' : '等待采样' }}</span></header>
                       <div class="point-value">{{ numberText(card.latest?.value) }} <small>{{ card.point.unit }}</small></div>
+                      <p class="point-meta">采集 IP：{{ selected.raw.host || '未提供' }}</p>
                       <p class="point-meta">{{ card.point.channelId }} · {{ card.point.pointCode }}</p>
                       <div class="point-chart" role="img" :aria-label="(card.point.name || card.point.pointCode)+'实时折线，'+card.count+'个已采集样本'"><EChart :option="card.option" /></div>
                       <footer>{{ dateTime(card.latest?.collectedAt) }} · 质量 {{ card.latest?.quality ?? '—' }}</footer>
                     </article>
                   </div>
-                  <p class="chart-note">{{ demoMode ? '当前为演示采样。' : '显示当前访问期间采集的数据；间隔超过 15 秒断线。' }}每个点位保留最近 300 个时间点。</p>
+                  <p class="chart-note">显示当前访问期间采集的数据；间隔超过 15 秒断线。每个点位保留最近 300 个时间点。</p>
                 </template>
                 <TrendPage v-else-if="chartMode === 'trend'" embedded :module-id="selected.id" :point="selectedPoint" />
                 <article v-else-if="chartMode === 'history'" class="telemetry-panel history-panel"><form class="history-form" @submit.prevent="queryHistory"><label>开始时间<input v-model="historyStart" type="datetime-local" step="1" aria-label="开始时间" required /></label><label>结束时间<input v-model="historyEnd" type="datetime-local" step="1" aria-label="结束时间" required /></label><label>最多条数<input v-model.number="historyLimit" type="number" min="1" max="100000" step="1" aria-label="最多条数" required /></label><el-button native-type="submit" :icon="Search" :loading="telemetry.loadingHistory">查询历史</el-button></form>
@@ -275,8 +279,8 @@ onBeforeUnmount(() => {
             </template>
             <template v-else>
               <p v-if="!channels.length" class="empty-copy">该设备暂无声纹点位</p>
-              <div v-else-if="chartMode === 'live'" class="live-point-grid"><SpectrumPage v-for="channel in channels" :key="selected.key + channel.channelId" embedded compact :accent-color="pointColor(JSON.stringify([selected.id, channel.channelId]))" :device="selected.raw" :channel-id="channel.channelId" display-mode="live" /></div>
-              <SpectrumPage v-else-if="chartMode === 'spectrum'" :key="selected.key" embedded :device="selected.raw" :channel-id="selectedChannel.channelId" :display-mode="chartMode" />
+              <div v-else-if="chartMode === 'live'" class="live-point-grid"><SpectrumPage show-address v-for="channel in channels" :key="selected.key + channel.channelId" embedded compact :accent-color="pointColor(JSON.stringify([selected.id, channel.channelId]))" :device="selected.raw" :channel-id="channel.channelId" display-mode="live" /></div>
+              <SpectrumPage show-address v-else-if="chartMode === 'spectrum'" :key="selected.key" embedded :device="selected.raw" :channel-id="selectedChannel.channelId" :display-mode="chartMode" />
               <div v-else class="capability-empty"><Database :size="32" /><h3>当前声纹点位暂无历史采样列表</h3><p>可在实时监测或频谱分析中监听当前点位。采集模块的点位支持历史趋势和数据列表。</p></div>
             </template>
           </section>
