@@ -1,13 +1,19 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import GatewayModuleOverview from '../components/GatewayModuleOverview.vue'
 import { Activity, Clock3, Cpu, Database, History, ListFilter, RefreshCcw, Server, Wifi } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { api } from '../services/api'
+import { acousticCollectorDisplayName } from '../charts/machineGroups.js'
 
+const view = ref('modules')
+const overview = ref(null)
+function changeView(value) { view.value = value; if (value === 'acoustic') loadAll() }
 const statuses = ref([])
 const historyRows = ref([])
 const eventRows = ref([])
 const singleStatus = ref(null)
+let detailVersion = 0
 const selectedId = ref('')
 const loading = ref(false)
 const detailLoading = ref(false)
@@ -54,7 +60,12 @@ const eventTypeOptions = [
 const selectedRow = computed(() =>
   statuses.value.find((item) => String(item.collectorId) === String(selectedId.value)) || statuses.value[0] || null)
 const selectedRuntime = computed(() => singleStatus.value || selectedRow.value?.runtime || selectedRow.value || {})
-const onlineCount = computed(() => statuses.value.filter((item) => normalizeRuntime(item).connected).length)
+const collectorName = row => {
+  const id = row?.collectorId ?? row?.runtime?.collectorId
+  const known = statuses.value.find(item => String(item.collectorId) === String(id))
+  return acousticCollectorDisplayName(row?.ip || row?.runtime?.ip || row?.runtime?.host || row?.host || known?.ip || known?.runtime?.ip, row?.name || row?.runtime?.name || row?.collectorId)
+}
+const onlineCount = computed(() => statuses.value.filter((item) => normalizeRuntime(item).connected === true).length)
 const stoppedCount = computed(() =>
   statuses.value.filter((item) => ['stopped', 'offline', 'disabled'].includes(normalizeRuntime(item).state)).length)
 const recordingSavedTotal = computed(() =>
@@ -100,7 +111,7 @@ function normalizeRuntime(row) {
   return row?.runtime || row || {}
 }
 
-function statusText(state = 'offline') {
+function statusText(state = '') {
   return ({
     online: '在线',
     connecting: '连接中',
@@ -112,11 +123,11 @@ function statusText(state = 'offline') {
   })[state] || state || '未知'
 }
 
-function statusType(state = 'offline') {
+function statusType(state = '') {
   if (state === 'online') return 'success'
   if (['reconnecting', 'connecting', 'starting'].includes(state)) return 'warning'
   if (['disabled', 'stopped'].includes(state)) return 'info'
-  return 'danger'
+  return state === 'offline' ? 'danger' : 'info'
 }
 
 function bytes(value = 0) {
@@ -166,18 +177,22 @@ async function loadStatuses() {
 }
 
 async function loadSingleStatus() {
+  const version = ++detailVersion
+  singleStatus.value = null
   if (!selectedId.value) {
     singleStatus.value = null
     return
   }
   detailLoading.value = true
   try {
-    singleStatus.value = await api.getCollectorStatus(selectedId.value)
+    const result = await api.getCollectorStatus(selectedId.value)
+    if (version === detailVersion) singleStatus.value = result?.runtime || result
   } catch (error) {
+    if (version !== detailVersion) return
     singleStatus.value = selectedRow.value?.runtime || null
     ElMessage.error(error?.message || '单网关状态加载失败')
   } finally {
-    detailLoading.value = false
+    if (version === detailVersion) detailLoading.value = false
   }
 }
 
@@ -252,9 +267,10 @@ function selectCollector(row) {
   selectedId.value = String(row.collectorId)
   eventFilter.collectorId = String(row.collectorId)
   loadSingleStatus()
+  loadEvents(true)
 }
 
-onMounted(loadAll)
+
 </script>
 
 <template>
@@ -264,14 +280,17 @@ onMounted(loadAll)
         <h1 class="content-page-title">网关通讯</h1>
       </div>
       <div class="monitor-actions gateway-filter-actions">
-        <label>历史范围 <el-input-number v-model="historyFilter.hours" :min="1" :max="720" /> 小时</label>
-        <label>每网关事件 <el-input-number v-model="historyFilter.limitPerCollector" :min="10" :max="1000" /></label>
-        <el-button :icon="RefreshCcw" :loading="loading || detailLoading || historyLoading || eventsLoading" type="primary" @click="loadAll">
+        <label v-if="view === 'acoustic'">历史范围 <el-input-number v-model="historyFilter.hours" :min="1" :max="720" /> 小时</label>
+        <label v-if="view === 'acoustic'">每网关事件 <el-input-number v-model="historyFilter.limitPerCollector" :min="10" :max="1000" /></label>
+        <el-button :icon="RefreshCcw" :loading="loading || detailLoading || historyLoading || eventsLoading" type="primary" @click="view === 'modules' ? overview?.refresh() : loadAll()">
           刷新状态
         </el-button>
       </div>
     </header>
 
+    <nav class="gateway-view-tabs" aria-label="通讯视图"><button :class="{active: view === 'modules'}" :aria-pressed="view === 'modules'" @click="changeView('modules')">模块总览</button><button :class="{active: view === 'acoustic'}" :aria-pressed="view === 'acoustic'" @click="changeView('acoustic')">声纹通讯</button></nav>
+    <GatewayModuleOverview v-if="view === 'modules'" ref="overview" />
+    <template v-else>
     <section class="panel gateway-device-section">
       <div class="gateway-section-heading">
         <h2><Server :size="16" />实时网关列表</h2>
@@ -292,7 +311,7 @@ onMounted(loadAll)
             <i></i>
           </span>
           <span class="gateway-device-info">
-            <strong>{{ row.name || row.collectorId }}</strong>
+            <strong>{{ collectorName(row) }}</strong>
             <em>{{ row.ip || normalizeRuntime(row).ip || '-' }}:{{ row.audioPort || normalizeRuntime(row).port || '-' }}</em>
           </span>
           <span class="gateway-card-signal">
@@ -314,7 +333,7 @@ onMounted(loadAll)
           <div class="gateway-heading">
             <div>
               <p>当前网关</p>
-              <h2>{{ selectedRuntime.name || selectedRow?.name || '未选择网关' }}</h2>
+              <h2>{{ collectorName({ ...selectedRow, ...selectedRuntime, ip: selectedRuntime.ip || selectedRow?.ip || selectedRuntime.host || selectedRow?.host }) }}</h2>
               <span>{{ selectedRuntime.ip || selectedRow?.ip || '-' }} · {{ selectedRuntime.transportMode || '实时通讯状态' }}</span>
             </div>
             <el-tag :type="statusType(selectedRuntime.state)" effect="plain">{{ statusText(selectedRuntime.state) }}</el-tag>
@@ -358,7 +377,7 @@ onMounted(loadAll)
         <el-button :icon="RefreshCcw" :loading="historyLoading" @click="loadHistory">刷新历史</el-button>
       </div>
       <el-table class="gateway-table" :data="pagedHistoryRows" height="360">
-        <el-table-column prop="name" label="网关名称" min-width="220" show-overflow-tooltip />
+        <el-table-column label="网关名称" min-width="220" show-overflow-tooltip><template #default="{row}">{{ collectorName(row) }}</template></el-table-column>
         <el-table-column label="当前状态" width="110">
           <template #default="{ row }">
             <el-tag :type="statusType(row.current?.state)" effect="plain">{{ statusText(row.current?.state) }}</el-tag>
@@ -399,7 +418,7 @@ onMounted(loadAll)
       </div>
       <div class="gateway-event-filters">
         <el-select v-model="eventFilter.collectorId" clearable placeholder="全部网关">
-          <el-option v-for="row in statuses" :key="row.collectorId" :label="row.name || row.collectorId" :value="String(row.collectorId)" />
+          <el-option v-for="row in statuses" :key="row.collectorId" :label="collectorName(row)" :value="String(row.collectorId)" />
         </el-select>
         <el-select v-model="eventFilter.state" clearable placeholder="状态">
           <el-option v-for="item in stateOptions" :key="item.value" :label="item.label" :value="item.value" />
@@ -441,5 +460,12 @@ onMounted(loadAll)
         @size-change="handleEventSizeChange"
       />
     </section>
+    </template>
   </section>
 </template>
+
+<style scoped>
+.gateway-view-tabs { display:flex; gap:10px; margin:10px 0; }
+.gateway-view-tabs button { padding:9px 22px; border:1px solid var(--glass-border); border-radius:6px; background:var(--glass-card); color:var(--text-main); font:inherit; cursor:pointer; }
+.gateway-view-tabs button.active { color:#50b9a8; border-color:#50b9a8; }
+</style>

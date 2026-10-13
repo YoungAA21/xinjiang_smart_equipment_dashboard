@@ -5,10 +5,14 @@ import { ChevronDown, Fan, Maximize2, Minimize2, Moon, PanelLeftClose, PanelLeft
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useDashboardStore } from './stores/dashboard'
 import { auth } from './services/auth'
+import { useDigitalAlarmStore } from './stores/digitalAlarms.js'
+import DigitalAlarmDialog from './components/DigitalAlarmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const dashboard = useDashboardStore()
+const digitalAlarms = useDigitalAlarmStore()
+const diDialogReady = ref(false)
 const sidebarCollapsed = ref(localStorage.getItem('dashboard-sidebar') === 'collapsed')
 const homeControlsExpanded = ref(false)
 provide('homeControlsExpanded', homeControlsExpanded)
@@ -22,8 +26,15 @@ const isLightTheme = ref(localStorage.getItem('dashboard-theme') === 'light')
 const isFullscreen = ref(false)
 
 const activePath = computed(() => route.path)
-const pageTitle = computed(() => route.meta.title || '首页')
+const pageTitle = computed(() => route.meta.title || '设备监控')
 const isLoginPage = computed(() => route.name === 'login')
+watch(isLoginPage, login => {
+  if (login || !auth.isAuthenticated()) digitalAlarms.stop()
+  else {
+    const user = auth.getUser()
+    digitalAlarms.start(user?.id || user?.username || user?.name || 'default')
+  }
+}, { immediate: true })
 const currentUser = computed(() => auth.getUser()?.username || auth.getUser()?.name || 'admin')
 
 const isMenuActive = (item) => {
@@ -56,6 +67,7 @@ const syncFullscreen = () => {
 }
 
 onMounted(() => {
+  diDialogReady.value = true
   syncFullscreen()
   document.documentElement.classList.toggle('light-theme', isLightTheme.value)
   document.addEventListener('fullscreenchange', syncFullscreen)
@@ -70,6 +82,7 @@ watch(sidebarCollapsed, (value) => {
 })
 
 onBeforeUnmount(() => {
+  digitalAlarms.stop()
   document.removeEventListener('fullscreenchange', syncFullscreen)
   dashboard.stopRealtimePolling()
 })
@@ -80,6 +93,7 @@ onBeforeUnmount(() => {
     <router-view v-if="isLoginPage" />
 
     <main v-else class="dashboard-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed, 'light-theme': isLightTheme }">
+    <DigitalAlarmDialog v-if="diDialogReady" />
     <aside class="side-nav">
       <div class="brand">
         <span class="brand-mark"><Fan :size="23" /></span>
@@ -110,6 +124,7 @@ onBeforeUnmount(() => {
           <span class="title-glow"></span>
           <strong>{{ pageTitle }}</strong>
         </div>
+        <div v-if="route.name === 'device-list'" id="monitor-location-tabs" style="flex:1; min-width:0; margin:0 18px;"></div>
         <div class="top-actions">
           <button class="top-icon-btn" type="button" :title="isLightTheme ? '切换当前主题色' : '切换亮色主题'" @click="toggleTheme">
             <component :is="isLightTheme ? Moon : Sun" :size="17" />
@@ -129,7 +144,7 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <section class="page-stage" :style="route.path === '/' && !homeControlsExpanded ? { height: '100vh' } : undefined">
+      <section class="page-stage" :style="route.path === '/' ? { paddingTop: '0', ...(!homeControlsExpanded ? { height: '100vh' } : {}) } : undefined">
         <router-view />
       </section>
     </section>

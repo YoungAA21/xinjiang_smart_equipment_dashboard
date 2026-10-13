@@ -160,9 +160,9 @@ onBeforeUnmount(() => {
     <p v-if="analysisError" class="trend-error" role="alert">{{ analysisError }}</p>
 
     <section class="trend-kpis">
-      <article><span><CalendarRange :size="15" />统计天数</span><strong>{{ days.length }}</strong><small>每日限值趋势</small></article>
+      <article><span><CalendarRange :size="15" />统计天数</span><strong>{{ days.length }}</strong></article>
       <article :class="{ warning: exceededDays > 0 }"><span><Activity :size="15" />超限天数</span><strong>{{ exceededDays }}</strong><small>累计 {{ exceededMinutes }} 分钟</small></article>
-      <article><span><Gauge :size="15" />样本总数</span><strong>{{ totalSamples.toLocaleString() }}</strong><small>聚合记录覆盖</small></article>
+      <article><span><Gauge :size="15" />样本总数</span><strong>{{ totalSamples.toLocaleString() }}</strong></article>
       <article :class="['risk', riskTone(insight?.riskLevel)]"><span><TrendingUp :size="15" />趋势风险</span><strong>{{ riskLabel(insight?.riskLevel) }}</strong><small>{{ selectedPoint?.pointCode || '尚未选择点位' }}</small></article>
     </section>
 

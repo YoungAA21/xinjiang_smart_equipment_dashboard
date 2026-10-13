@@ -8,6 +8,8 @@ import '../styles/alarms.css'
 import '../styles/analysis-alarms.css'
 import { api } from '../services/api'
 import { alarmTime, externalAlarmStatus } from '../charts/alarms.js'
+import { useRoute } from 'vue-router'
+const route = useRoute()
 
 const activePane = ref('legacy')
 const externalSnapshot = reactive({ updatedAt: null, error: '', queryLabel: '尚未获取声纹告警' })
@@ -165,7 +167,7 @@ onMounted(() => {
     <header class="alarm-page-heading content-page-header"><h1 class="content-page-title">告警管理</h1></header>
     <el-tabs v-model="activePane" class="alarm-tabs">
       <el-tab-pane label="采集报警" name="legacy">
-        <LegacyAlarmPanel />
+        <LegacyAlarmPanel :initial-module-id="String(route.query.moduleId || '')" :initial-point-code="String(route.query.pointCode || '')" />
       </el-tab-pane>
       <el-tab-pane label="趋势报警" name="analysis">
         <AnalysisAlarmPanel />
@@ -183,8 +185,8 @@ onMounted(() => {
           <p v-if="externalSnapshot.error" class="alarm-error" role="alert">{{ externalSnapshot.error }}。采集报警仍可单独查询。</p>
 
           <section class="external-alarm-summary" aria-label="声纹告警摘要">
-            <article><span><BellRing :size="15" />当前页告警</span><strong>{{ externalAlarms.rows.length }}</strong><small>当前筛选结果</small></article>
-            <article><span><BarChart3 :size="15" />告警总数</span><strong>{{ externalSnapshot.updatedAt ? externalAlarms.total : '—' }}</strong><small>服务端分页统计</small></article>
+            <article><span><BellRing :size="15" />当前页告警</span><strong>{{ externalAlarms.rows.length }}</strong></article>
+            <article><span><BarChart3 :size="15" />告警总数</span><strong>{{ externalSnapshot.updatedAt ? externalAlarms.total : '—' }}</strong></article>
             <article class="warning"><span><CircleAlert :size="15" />未处理</span><strong>{{ externalSnapshot.updatedAt ? externalOpenCount : '—' }}</strong><small>仅统计当前页</small></article>
             <article class="success"><span><FileAudio :size="15" />关联录音</span><strong>{{ externalAlarms.selected ? externalAudio.total : '—' }}</strong><small>告警 {{ selectedAlarmId }}</small></article>
           </section>

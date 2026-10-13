@@ -114,8 +114,8 @@ const moduleTitle = (sample, modules, modulePoints = {}) => {
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     menus: [
-      { label: '首页', icon: Home, path: '/' },
-      { label: '设备监控', icon: MonitorCog, path: '/device' },
+      { label: '设备监控', icon: Home, path: '/' },
+      { label: '测点详情', icon: MonitorCog, path: '/device' },
       { label: '网关通讯', icon: Router, path: '/gateway/communication' },
       { label: '录音管理', icon: FileAudio, path: '/recordings' },
       { label: '告警管理', icon: AlarmClock, path: '/alarm/list' },

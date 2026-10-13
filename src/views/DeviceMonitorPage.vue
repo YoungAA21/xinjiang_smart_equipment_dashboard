@@ -1,16 +1,22 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import HomePointCard from '../components/HomePointCard.vue'
+import HomeSoundChart from '../components/HomeSoundChart.vue'
+import MonitorPointDetails from '../components/MonitorPointDetails.vue'
 import { useTelemetryStore } from '../stores/telemetry'
 import { useHomeDevicesStore } from '../stores/homeDevices'
 import { telemetryApi } from '../services/telemetry.js'
-import { groupMachineDevices } from '../charts/machineGroups.js'
-import { acousticPointIp } from '../charts/pointAddress.js'
-import { isMeasurementPoint, moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
+import { api } from '../services/api.js'
+import { auth } from '../services/auth.js'
+import { createSoundPreview } from '../services/soundPreview.js'
+import { acousticChannelDisplayName } from '../charts/machineGroups.js'
+import { isMeasurementPoint, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
+import { monitoringLocations, monitoringLocationOf, locationPoint } from '../charts/monitoringLocations.js'
 import { pointKey } from '../charts/telemetry.js'
 
 const route = useRoute()
+const router = useRouter()
 const telemetry = useTelemetryStore()
 const monitor = useHomeDevicesStore()
 const pointMap = ref({})
@@ -19,25 +25,79 @@ const loadedAt = new Map()
 const busy = ref(false)
 const paused = ref(false)
 const now = ref(Date.now())
-const search = ref('')
 const controller = new AbortController()
 let sampleTimer, configTimer
+const selected = computed(() => monitoringLocations.find(item => item.id === route.query.location) || monitoringLocations[0])
+const selectedKey = ref('')
+const colors = { VibrationRms: '#508cef', VibrationUnbalance: '#508cef', Temperature: '#d99b3b', NegativePressure: '#18a99a', Speed: '#39a9ff', Current: '#a8cf71' }
 const sources = computed(() => [
-  ...sortMonitoringModules(telemetry.modules || []).map(module => ({ key: JSON.stringify(['legacy', module.moduleId]), id: module.moduleId, name: moduleDisplayName(module), source: 'legacy', online: module.runtimeStatus?.isOnline, points: pointMap.value[module.moduleId] || [], raw: module })),
-  ...(monitor.devices || []).map(device => ({ key: JSON.stringify(['monitor', device.deviceId]), id: device.deviceId, name: device.deviceName || device.deviceId, source: 'monitor', online: device.online, points: device.channels || [], raw: device })),
+  ...sortMonitoringModules(telemetry.modules || []).map(module => ({ id: module.moduleId, source: 'legacy', online: module.runtimeStatus?.isOnline, points: pointMap.value[module.moduleId] || [], raw: module })),
+  ...(monitor.devices || []).map(device => ({ id: device.deviceId, source: 'monitor', online: device.online, points: device.channels || [], raw: device })),
 ])
-const grouped = computed(() => groupMachineDevices(sources.value))
-const groups = computed(() => [...grouped.value.groups, ...(grouped.value.pending.members.length ? [grouped.value.pending] : [])])
-const selected = computed(() => groups.value.find(group => group.id === (route.query.machine === 'main-pressure' ? 'ZB25' : route.query.machine)))
-const showingDetail = computed(() => Boolean(route.query.machine))
-const matching = computed(() => groups.value.filter(group => `${group.name} ${group.members.map(member => `${member.name} ${member.id}`).join(' ')}`.toLowerCase().includes(search.value.trim().toLowerCase())))
-const colors = ['#39a9ff', '#ff9800', '#00c875']
-const sourceState = member => (member.source === 'legacy' ? telemetry.errors.modules : monitor.error) ? '状态待确认' : member.online === true ? '在线' : member.online === false ? '离线' : '状态待确认'
-const groupState = group => group.members.some(member => member.source === 'legacy' ? telemetry.errors.modules : monitor.error) ? '状态待确认' : group.status
-const fullyLoaded = group => group.members.length > 0 && group.members.every(member => member.source === 'monitor' || Object.hasOwn(pointMap.value, member.id))
-const countText = group => `${group.pointCount}${fullyLoaded(group) ? '' : '（已加载）'}`
-const detailLink = (member, tab, point) => ({ path: '/device/detail', query: { source: member.source, device: member.id, tab, machine: selected.value?.id, ...(point ? { pointId: point.pointId } : {}) } })
-
+const rows = computed(() => sources.value.flatMap(member => member.points
+  .filter(point => monitoringLocationOf(member, point) === selected.value.id)
+  .map(point => ({
+    key: member.source === 'legacy' ? pointKey(point) : JSON.stringify([member.id, point.channelId]),
+    member, point: locationPoint(point), color: colors[point.metricType] || '#8089e9',
+  }))))
+const numericRows = computed(() => rows.value.filter(row => row.member.source === 'legacy'))
+const acousticRows = computed(() => rows.value.filter(row => row.member.source === 'monitor'))
+const selectedErrors = computed(() => selected.value.modules.filter(id => pointErrors.value[id]).map(id => `${id}：${pointErrors.value[id]}`))
+const selectedRow = computed(() => {
+  const row = rows.value.find(item => item.key === selectedKey.value)
+  return row ? { ...row, soundFrame: soundFrames.value[row.key], soundStatus: soundCardStatus(row) } : null
+})
+function selectLocation(id) {
+  router.replace({ path: '/device', query: { location: id } })
+}
+watch(() => selected.value.id, () => { selectedKey.value = '' })
+function openPoint(row) { selectedKey.value = row.key }
+const rowName = row => row.member.source === 'monitor' ? acousticChannelDisplayName(row.member.raw, row.point) : monitoringPointName(row.point)
+function navigateLocation(event, index) {
+  const key = event.key
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key)) return
+  event.preventDefault()
+  const next = key === 'Home' ? 0 : key === 'End' ? monitoringLocations.length - 1 : (index + (key === 'ArrowRight' ? 1 : -1) + monitoringLocations.length) % monitoringLocations.length
+  selectLocation(monitoringLocations[next].id)
+  document.getElementById(`location-tab-${monitoringLocations[next].id}`)?.focus()
+}
+const soundFrames = ref({})
+const soundStatus = ref('等待连接')
+const preview = createSoundPreview({ api, token: () => auth.getToken(), Socket: WebSocket,
+  onFrame(deviceId, channelId, data) {
+    const key = JSON.stringify([deviceId, channelId])
+    const previous = soundFrames.value[key] || { rows: [], sampleRate: 22000 }
+    soundFrames.value[key] = {
+      rows: Array.isArray(data.waterfallRow) ? [...previous.rows.slice(-219), data.waterfallRow] : previous.rows,
+      sampleRate: Number(data.sampleRate || data.sample_rate || data.audioSampleRate) || previous.sampleRate,
+      receivedAt: Date.now(),
+    }
+  },
+  onStatus(value) { soundStatus.value = value },
+})
+function soundCardStatus(row) {
+  if (monitor.error) return '状态待确认'
+  if (row.point.online === false || row.member.online === false) return '离线'
+  if (paused.value) return '已暂停'
+  const frame = soundFrames.value[row.key]
+  return frame ? now.value - frame.receivedAt > 10000 ? '未更新' : '实时' : soundStatus.value
+}
+const soundTargets = computed(() => {
+  if (paused.value || monitor.error || selectedRow.value) return []
+  const visible = acousticRows.value
+  const targets = new Map()
+  for (const row of visible) {
+    if (row.member.source !== 'monitor' || row.point.online !== true || row.member.online === false) continue
+    if (!targets.has(row.member.id)) targets.set(row.member.id, { deviceId: row.member.id, channelIds: [] })
+    targets.get(row.member.id).channelIds.push(row.point.channelId)
+  }
+  return [...targets.values()]
+})
+let soundTargetIndex = 0, soundTimer
+watch(() => JSON.stringify(soundTargets.value), () => {
+  soundTargetIndex = 0
+  preview.setTarget(soundTargets.value[0]).catch(() => {})
+})
 async function refresh(force = false) {
   if (busy.value || controller.signal.aborted) return
   busy.value = true
@@ -71,71 +131,76 @@ onMounted(() => {
   refresh()
   sampleTimer = setInterval(() => { now.value = Date.now(); if (!paused.value) telemetry.refreshLatest({ signal: controller.signal }) }, 2000)
   configTimer = setInterval(() => { if (!paused.value) refresh() }, 30000)
+  soundTimer = setInterval(() => {
+    if (soundTargets.value.length > 1) {
+      soundTargetIndex = (soundTargetIndex + 1) % soundTargets.value.length
+      preview.setTarget(soundTargets.value[soundTargetIndex]).catch(() => {})
+    }
+  }, 5000)
 })
-onBeforeUnmount(() => { controller.abort(); clearInterval(sampleTimer); clearInterval(configTimer); telemetry.clear(); monitor.clear() })
+onBeforeUnmount(() => {
+  controller.abort()
+  clearInterval(sampleTimer); clearInterval(configTimer); clearInterval(soundTimer)
+  preview.stop().catch(() => {})
+  telemetry.clear(); monitor.clear()
+})
 </script>
 
 <template>
   <section class="page machine-monitor">
-    <header class="monitor-heading"><div><h1>设备监控</h1><p>三台设备 · 与首页使用相同点位归属</p></div><div class="monitor-actions"><label><input v-model="paused" type="checkbox" /> 暂停自动刷新</label><el-button :loading="busy" @click="refresh(true)">刷新数据</el-button></div></header>
-    <p v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="monitor-warning" role="alert">{{ [telemetry.errors.modules, telemetry.errors.latest, monitor.error].filter(Boolean).join('；') }}。请留意数据更新时间。</p>
-    <template v-if="!showingDetail">
-      <label class="monitor-search">搜索设备 <input v-model="search" placeholder="设备名称或模块编号" /></label>
-      <div class="machine-directory">
-        <RouterLink v-for="group in matching" :key="group.id" class="machine-entry" :to="{ path: '/device', query: { machine: group.id } }">
-          <header><h2>{{ group.name }}</h2><span>{{ groupState(group) }}</span></header>
-          <p>{{ group.id === 'pending' ? '归属待确认，保留展示' : '整机监测' }}</p>
-          <div class="machine-totals"><strong>{{ countText(group) }}<small> 个数值/声纹点位</small></strong><span>{{ group.members.length }} 个采集来源</span></div>
-          <ul><li v-for="member in group.members" :key="member.key">{{ member.name }} <small>{{ member.source === 'legacy' ? member.raw.host || 'IP未提供' : '声纹通道' }}</small></li></ul>
-          <p v-if="group.members.some(member => pointErrors[member.id])" class="monitor-warning">部分点位加载失败，进入详情查看</p>
-          <footer>查看全部监测点位 ↗</footer>
-        </RouterLink>
+    <Teleport to="#monitor-location-tabs" defer>
+      <nav class="location-tabs" role="tablist" aria-label="监测点位">
+        <button v-for="(location, index) in monitoringLocations" :id="'location-tab-'+location.id" :key="location.id" type="button" role="tab" :aria-selected="selected.id === location.id" :aria-controls="'location-panel-'+selected.id" :tabindex="selected.id === location.id ? 0 : -1" :class="{ active: selected.id === location.id }" :title="location.machine + ' · ' + location.name" @click="selectLocation(location.id)" @keydown="navigateLocation($event, index)">{{ location.name }}</button>
+      </nav>
+    </Teleport>
+    <header class="monitor-heading">
+      <h1>{{ selected.machine }} · {{ selected.name }}</h1>
+      <div class="monitor-actions"><label><input v-model="paused" type="checkbox" /> 暂停自动刷新</label><el-button :loading="busy" @click="refresh(true)">刷新数据</el-button></div>
+    </header>
+    <p v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="monitor-warning" role="alert">{{ [telemetry.errors.modules, telemetry.errors.latest, monitor.error].filter(Boolean).join('；') }}</p>
+    <p v-for="message in selectedErrors" :key="message" class="monitor-warning" role="alert">{{ message }}</p>
+    <div :id="'location-panel-'+selected.id" :key="selected.id" role="tabpanel" :aria-labelledby="'location-tab-'+selected.id" class="location-content">
+      <div v-if="numericRows.length" class="monitor-point-grid" :class="{ single: numericRows.length === 1, double: numericRows.length === 2 }">
+        <article v-for="row in numericRows" :key="row.key" class="monitor-measurement" role="button" tabindex="0" :aria-label="rowName(row)+'详情'" aria-haspopup="dialog" @click="openPoint(row)" @keydown.enter.prevent="openPoint(row)" @keydown.space.prevent="openPoint(row)">
+          <HomePointCard :point="row.point" :samples="telemetry.buffers[row.key] || []" :color="row.color" :now="now" :paused="paused" />
+        </article>
       </div>
-      <p v-if="!matching.length">暂无匹配设备</p>
-    </template>
-    <template v-else>
-      <RouterLink :to="{ path: '/device' }">‹ 返回设备列表</RouterLink>
-      <template v-if="selected">
-        <header class="selected-machine"><h2>{{ selected.name }}</h2><span>{{ groupState(selected) }} · {{ countText(selected) }} 个点位</span></header>
-        <nav class="machine-nav" aria-label="切换设备"><RouterLink v-for="group in groups" :key="group.id" :class="{ active: selected.id === group.id }" :to="{ path: '/device', query: { machine: group.id } }">{{ group.name }}</RouterLink></nav>
-        <section v-for="member in selected.members" :key="member.key" class="monitor-source">
-          <header><div><h3>{{ member.name }}</h3><p>{{ member.id }} · {{ sourceState(member) }} <span v-if="member.source === 'legacy'">· 采集 IP：{{ member.raw.host || '未提供' }}</span></p></div><RouterLink :to="detailLink(member, 'info')">采集来源详情 ↗</RouterLink></header>
-          <p v-if="pointErrors[member.id]" class="monitor-warning">{{ pointErrors[member.id] }}</p>
-          <div class="monitor-point-grid" :class="{ single: member.points.length === 1, double: member.points.length === 2 }">
-            <template v-if="member.source === 'legacy'">
-              <section v-for="(point, index) in member.points" :key="pointKey(point)" class="monitor-measurement">
-                <HomePointCard :point="point" :source-ip="member.raw.host || ''" :samples="telemetry.buffers[pointKey(point)] || []" :color="colors[index % colors.length]" :now="now" :paused="paused" />
-                <div class="point-actions"><RouterLink :to="detailLink(member, 'trend', point)">趋势分析</RouterLink><RouterLink :to="detailLink(member, 'history', point)">历史数据</RouterLink></div>
-              </section>
-            </template>
-            <template v-else>
-              <section v-for="channel in member.points" :key="channel.channelId" class="monitor-channel"><h3>{{ channel.name || channel.channelName || channel.channelId }}</h3><p>{{ channel.online === true ? '在线' : channel.online === false ? '离线' : '状态待确认' }}</p><p>网关 IP：{{ acousticPointIp(member.raw, channel) }}</p><p>通道：{{ channel.channelId }}</p><RouterLink :to="{ path: '/device/detail', query: { source: 'monitor', device: member.id, machine: selected.id, channelId: channel.channelId, tab: 'spectrum' } }">声纹监测与频谱 ↗</RouterLink></section>
-            </template>
-          </div>
-          <p v-if="!member.points.length">{{ busy ? '正在加载点位…' : '暂无数值监测点位' }}</p>
-        </section>
-        <p v-if="!selected.members.length">{{ busy ? '正在加载采集来源…' : '暂未获取到该设备的采集来源' }}</p>
-      </template>
-      <p v-else>未找到该设备，请返回设备列表选择。</p>
-    </template>
+      <div v-if="acousticRows.length" class="acoustic-grid" :class="{ single: acousticRows.length === 1 }">
+        <article v-for="row in acousticRows" :key="row.key" class="monitor-channel" role="button" tabindex="0" :aria-label="rowName(row)+'详情'" aria-haspopup="dialog" @click="openPoint(row)" @keydown.enter.prevent="openPoint(row)" @keydown.space.prevent="openPoint(row)">
+          <HomeSoundChart :frame="soundFrames[row.key]" :name="rowName(row)" :status="soundCardStatus(row)" />
+        </article>
+      </div>
+      <p v-if="!rows.length" class="monitor-empty">{{ busy ? '正在加载…' : '暂无数据' }}</p>
+    </div>
+    <MonitorPointDetails v-if="selectedRow" :key="selectedRow.key" :row="selectedRow" :location="selected.id" @close="selectedKey = ''" />
   </section>
 </template>
 
 <style scoped>
-.machine-monitor { --wall-text: var(--text-main); --wall-muted: var(--text-muted); --wall-line: var(--glass-border); --wall-point: var(--glass-card-soft); padding: 24px; overflow-y: auto; color: var(--text-main); display: flex; flex-direction: column; gap: 20px; }
-h1, h2, h3 { margin: 0; } p { color: var(--text-muted); line-height: 1.6; } a { color: var(--text-soft); text-decoration: none; }
-.monitor-heading, .monitor-actions, .selected-machine, .monitor-source > header, .machine-entry header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
-.monitor-heading h1 { font-size: 26px; }.monitor-heading p { margin-bottom: 0; }
-.monitor-search { display: flex; align-items: center; gap: 12px; }.monitor-search input { padding: 10px 14px; background: var(--glass-card); border: 1px solid var(--control-border); border-radius: 6px; color: var(--text-main); }
-.machine-directory { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
-.machine-entry, .monitor-source, .monitor-channel { min-width: 0; padding: 24px; border: 1px solid var(--glass-border); border-radius: 10px; background: var(--glass-card); }
-.machine-entry:hover { border-color: var(--control-border-active); }.machine-entry h2 { font-size: 22px; }.machine-entry header span { font-size: 13px; }
-.machine-totals { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }.machine-totals strong { font-size: 24px; }.machine-totals small { font-size: 13px; font-weight: normal; }.machine-totals span { align-self: center; }
-.machine-entry ul { padding-left: 18px; line-height: 1.8; font-size: 14px; }.machine-entry li small { display: block; color: var(--text-muted); }.machine-entry footer { border-top: 1px solid var(--glass-border); padding-top: 16px; margin-top: 16px; }
-.monitor-warning { padding: 12px; border: 1px solid #e4a26055; color: #d99545; border-radius: 6px; }
-.machine-nav { display: flex; flex-wrap: wrap; gap: 10px; }.machine-nav a { padding: 10px 16px; border: 1px solid var(--glass-border); border-radius: 6px; }.machine-nav .active { background: var(--control-bg-active); border-color: var(--control-border-active); }
-.monitor-point-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 18px; }.monitor-point-grid.single { grid-template-columns: minmax(0, 1fr); }.monitor-point-grid.double { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.monitor-measurement { min-width: 0; }.point-actions { display: flex; gap: 24px; padding: 12px 4px; }.monitor-point-grid :deep(.home-point-chart) { height: 170px; }.monitor-point-grid.single :deep(.home-point-chart), .monitor-point-grid.double :deep(.home-point-chart) { height: 230px; }
-@media (max-width: 1100px) { .machine-directory, .monitor-point-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 650px) { .machine-monitor { padding: 14px; }.machine-directory, .monitor-point-grid, .monitor-point-grid.double { grid-template-columns: minmax(0, 1fr); } }
+.machine-monitor { --wall-text:var(--text-main); --wall-muted:var(--text-muted); --wall-line:var(--glass-border); --wall-point:var(--glass-card-soft); padding:18px 24px; overflow-y:auto; color:var(--text-main); display:flex; flex-direction:column; gap:16px; }
+.location-tabs { display:flex; align-items:center; gap:6px; overflow-x:auto; padding:4px 0; scrollbar-width:thin; }
+.location-tabs button { flex:1 0 auto; min-height:36px; padding:7px 10px; border:1px solid var(--glass-border); border-radius:6px; color:var(--text-main); background:var(--glass-card); font:inherit; font-size:14px; white-space:nowrap; cursor:pointer; }
+.location-tabs button.active { background:var(--control-bg-active); border-color:var(--control-border-active); color:var(--text-highlight); box-shadow:inset 0 -2px 0 #a8ff7d; }
+.location-tabs button:focus-visible,.monitor-measurement:focus-visible,.monitor-channel:focus-visible { outline:2px solid #a8ff7d; outline-offset:2px; }
+.monitor-heading,.monitor-actions { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
+h1 { margin:0; font-size:22px; font-weight:600; }
+.monitor-actions { font-size:14px; color:var(--text-muted); }
+.monitor-actions label { display:flex; align-items:center; gap:6px; }
+.location-content { display:flex; flex-direction:column; gap:16px; }
+.monitor-point-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+.monitor-point-grid.single { grid-template-columns:minmax(0,1fr); }
+.monitor-point-grid.double,.acoustic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.acoustic-grid.single { grid-template-columns:minmax(0,1fr); }
+.monitor-measurement,.monitor-channel { min-width:0; border-radius:8px; cursor:pointer; }
+.monitor-measurement:hover,.monitor-channel:hover { box-shadow:0 0 0 1px var(--control-border-active); }
+.monitor-point-grid :deep(.home-point-chart) { height:170px; }
+.monitor-point-grid :deep(.home-point h3) { font-size:15px; }
+.monitor-point-grid :deep(.home-point footer) { display:none; }
+.monitor-point-grid.single :deep(.home-point-chart),.monitor-point-grid.double :deep(.home-point-chart) { height:280px; }
+.monitor-channel { padding:14px 0 4px; border:1px solid var(--glass-border); background:var(--glass-card-soft); }
+.monitor-channel :deep(.plot),.monitor-channel :deep(.spectrogram-canvas) { height:200px; }
+.monitor-warning { margin:0; padding:10px 14px; border:1px solid #e4a26055; color:#d99545; border-radius:6px; }
+.monitor-empty { color:var(--text-muted); text-align:center; padding:48px; }
+@media(max-width:1100px) { .monitor-point-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:650px) { .machine-monitor { padding:14px; }.monitor-point-grid,.monitor-point-grid.double,.acoustic-grid { grid-template-columns:minmax(0,1fr); } }
 </style>

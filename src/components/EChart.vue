@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 
 const props = defineProps({
+  preserveZoom: Boolean,
   option: {
     type: Object,
     required: true,
@@ -51,7 +52,14 @@ const render = () => {
       logAxis: { axisLabel: { fontSize: 15 }, nameTextStyle: { fontSize: 15 } },
     }, { renderer: 'canvas' })
   }
-  chart.setOption(themedOption(props.option), true)
+  const option = themedOption(props.option)
+  if (props.preserveZoom && option.dataZoom) {
+    const previous = chart.getOption()?.dataZoom || []
+    option.dataZoom = option.dataZoom.map((zoom, index) => previous[index]
+      ? { ...zoom, start: previous[index].start, end: previous[index].end }
+      : zoom)
+  }
+  chart.setOption(option, true)
 }
 
 watch(() => props.option, render, { deep: true })

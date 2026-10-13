@@ -45,7 +45,6 @@ function value(sample) { return typeof sample?.value === 'number' && Number.isFi
         <div class="reading-value"><strong>{{ value(currentSample) }}</strong><small>{{ current?.unit || '' }}</small></div>
       </div>
     </div>
-    <footer><span>车速 {{ speedSample ? new Date(speedSample.collectedAt).toLocaleTimeString('zh-CN', { hour12:false }) : '暂无数据' }}</span><span>电流 {{ currentSample ? new Date(currentSample.collectedAt).toLocaleTimeString('zh-CN', { hour12:false }) : '暂无数据' }}</span></footer>
   </section>
 </template>
 <style scoped>

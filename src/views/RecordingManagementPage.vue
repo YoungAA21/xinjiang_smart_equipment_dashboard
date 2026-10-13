@@ -4,6 +4,7 @@ import { Database, Download, FileAudio, RefreshCcw, Search, SlidersHorizontal, W
 import { ElMessage } from 'element-plus'
 import EChart from '../components/EChart.vue'
 import { api } from '../services/api'
+import { acousticChannelDisplayName } from '../charts/machineGroups.js'
 
 const recordings = ref([])
 const selected = ref(null)
@@ -285,7 +286,7 @@ onMounted(() => {
           <el-option
             v-for="channel in channelOptions"
             :key="channel.channelId"
-            :label="channel.name || channel.channelId"
+            :label="acousticChannelDisplayName(selectedDevice, channel)"
             :value="channel.channelId"
           />
         </el-select>

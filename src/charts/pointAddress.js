@@ -1,7 +1,11 @@
 export function acousticPointIp(device, channel) {
   const collectors = device?.collectors || []
-  if (channel?.collectorId != null) {
-    return collectors.find(collector => collector.collectorId === channel.collectorId)?.ip || '未提供'
-  }
-  return collectors.length === 1 ? collectors[0].ip || '未提供' : '未提供'
+  const collector = channel?.collectorId != null
+    ? collectors.find(item => String(item.collectorId) === String(channel.collectorId))
+    : collectors.length === 1 ? collectors[0] : null
+  const channelText = `${channel?.channelId || ''} ${channel?.channelName || ''} ${channel?.name || ''}`
+  return collector?.ip
+    || channelText.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/)?.[0]
+    || device?.ip
+    || '未提供'
 }

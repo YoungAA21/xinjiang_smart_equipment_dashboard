@@ -16,7 +16,7 @@ test('home defaults to the first machine and packs pressure and sound into one g
     async refreshModules() { this.modules = ['VSE03','PRESS01','PRESS03','VSE04'].map(moduleId => ({ moduleId, host: moduleId === 'PRESS01' ? '192.168.3.104' : '192.168.3.103', runtimeStatus: { isOnline: true } })) },
     async refreshLatest() {}, clear() {}, async seedRecentPoints(point) { calls.push({ history: point.moduleId }) },
   })
-  const monitor = vue.reactive({ devices: null, error: '', async refresh() { this.devices = [{ deviceId: 'sound', deviceName: '声音', online: true, collectors: [{ collectorId: 'gateway', ip: '192.168.4.114' }], channels: [{ channelId: 'ch1', collectorId: 'gateway', online: true }] }] }, clear() {} })
+  const monitor = vue.reactive({ devices: null, error: '', async refresh() { this.devices = [{ deviceId: 'sound', deviceName: '声音', online: true, collectors: [{ collectorId: 'gateway', ip: '192.168.3.53' }], channels: [{ channelId: 'ch1', collectorId: 'gateway', online: true }] }] }, clear() {} })
   const transport = { async getModulePoints(id, options) {
     calls.push({ id, signal: options.signal })
     return { moduleId: id, points: [

@@ -156,7 +156,7 @@ export const api = {
   getExternalAlarmAudioFileSampleTypes: (fileId) =>
     newApiRequest(`/alarm/audioFileSampleTypes/${encodeURIComponent(fileId)}`),
   getExternalAlarmChartByDay: (day) => newApiRequest('/alarm/chatByDay', { day }),
-  getCollectorStatuses: () => newApiRequest('/collectorManagement/status'),
+  getCollectorStatuses: (options = {}) => newApiRequest('/collectorManagement/status', undefined, { signal: options.signal }),
   getCollectorStatus: (collectorId) =>
     newApiRequest(`/collectorManagement/${encodeURIComponent(collectorId)}/status`),
   getCollectorStatusHistory: (params = {}) => newApiRequest('/collectorManagement/status-history', params),

@@ -1,9 +1,8 @@
 <script setup>
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElDialog } from 'element-plus'
 import { Search, RefreshCw, Activity, AudioLines, Thermometer, Gauge, Eye, EyeOff } from 'lucide-vue-next'
 import HomeMonitorTile from '../components/HomeMonitorTile.vue'
-import HomeDeviceDialog from '../components/HomeDeviceDialog.vue'
+import HomePointExplorer from '../components/HomePointExplorer.vue'
 import { createSoundPreview } from '../services/soundPreview.js'
 import { api } from '../services/api'
 import { auth } from '../services/auth'
@@ -11,7 +10,7 @@ import { useTelemetryStore } from '../stores/telemetry'
 import { useHomeDevicesStore } from '../stores/homeDevices'
 import { telemetryApi } from '../services/telemetry'
 import { pointKey } from '../charts/telemetry'
-import { groupMachineDevices } from '../charts/machineGroups.js'
+import { groupMachineDevices, fanGroupOf } from '../charts/machineGroups.js'
 import { isMeasurementPoint, moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 
 const telemetry = useTelemetryStore()
@@ -28,23 +27,19 @@ const now = ref(Date.now())
 const switchingAcoustic = ref(false)
 const controller = new AbortController()
 let sampleTimer, metadataTimer
-const dialogOpen = ref(false)
-const deviceDialog = ref(null)
-async function closeDeviceDialog(done) {
-  await deviceDialog.value?.stopSession()
-  done()
-}
-const dialogDeviceKey = ref('')
-const dialogDevice = computed(() => devices.value.find(device => device.key === dialogDeviceKey.value))
-async function openDeviceDialog(device) {
+const selectedRowKey = ref('')
+const explorerLive = ref(true)
+const selectedRow = computed(() => displayRows.value.find(row => row.key === selectedRowKey.value))
+async function openPointChart(row) {
   if (switchingAcoustic.value) return
   switchingAcoustic.value = true
   try {
     await preview.stop()
-    dialogDeviceKey.value = device.key
-    dialogOpen.value = true
+    explorerLive.value = true
+    selectedRowKey.value = row.key
   } finally { switchingAcoustic.value = false }
 }
+function closePointChart() { selectedRowKey.value = '' }
 const devices = computed(() => [
   ...sortMonitoringModules(telemetry.modules || []).map(module => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', id: module.moduleId, name: moduleDisplayName(module), online: module.runtimeStatus?.isOnline, points: pointMap.value[module.moduleId] || [], raw: module })),
   ...(monitor.devices || []).map(device => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', id: device.deviceId, name: device.deviceName || device.deviceId, online: device.online, points: device.channels || [], raw: device })),
@@ -63,18 +58,13 @@ const categories = [
   { id: 'acoustic', name: '声纹监测', color: '#688bea', icon: AudioLines },
 ]
 const categoryOf = (point, member) => member.source === 'monitor' ? 'acoustic' : String(point.metricType || '').startsWith('Vibration') ? 'vibration' : point.metricType === 'Temperature' ? 'temperature' : point.metricType === 'NegativePressure' ? 'pressure' : 'other'
-const allRows = computed(() => activeMachine.value.members.flatMap(member => member.points.map(point => ({ member, point, key: member.source === 'legacy' ? pointKey(point) : connectionKey(member, point), category: categoryOf(point, member) }))))
+const allRows = computed(() => activeMachine.value.members.flatMap(member => member.points
+  .filter(point => member.source !== 'legacy' || point.metricType !== 'DigitalInput')
+  .map(point => ({ member, point, key: member.source === 'legacy' ? pointKey(point) : connectionKey(member, point), category: categoryOf(point, member) }))))
 const sections = computed(() => categories.map(category => ({ ...category, rows: allRows.value.filter(row => row.category === category.id && (source.value === 'all' || row.member.source === source.value) && `${row.member.name} ${row.member.id} ${row.point.name || row.point.channelName || ''} ${row.point.pointCode || row.point.channelId}`.toLowerCase().includes(search.value.trim().toLowerCase())) })).filter(category => category.rows.length))
-const staleCount = computed(() => allRows.value.filter(row => {
-  if (row.member.source !== 'legacy') return false
-  const last = telemetry.buffers[row.key]?.at(-1)
-  return last && now.value - Date.parse(last.collectedAt) > 10000
-}).length)
-const acousticCount = computed(() => allRows.value.filter(row => row.member.source === 'monitor').length)
 const activeErrors = computed(() => activeMachine.value.members.filter(member => pointErrors.value[member.id]).map(member => `${member.id}：${pointErrors.value[member.id]}`))
 const historyState = ref({})
 let warmingHistory = false
-const historyLoading = computed(() => allRows.value.some(row => historyState.value[row.key] === 'loading'))
 const historyFailed = computed(() => allRows.value.some(row => historyState.value[row.key] === 'error'))
 async function warmHistory() {
   if (warmingHistory || controller.signal.aborted) return
@@ -101,10 +91,11 @@ function retryHistory() {
 }
 watch(allRows, warmHistory)
 async function selectMachine(id) {
-  if (id === activeMachineId.value || switchingAcoustic.value || dialogOpen.value) return
+  if (id === activeMachineId.value || switchingAcoustic.value) return
   switchingAcoustic.value = true
   try {
     await preview.stop()
+    closePointChart()
     activeMachineId.value = id
     search.value = ''
     source.value = 'all'
@@ -159,9 +150,10 @@ const preview = createSoundPreview({ api, token: () => auth.getToken(), Socket: 
   onStatus(value) { soundStatus.value = value },
 })
 const soundTargets = computed(() => {
-  if (!autoRefresh.value || dialogOpen.value || switchingAcoustic.value || monitor.error) return []
+  if (!autoRefresh.value || switchingAcoustic.value || monitor.error) return []
   const targets = new Map()
-  for (const row of displayRows.value) {
+  const rows = selectedRow.value ? (explorerLive.value && selectedRow.value.member.source === 'monitor' ? [selectedRow.value] : []) : displayRows.value
+  for (const row of rows) {
     if (row.member.source !== 'monitor' || row.point.online !== true || row.member.online === false) continue
     if (!targets.has(row.member.id)) targets.set(row.member.id, { deviceId: row.member.id, channelIds: [] })
     targets.get(row.member.id).channelIds.push(row.point.channelId)
@@ -181,40 +173,15 @@ function soundCardStatus(row) {
   const frame = soundFrames.value[row.key]
   return frame ? now.value - frame.receivedAt > 10000 ? '未更新' : '实时' : soundStatus.value
 }
-function collectorIp(row) {
-  const collectors = row.member.raw?.collectors || []
-  const collector = collectors.find(item => item.collectorId === row.point.collectorId)
-  return collector?.ip || (collectors.length === 1 ? collectors[0].ip : '')
-}
-function fanGroupOf(row) {
-  if (row.member.source === 'legacy' && row.member.id === 'VSE03') {
-    const suffix = row.point.pointCode?.match(/_v_(\d+)$/)?.[1]
-    if (['01', '02', '08', '09'].includes(suffix)) return 've'
-    if (['03', '04', '10', '11'].includes(suffix)) return 'max'
-  }
-  if (row.member.source === 'legacy' && row.member.id === 'TEMP02') {
-    if (['BEARING_TEMP_07', 'BEARING_TEMP_08'].includes(row.point.pointCode)) return 've'
-    if (['BEARING_TEMP_09', 'BEARING_TEMP_10'].includes(row.point.pointCode)) return 'max'
-  }
-  if (row.member.source === 'monitor') {
-    const ip = collectorIp(row)
-    if (ip === '192.168.4.119') return 've'
-    if (ip === '192.168.4.111') {
-      const channel = `${row.point.channelId || ''} ${row.point.channelName || row.point.name || ''}`
-      return /(?:CH(?:ANNEL)?[-_ ]?0?1\b|通道\s*1\b)/i.test(channel) ? 've' : 'max'
-    }
-  }
-  return ''
-}
 const isFanLayout = computed(() => activeMachineId.value === 'ZJ117')
 const isZb25Layout = computed(() => activeMachineId.value === 'ZB25')
+const isYb55Layout = computed(() => activeMachineId.value === 'YB55')
 const fanGroups = computed(() => [
   { id: 've', title: 'VE 风机', rows: displayRows.value.filter(row => fanGroupOf(row) === 've') },
   { id: 'max', title: 'MAX 风机', rows: displayRows.value.filter(row => fanGroupOf(row) === 'max') },
 ].filter(group => group.rows.length))
-const pressureRows = computed(() => isFanLayout.value ? displayRows.value.filter(row => row.category === 'pressure') : [])
 const fanRemainderRows = computed(() => isFanLayout.value ? displayRows.value.filter(row => !fanGroupOf(row) && row.category !== 'pressure') : [])
-const zb25PressureRows = computed(() => isZb25Layout.value ? displayRows.value.filter(row => row.category === 'pressure') : [])
+const fanPressureRows = computed(() => isFanLayout.value ? displayRows.value.filter(row => row.category === 'pressure') : [])
 const zb25Rows = computed(() => {
   if (!isZb25Layout.value) return []
   const rows = displayRows.value.filter(row => row.category !== 'pressure')
@@ -228,6 +195,39 @@ const zb25Rows = computed(() => {
     ;[ordered[fourthRowSecondColumn], ordered[motorDriveIndex]] = [ordered[motorDriveIndex], ordered[fourthRowSecondColumn]]
   }
   return ordered
+})
+const zb25PressureRows = computed(() => isZb25Layout.value ? displayRows.value.filter(row => row.category === 'pressure') : [])
+const yb55Rows = computed(() => isYb55Layout.value ? displayRows.value.filter(row => row.category !== 'pressure') : [])
+const yb55PressureRows = computed(() => isYb55Layout.value ? displayRows.value.filter(row => row.category === 'pressure') : [])
+const panelSize = ref({ height: 0, width: 0, viewportWidth: 0 })
+let layoutObserver
+function observePanel(element) {
+  layoutObserver?.disconnect()
+  if (!element) return
+  layoutObserver = new ResizeObserver(([entry]) => {
+    panelSize.value = { height: entry.contentRect.height, width: entry.contentRect.width, viewportWidth: window.innerWidth }
+  })
+  layoutObserver.observe(element)
+}
+const homeCardSize = computed(() => {
+  if (!panelSize.value.height) return {}
+  const width = panelSize.value.viewportWidth
+  const columns = width <= 480 ? 1 : width <= 800 ? 2 : width <= 1100 ? 3 : 4
+  let rows, overhead = 44
+  if (isFanLayout.value) {
+    const groupRows = fanGroups.value.map(group => Math.ceil(group.rows.length / (width <= 480 ? 1 : 2)))
+    rows = width <= 650 ? groupRows.reduce((sum, count) => sum + count, 0) : Math.max(0, ...groupRows)
+    if (width <= 650) overhead *= fanGroups.value.length
+    const remainder = Math.ceil(fanRemainderRows.value.length / columns)
+    if (remainder) { rows += remainder; overhead += 16 }
+  } else {
+    const gridColumns = isZb25Layout.value ? width <= 480 ? 1 : width <= 650 ? 2 : 4 : columns
+    rows = Math.ceil((isZb25Layout.value ? zb25Rows.value : isYb55Layout.value ? yb55Rows.value : displayRows.value).length / gridColumns)
+  }
+  rows = Math.max(4, rows)
+  const warningHeight = (activeErrors.value.length + Number(historyFailed.value)) * 56
+  const height = Math.floor((panelSize.value.height - 96 - 16 - overhead - warningHeight - (rows - 1) * 8) / rows)
+  return { '--home-point-height': `${Math.max(24, height)}px` }
 })
 
 async function refresh({ reloadPoints = true } = {}) {
@@ -284,6 +284,7 @@ onMounted(() => {
   metadataTimer = window.setInterval(() => { if (autoRefresh.value) refresh({ reloadPoints: false }) }, 30000)
 })
 onBeforeUnmount(() => {
+  layoutObserver?.disconnect()
   window.clearInterval(soundTimer)
   preview.stop().catch(() => {})
   controller.abort()
@@ -295,46 +296,40 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page home-monitor" :class="{ paused: !autoRefresh }">
+  <section class="page home-monitor" :class="{ paused: !autoRefresh }" :style="homeCardSize">
     <div class="station-bar">
     <nav class="machine-tabs" role="tablist" aria-label="选择监测设备">
-      <button v-for="(machine, index) in machineData.groups" :id="'machine-tab-'+machine.id" :key="machine.id" role="tab" :aria-selected="activeMachineId === machine.id" :aria-controls="'machine-panel-'+machine.id" :tabindex="activeMachineId === machine.id ? 0 : -1" :class="{ active: activeMachineId === machine.id }" :disabled="switchingAcoustic" @click="selectMachine(machine.id)" @keydown="navigateTab($event, index)"><span class="tab-number">0{{ index + 1 }}</span><span class="tab-title"><strong>{{ machine.name }}</strong><small>{{ machineState(machine) }}</small></span><span class="tab-dot" :class="{ online: machineState(machine) === '采集在线', warning: ['部分离线', '采集离线'].includes(machineState(machine)) }"></span></button>
+      <button v-for="(machine, index) in machineData.groups" :id="'machine-tab-'+machine.id" :key="machine.id" role="tab" :aria-selected="activeMachineId === machine.id" :aria-controls="'machine-panel-'+machine.id" :tabindex="activeMachineId === machine.id ? 0 : -1" :class="{ active: activeMachineId === machine.id }" :disabled="switchingAcoustic" @click="selectMachine(machine.id)" @keydown="navigateTab($event, index)"><span class="tab-number">0{{ index + 1 }}</span><span class="tab-title"><strong>{{ machine.name }}</strong></span><span class="tab-dot" :class="{ online: machineState(machine) === '采集在线', warning: ['部分离线', '采集离线'].includes(machineState(machine)) }"></span></button>
     </nav>
     <div class="station-actions"><span class="refresh-indicator"><i></i>{{ autoRefresh ? '实时' : '暂停' }} · {{ currentTime }}</span><button class="plain-button view-settings" :aria-label="homeControlsExpanded ? '隐藏设置' : '显示设置'" :title="homeControlsExpanded ? '隐藏设置' : '显示设置'" :aria-expanded="homeControlsExpanded" @click="homeControlsExpanded = !homeControlsExpanded"><EyeOff v-if="homeControlsExpanded" :size="18"/><Eye v-else :size="18"/></button><el-button :icon="RefreshCw" :loading="refreshing" @click="refresh">刷新</el-button></div>
     </div>
     <div v-if="homeControlsExpanded" class="home-controls"><label><Search :size="16"/><input v-model="search" aria-label="搜索当前设备点位" placeholder="搜索当前设备点位" /></label><select v-model="source" aria-label="点位来源"><option value="all">全部点位</option><option value="legacy">数值监测</option><option value="monitor">声纹通道</option></select><el-switch v-model="autoRefresh" aria-label="自动刷新" @change="toggleLive" /><span>自动刷新</span></div>
-    <p v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="home-warning" role="alert">{{ [telemetry.errors.modules, telemetry.errors.latest, monitor.error].filter(Boolean).join('；') }}。保留最近数据，请留意采样时间。</p>
+    <p v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="home-warning" role="alert">{{ [telemetry.errors.modules, telemetry.errors.latest, monitor.error].filter(Boolean).join('；') }}</p>
     <Transition name="machine-fade" mode="out-in">
-      <main :id="'machine-panel-'+activeMachineId" :key="activeMachineId" role="tabpanel" :aria-labelledby="'machine-tab-'+activeMachineId" class="machine-panel">
-        <header class="device-summary"><span>{{ activeMachine.pointCount }} 个点位 · 声纹 {{ acousticCount }} 路 <b v-if="staleCount">· {{ staleCount }} 个未更新</b></span><span>{{ historyLoading ? '正在载入最近10分钟采样…' : '最近300个真实采样 · 新数据滚动替换' }}</span><RouterLink :to="{ path: '/device', query: { machine: activeMachineId } }">设备详情 ↗</RouterLink></header>
-        <p v-if="historyFailed" class="home-warning">部分历史采样未加载，暂显示已收到的数据。<button @click="retryHistory">重试历史</button></p>
+      <main :ref="observePanel" :id="'machine-panel-'+activeMachineId" :key="activeMachineId" role="tabpanel" :aria-labelledby="'machine-tab-'+activeMachineId" class="machine-panel">
+        <p v-if="historyFailed" class="home-warning">历史采样加载失败。<button @click="retryHistory">重试历史</button></p>
         <p v-for="error in activeErrors" :key="error" class="home-warning">{{ error }}</p>
         <div v-if="isFanLayout" class="fan-layout">
           <section v-for="group in fanGroups" :key="group.id" class="fan-group" :class="group.id">
-            <header class="fan-group-heading"><h2>{{ group.title }}</h2><span>{{ group.rows.length }} 个监测点</span></header>
-            <div class="fan-grid"><HomeMonitorTile v-for="row in group.rows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
+            <header class="fan-group-heading"><h2>{{ group.title }}</h2></header>
+            <div class="fan-grid"><HomeMonitorTile v-for="row in group.rows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
           </section>
-          <section v-if="pressureRows.length" class="pressure-span">
-            <header class="fan-group-heading pressure-heading"><h2>负压监测</h2><span>{{ pressureRows.length }} 个点位</span></header>
-            <div class="pressure-grid"><HomeMonitorTile v-for="row in pressureRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
-          </section>
-          <div v-if="fanRemainderRows.length" class="monitor-grid"><HomeMonitorTile v-for="row in fanRemainderRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
+          <div v-if="fanRemainderRows.length" class="monitor-grid"><HomeMonitorTile v-for="row in fanRemainderRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+          <div v-if="fanPressureRows.length" class="pressure-grid"><HomeMonitorTile v-for="row in fanPressureRows" :key="row.key" class="point-tile" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
         </div>
         <div v-else-if="isZb25Layout" class="zb25-layout">
-          <div class="monitor-grid zb25-grid"><HomeMonitorTile v-for="row in zb25Rows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
-          <section v-if="zb25PressureRows.length" class="zb25-pressure-span">
-            <header class="fan-group-heading pressure-heading"><h2>负压监测</h2><span>{{ zb25PressureRows.length }} 个点位</span></header>
-            <div class="pressure-grid"><HomeMonitorTile v-for="row in zb25PressureRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
-          </section>
+          <div class="monitor-grid zb25-grid"><HomeMonitorTile v-for="row in zb25Rows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+          <div v-if="zb25PressureRows.length" class="pressure-grid"><HomeMonitorTile v-for="row in zb25PressureRows" :key="row.key" class="point-tile" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
         </div>
-        <div v-else class="monitor-grid"><HomeMonitorTile v-for="row in displayRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openDeviceDialog" /></div>
-        <div v-if="!displayRows.length" class="home-empty"><Activity :size="32"/><h3>{{ refreshing ? '正在加载监测点位' : '暂无可展示的点位' }}</h3><p>{{ search || source !== 'all' ? '请调整筛选条件。' : '点位配置获取成功后会自动展示。' }}</p></div>
+        <div v-else-if="isYb55Layout" class="yb55-layout">
+          <div class="monitor-grid yb55-grid"><HomeMonitorTile v-for="row in yb55Rows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+          <div v-if="yb55PressureRows.length" class="pressure-grid"><HomeMonitorTile v-for="row in yb55PressureRows" :key="row.key" class="point-tile" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+        </div>
+        <div v-else class="monitor-grid" :class="{ 'yb55-grid': activeMachineId === 'YB55' }"><HomeMonitorTile v-for="row in displayRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+        <div v-if="!displayRows.length" class="home-empty"><Activity :size="32"/><h3>{{ refreshing ? '正在加载监测点位' : '暂无可展示的点位' }}</h3></div>
       </main>
     </Transition>
-    <aside v-if="machineData.pending.members.length" class="pending-note">另有 {{ machineData.pending.members.length }} 个采集来源待确认归属 <RouterLink :to="{ path: '/device', query: { machine: 'pending' } }">查看 ↗</RouterLink></aside>
-    <el-dialog v-model="dialogOpen" :before-close="closeDeviceDialog" :title="dialogDevice?.name || '设备详情'" width="94vw" top="3vh" class="home-device-dialog" append-to-body append-to=".dashboard-shell" destroy-on-close>
-      <HomeDeviceDialog ref="deviceDialog" v-if="dialogDevice && dialogOpen" :key="dialogDevice.key" :device="dialogDevice" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :error="dialogDevice.source === 'legacy' ? pointErrors[dialogDevice.id] || telemetry.errors.latest || telemetry.errors.modules : monitor.error" />
-    </el-dialog>
+    <HomePointExplorer v-if="selectedRow" :key="selectedRow.key" :row="selectedRow" :buffers="telemetry.buffers" :paused="!autoRefresh" @close="closePointChart" @live-change="explorerLive = $event" />
   </section>
 </template>
 
@@ -351,15 +346,14 @@ a { color: var(--text-soft); text-decoration: none; }.home-topbar, .top-actions 
 .point-tile :deep(.home-point.compact) { padding:10px 16px 14px; border:0; background:transparent; grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto 72px; gap:9px; }.point-tile :deep(.compact header) { grid-column:1; grid-row:1; align-items:start; gap:8px; }.point-tile :deep(.compact h3) { font-size:14px; line-height:21px; min-height:42px; }.point-tile :deep(.compact header span) { margin-top:3px; font-size:10px; }.point-tile :deep(.compact .home-point-value) { grid-column:1; grid-row:2; height:auto; margin:0; flex-wrap:wrap; gap:7px; }.point-tile :deep(.compact .home-point-value strong) { font-size:34px; font-weight:600; letter-spacing:-1px; animation:none; }.point-tile :deep(.compact .home-point-value small) { font-size:12px; }.point-tile :deep(.compact .home-point-chart) { grid-column:1; grid-row:3; width:100%; height:72px; }.point-grid.sparse :deep(.home-point.compact) { grid-template-rows:auto auto 104px; }.point-grid.sparse :deep(.compact .home-point-chart) { height:104px; }
 .acoustic-tile { padding:12px 16px 16px; }.acoustic-tile header { display:flex; gap:10px; justify-content:space-between; }.acoustic-tile h4 { font-size:15px; line-height:1.5; }.acoustic-tile header span { color:var(--text-muted); font-size:11px; white-space:nowrap; }.sound-placeholder { display:flex; gap:12px; align-items:center; justify-content:center; height:92px; color:var(--category-color); }.sound-placeholder span { color:var(--text-muted); font-size:12px; }.acoustic-tile > button { width:100%; min-height:38px; border:1px solid var(--glass-border); background:var(--control-bg); color:var(--text-soft); border-radius:7px; }.point-tile :deep(.acoustic-point-card) { border:0; background:transparent; }.home-warning { color:#c68733; background:#db8b2b0a; border:1px solid #db8b2b35; padding:12px 16px; border-radius:8px; font-size:13px; margin-bottom:12px; }.home-empty { padding:60px 20px; display:grid; justify-items:center; gap:14px; color:var(--text-muted); }.pending-note { font-size:12px; color:var(--text-muted); padding:12px 0; }.pending-note a { margin-left:16px; }
 .machine-fade-enter-active,.machine-fade-leave-active { transition:opacity .18s,transform .18s; }.machine-fade-enter-from { opacity:0; transform:translateY(8px); }.machine-fade-leave-to { opacity:0; transform:translateY(-4px); }@keyframes breathe { 50% { opacity:.45; } }
-:global(.home-device-dialog.el-dialog) { height:94vh; display:flex; flex-direction:column; margin-bottom:0; background:var(--page-bg); color:var(--text-main); border:1px solid var(--control-border-active); border-radius:12px; }:global(.home-device-dialog .el-dialog__body) { flex:1; min-height:0; overflow-y:auto; }:global(.home-device-dialog .el-dialog__title) { color:var(--text-main); }
 @media(min-width:1800px) { .point-grid { grid-template-columns:repeat(5,minmax(0,1fr)); } }
 @media(max-width:1150px) { .point-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }.machine-tabs button { padding:16px 12px; gap:10px; }.tab-title strong { font-size:16px; }.tab-number { font-size:20px; }.point-grid.acoustic { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:800px) { .home-monitor { padding:18px; }.point-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.home-topbar { flex-wrap:wrap; }.tab-number { display:none; }.tab-title strong { font-size:14px; }.machine-tabs { gap:8px; }.tab-dot { display:none; }.summary-values { gap:22px; }.device-summary { gap:16px; } }
 @media(max-width:520px) { .home-monitor { padding:12px; }.point-grid,.point-grid.sparse,.point-grid.acoustic { grid-template-columns:minmax(0,1fr); }.tab-title strong { font-size:12px; }.tab-title small { font-size:10px; }.machine-tabs button { padding:14px 8px; }.top-actions { gap:8px; flex-wrap:wrap; }.summary-values { margin-left:0; }.device-summary > a { margin-left:0; }.refresh-indicator { font-size:11px; } }
 @media(prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none!important; transition:none!important; } .point-tile:hover,.machine-tabs button:hover { transform:none; } }
 /* Dense industrial overview: tabs occupy the first row, measurements use the rest. */
-.home-monitor { padding: 8px 14px 12px; gap: 10px; }
-.station-bar { display:flex; align-items:center; gap:20px; flex:none; position:sticky; top:-8px; z-index:10; background:var(--page-bg); padding:4px 0 8px; border-bottom:1px solid var(--glass-border); }
+.home-monitor { --home-point-height:220px; --home-pressure-height:96px; padding: 0 14px 12px; gap: 10px; overflow:hidden; }
+.station-bar { display:flex; align-items:center; gap:20px; flex:none; position:sticky; top:0; z-index:10; background:var(--page-bg); padding:0 0 8px; border-bottom:1px solid var(--glass-border); }
 .station-bar .machine-tabs { flex:1; gap:8px; }
 .station-bar .machine-tabs button { padding:10px 16px; border-radius:6px; gap:10px; }
 .station-bar .tab-number { display:none; }
@@ -369,7 +363,7 @@ a { color: var(--text-soft); text-decoration: none; }.home-topbar, .top-actions 
 .station-actions { display:flex; align-items:center; gap:10px; }
 .station-actions .view-settings { display:grid; place-items:center; padding:8px; border-radius:6px; }
 .station-actions .view-settings:hover { color:var(--text-main); background:var(--glass-card); }
-.machine-panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 16px; align-content:start; }
+.machine-panel { flex:1; min-height:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 16px; align-content:start; }
 .device-summary,.machine-panel > .home-warning,.machine-panel > .home-empty { grid-column:1 / -1; }
 .device-summary { gap:20px; margin:0; font-size:11px; color:var(--text-muted); }
 .device-summary b { color:#db8b2b; font-weight:500; }
@@ -397,31 +391,55 @@ a { color: var(--text-soft); text-decoration: none; }.home-topbar, .top-actions 
 .machine-fade-enter-from,.machine-fade-leave-to { transform:none; }
 @media(max-width:1200px) { .station-bar { flex-wrap:wrap; gap:6px; }.station-bar .machine-tabs { flex-basis:100%; }.station-actions { margin-left:auto; }.station-bar .tab-title { display:grid; gap:3px; }.wide-section .point-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }.point-grid,.point-grid.acoustic { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:650px) { .machine-panel { grid-template-columns:minmax(0,1fr); }.wide-section .point-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.station-bar .machine-tabs button { padding:9px 6px; }.station-bar .tab-title strong { font-size:12px; }.device-summary { gap:8px; } }
-.monitor-grid { grid-column:1 / -1; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; align-items:stretch; }
-.fan-layout { grid-column:1 / -1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }
+.monitor-grid { grid-column:1 / -1; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); grid-template-rows:none; grid-auto-rows:var(--home-point-height); align-content:start; gap:8px; align-items:stretch; }
+.monitor-grid.yb55-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.fan-layout { grid-column:1 / -1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; align-content:start; }
 .fan-group { min-width:0; padding:10px; border:1px solid color-mix(in srgb,#368ce8 28%,var(--glass-border)); border-radius:8px; background:color-mix(in srgb,#368ce8 3%,transparent); }
 .fan-group.max { border-color:color-mix(in srgb,#18a99a 30%,var(--glass-border)); background:color-mix(in srgb,#18a99a 3%,transparent); }
 .fan-group-heading { display:flex; align-items:center; gap:10px; margin:0 0 10px; padding:0 2px 8px; border-bottom:1px solid var(--glass-border); }
 .fan-group-heading h2 { color:var(--text-main); font-size:15px; font-weight:600; }
 .fan-group-heading span { color:var(--text-muted); font-size:11px; }
-.fan-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-.pressure-span { grid-column:1 / -1; min-width:0; }
-.pressure-heading { margin-bottom:8px; }.pressure-grid { display:grid; grid-template-columns:minmax(0,1fr); }
-.pressure-grid .point-tile { min-height:210px; }
-.pressure-grid .point-tile :deep(.home-point.compact) { grid-template-columns:minmax(160px,17%) minmax(0,1fr); grid-template-rows:minmax(28px,auto) 126px; }
-.pressure-grid .point-tile :deep(.compact .home-point-chart) { height:126px; }
-.zb25-layout { grid-column:1 / -1; min-width:0; display:grid; gap:12px; }
-.zb25-layout .zb25-grid { position:relative; grid-template-columns:repeat(4,minmax(0,1fr)); padding:32px 10px 10px; isolation:isolate; }
+.fan-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:none; grid-auto-rows:var(--home-point-height); align-content:start; gap:8px; }
+.pressure-grid { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr); grid-auto-rows:var(--home-pressure-height); align-content:start; gap:10px; min-width:0; }
+.pressure-grid :deep(.home-point.compact) { grid-template-columns:minmax(120px,12%) minmax(0,1fr); }
+.pressure-grid :deep(.home-point.compact) { grid-template-rows:minmax(24px,auto) minmax(0,1fr); }
+.pressure-grid :deep(.compact .home-point-chart) { height:100%; min-height:0; }
+.zb25-layout { grid-column:1 / -1; min-width:0; display:grid; gap:16px; align-content:start; }
+.yb55-layout { grid-column:1 / -1; min-width:0; display:grid; gap:16px; align-content:start; }
+.zb25-layout .zb25-grid { position:relative; grid-template-columns:repeat(4,minmax(0,1fr)); grid-template-rows:none; grid-auto-rows:var(--home-point-height); align-content:start; padding:32px 10px 10px; isolation:isolate; }
 .zb25-grid::before,.zb25-grid::after { position:absolute; top:0; bottom:0; z-index:-1; width:calc(50% - 7px); box-sizing:border-box; padding:8px 12px; border:1px solid color-mix(in srgb,#368ce8 34%,var(--glass-border)); border-radius:8px; background:color-mix(in srgb,#368ce8 3%,transparent); color:var(--text-muted); font-size:13px; font-weight:600; pointer-events:none; }
 .zb25-grid::before { left:0; content:'主电机'; }
 .zb25-grid::after { right:0; content:'其他'; border-color:color-mix(in srgb,#18a99a 34%,var(--glass-border)); background:color-mix(in srgb,#18a99a 3%,transparent); }
-.zb25-pressure-span { min-width:0; }
 .point-context > span { display:flex; align-items:center; gap:6px; }
 .point-context i { width:6px; height:6px; flex:none; border-radius:50%; background:var(--category-color); }
 @media(max-width:1100px) { .monitor-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(max-width:800px) { .monitor-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media(max-width:650px) { .fan-layout { grid-template-columns:minmax(0,1fr); }.pressure-span { grid-column:1; }.zb25-layout .zb25-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.zb25-grid::before,.zb25-grid::after { width:calc(50% - 6px); } }
+@media(max-width:650px) { .monitor-grid.yb55-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:650px) { .fan-layout { grid-template-columns:minmax(0,1fr); }.zb25-layout .zb25-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.zb25-grid::before,.zb25-grid::after { width:calc(50% - 6px); } }
 @media(max-width:480px) { .zb25-layout .zb25-grid { grid-template-columns:minmax(0,1fr); }.zb25-grid::before,.zb25-grid::after { width:100%; }.zb25-grid::after { display:none; } }
-@media(max-width:800px) { .pressure-grid .point-tile :deep(.home-point.compact) { grid-template-columns:minmax(120px,34%) minmax(0,1fr); } }
+@media(max-width:480px) { .monitor-grid.yb55-grid { grid-template-columns:minmax(0,1fr); } }
 @media(max-width:480px) { .monitor-grid,.fan-grid { grid-template-columns:minmax(0,1fr); } }
+
+@media (min-width:1280px) and (min-height:720px) {
+  .home-monitor { gap:8px; padding-bottom:0; }
+  .machine-panel { flex:1; min-height:0; grid-template-rows:auto; align-content:start; }
+  .machine-panel > .home-warning { margin:0; }
+  .fan-layout { min-height:0; align-items:start; }
+  .fan-group { display:flex; flex-direction:column; min-height:0; padding:8px; }
+  .fan-group-heading { flex:none; margin-bottom:8px; }
+  .fan-grid,.monitor-grid { min-height:0; grid-template-rows:none; grid-auto-rows:var(--home-point-height); align-content:start; gap:8px; }
+  .fan-grid { flex:none; }
+  .zb25-layout,.yb55-layout { min-height:0; }
+}
+  .point-tile { min-height:0; display:flex; flex-direction:column; }
+  .point-tile :deep(.home-point.compact) { flex:1; min-height:0; grid-template-rows:auto minmax(0,1fr); }
+  .point-tile :deep(.compact .home-point-chart) { height:100%; min-height:0; }
+  .point-tile :deep(.sound-chart) { flex:1; min-height:0; display:flex; flex-direction:column; }
+  .point-tile :deep(.sound-chart header) { min-height:28px; flex:none; }
+  .point-tile :deep(.sound-chart .plot) { flex:1; min-height:0; height:auto; }
+  .point-tile :deep(.sound-chart .spectrogram-canvas) { height:100%; }
+  .point-tile :deep(.auxiliary-card) { flex:1; min-height:0; height:auto; }
+  .point-tile :deep(.auxiliary-card header) { min-height:28px; }
+  .point-tile :deep(.auxiliary-card .reading) { padding:4px 0; }
+  .point-tile :deep(.auxiliary-card .trend) { height:36px; }
 </style>

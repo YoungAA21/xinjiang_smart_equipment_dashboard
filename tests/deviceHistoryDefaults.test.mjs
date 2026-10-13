@@ -6,6 +6,8 @@ import { parse, compileScript } from '@vue/compiler-sfc'
 import * as vue from 'vue'
 import * as charts from '../src/charts/telemetry.js'
 import * as equipmentCatalog from '../src/charts/equipmentCatalog.js'
+import * as machineGroups from '../src/charts/machineGroups.js'
+import * as monitoringLocationCatalog from '../src/charts/monitoringLocations.js'
 
 const source = await readFile(new URL('../src/views/DeviceDetailPage.vue', import.meta.url), 'utf8')
 const { descriptor } = parse(source)
@@ -36,6 +38,8 @@ async function mountMonitor(query = { source: 'legacy', device: 'PRESS02' }) {
     '../stores/telemetry': { useTelemetryStore: () => telemetry },
     '../charts/telemetry': charts,
     '../charts/equipmentCatalog.js': equipmentCatalog,
+    '../charts/machineGroups.js': machineGroups,
+    '../charts/monitoringLocations.js': monitoringLocationCatalog,
   }
   const moduleCode = new vm.SourceTextModule(compiled.content, { context })
   await moduleCode.link((specifier) => {
@@ -169,6 +173,10 @@ test('device tabs exclude unsupported analysis and old URLs fall back to live', 
     assert.equal(state.detailTabs.some(tab => tab.id === supported), true)
     assert.equal(state.chartMode, 'live')
     assert.equal(state.availableTab(unsupported, source), 'live')
+    if (source === 'monitor') {
+      assert.equal(state.detailTabs.some(tab => tab.id === 'history'), false)
+      assert.equal(state.availableTab('history', source), 'live')
+    }
     app.unmount()
   }
 })

@@ -8,7 +8,6 @@ const props = defineProps({ frame: Object, name: String, status: String })
     <div class="plot" role="img" :aria-label="name + '频谱瀑布图'">
       <SpectrogramCanvas :frames="frame?.rows || []" :sample-rate="frame?.sampleRate || 22000" />
     </div>
-    <footer><span>频谱瀑布图</span><span>{{ frame?.receivedAt ? new Date(frame.receivedAt).toLocaleTimeString('zh-CN', { hour12:false }) : '等待数据' }}</span></footer>
   </div>
 </template>
 <style scoped>
@@ -21,5 +20,4 @@ header span { color:var(--text-muted); font-size:11px; white-space:nowrap; margi
 .plot :deep(.empty-chart) { font-size:11px; }
 .plot :deep(.frequency-axis),.plot :deep(.time-axis) { font-size:9px; }
 .plot :deep(.frequency-axis) { width:32px; }
-footer { display:flex; justify-content:space-between; gap:6px; margin-top:5px; color:var(--text-muted); font-size:10px; }
 </style>

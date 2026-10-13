@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { Fan, Server } from 'lucide-vue-next'
-const props = defineProps({ name: String, source: String, deviceId: String, online: { default: undefined }, paused: Boolean })
+const props = defineProps({ name: String, source: String, deviceId: String, imageSrc: String, online: { default: undefined }, paused: Boolean })
 const active = computed(() => props.online === true && !props.paused)
 const isFan = computed(() => /风机|通风|引风/.test(props.name || ''))
 const motionLabel = computed(() => props.paused ? '刷新暂停' : props.online === true ? '在线采集' : props.online === false ? '设备离线' : '状态未知')
@@ -10,7 +10,7 @@ const equipmentImages = [
   { nameIncludes: '输送电机', src: '/equipment/conveyor-motor.png' },
 ]
 const failedImage = ref('')
-const image = computed(() => equipmentImages.find(item => item.deviceId
+const image = computed(() => props.imageSrc || equipmentImages.find(item => item.deviceId
   ? item.deviceId === props.deviceId && item.source === props.source
   : props.name?.includes(item.nameIncludes))?.src || '')
 </script>

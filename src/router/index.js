@@ -10,9 +10,9 @@ import RecordingManagementPage from '../views/RecordingManagementPage.vue'
 
 export const routes = [
   { path: '/login', name: 'login', component: LoginPage, meta: { title: '登录', public: true } },
-  { path: '/', name: 'home', component: HomePage, meta: { title: '首页' } },
-  { path: '/device', name: 'device-list', component: DeviceMonitorPage, meta: { title: '设备监控' } },
-  { path: '/device/detail', name: 'device-detail', component: DeviceDetailPage, meta: { title: '设备监控' } },
+  { path: '/', name: 'home', component: HomePage, meta: { title: '设备监控' } },
+  { path: '/device', name: 'device-list', component: DeviceMonitorPage, meta: { title: '测点详情' } },
+  { path: '/device/detail', name: 'device-detail', component: DeviceDetailPage, meta: { title: '测点详情' } },
   { path: '/gateway/communication', name: 'gateway-communication', component: GatewayCommPage, meta: { title: '网关通讯' } },
   { path: '/recordings', name: 'recordings', component: RecordingManagementPage, meta: { title: '录音管理' } },
   { path: '/analysis/trend', name: 'trend', redirect: (to) => ({ path: '/device/detail', query: { ...to.query, tab: 'trend', source: 'legacy' } }) },

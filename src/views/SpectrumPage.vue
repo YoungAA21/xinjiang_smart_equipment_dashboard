@@ -6,6 +6,7 @@ import EChart from '../components/EChart.vue'
 import AudioVisualizationPanel from '../components/AudioVisualizationPanel.vue'
 import { api } from '../services/api'
 import { auth } from '../services/auth'
+import { acousticChannelDisplayName } from '../charts/machineGroups.js'
 
 const props = defineProps({
   embedded: Boolean,
@@ -61,6 +62,7 @@ const selectedDevice = computed(() =>
 const channelOptions = computed(() => selectedDevice.value?.channels || [])
 const selectedChannels = computed(() =>
   channelOptions.value.filter((channel) => channel.channelId === selectedChannelId.value))
+const channelName = channel => acousticChannelDisplayName(selectedDevice.value, channel)
 
 const channelIp = computed(() => {
   const channel = channelOptions.value.find(item => item.channelId === (props.channelId || selectedChannelId.value))
@@ -501,7 +503,7 @@ onBeforeUnmount(() => { disposed = true; stopSession() })
 
 <template>
   <article v-if="compact" class="acoustic-point-card" :style="{ '--point-color': accentColor }">
-    <header><h3>{{ selectedChannels[0]?.name || selectedChannels[0]?.channelName || channelId }}</h3><span>{{ signalStatus }}</span></header>
+    <header><h3>{{ channelName(selectedChannels[0]) }}</h3><span>{{ signalStatus }}</span></header>
     <div class="acoustic-value">{{ waveformSamples.length ? Math.sqrt(waveformSamples.reduce((sum, item) => sum + item[1] ** 2, 0) / waveformSamples.length).toFixed(3) : '—' }} <small>波形 RMS</small></div>
     <p v-if="showAddress">网关 IP：{{ channelIp }}</p>
     <p>声纹实时波形 · {{ stats.sampleRate }} Hz</p>
@@ -519,7 +521,7 @@ onBeforeUnmount(() => { disposed = true; stopSession() })
           <el-option v-for="device in devices" :key="device.deviceId" :label="device.deviceName || device.deviceId" :value="device.deviceId" />
         </el-select>
         <el-select v-if="!embedded" v-model="selectedChannelId" filterable placeholder="选择通道" :disabled="Boolean(session)">
-          <el-option v-for="channel in channelOptions" :key="channel.channelId" :label="channel.name || channel.channelId" :value="channel.channelId" :disabled="!channel.online" />
+          <el-option v-for="channel in channelOptions" :key="channel.channelId" :label="channelName(channel)" :value="channel.channelId" :disabled="!channel.online" />
         </el-select>
         <el-switch v-model="audioEnabled" active-text="音频" inactive-text="静音" :disabled="Boolean(session)" />
         <el-button v-if="!embedded" :icon="RefreshCcw" :loading="loadingDevices" :disabled="Boolean(session)" @click="loadDevices">刷新设备</el-button>

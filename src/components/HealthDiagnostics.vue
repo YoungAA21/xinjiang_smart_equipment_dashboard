@@ -88,7 +88,7 @@ const bytes = (value) => value == null ? '—' : value < 1024 ? `${value} B` : v
         <h2>配置文件</h2>
         <div v-if="!detail.configFiles?.length" class="health-empty">暂无配置文件状态</div>
         <div v-for="file in detail.configFiles || []" :key="file.file" class="health-config"><div><Database :size="17" /><strong>{{ file.file }}</strong><span class="health-badge" :class="tone(file.exists)">{{ file.exists === true ? '存在' : file.exists === false ? '缺失' : '未知' }}</span></div><p>{{ file.path || '—' }}</p></div>
-        <p class="health-footnote">显示服务端配置文件状态与路径。</p>
+
       </article>
 
       <article class="panel health-wide">

@@ -127,8 +127,8 @@ onBeforeUnmount(() => { pageController.abort(); pointController?.abort(); queryC
 
     <section class="analysis-alarm-summary">
       <article><span>查询结果</span><strong>{{ rows?.length ?? '—' }}</strong><small>{{ alarmTime(updatedAt) }}</small></article>
-      <article><span>当前活动</span><strong>{{ activeCount }}</strong><small>趋势报警未恢复</small></article>
-      <article class="warning"><span>预警级别</span><strong>{{ warningCount }}</strong><small>风险等级：预警</small></article>
+      <article><span>当前活动</span><strong>{{ activeCount }}</strong></article>
+      <article class="warning"><span>预警级别</span><strong>{{ warningCount }}</strong></article>
     </section>
 
     <section class="analysis-alarm-filters">
