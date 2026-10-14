@@ -6,10 +6,13 @@ import { telemetryApi } from '../services/telemetry.js'
 import { analysisApi } from '../services/analysis.js'
 import { alarmTime } from '../charts/alarms.js'
 import { percent, riskLabel, riskTone, trendAlarmChangeOption, valueText } from '../charts/analysis.js'
+const props = defineProps({ rowColor: { type: Function, default: () => 'var(--alarm-color-yellow, #f3c45c)' } })
+const emit = defineEmits(['color-events'])
 
 const modules = ref([])
 const points = ref([])
 const rows = ref(null)
+watch(rows, value => emit('color-events', value || []))
 const selected = ref(null)
 const loading = ref(false)
 const metadataLoading = ref(false)
@@ -151,7 +154,7 @@ onBeforeUnmount(() => { pageController.abort(); pointController?.abort(); queryC
     <section class="analysis-event-layout">
       <article class="analysis-event-table-panel">
         <header><div><TrendingUp :size="15" /><h3>趋势报警列表</h3></div><el-button text :icon="RefreshCcw" :loading="loading" title="刷新列表" @click="query" /></header>
-        <el-table v-loading="loading" :data="pagedRows" class="dark-table analysis-event-table" empty-text="当前条件下暂无趋势报警" :row-class-name="rowClassName" @row-click="showRowDetail">
+        <el-table v-loading="loading" :data="pagedRows" :row-style="({ row }) => ({ '--row-alarm-color': props.rowColor(row) })" class="dark-table analysis-event-table" empty-text="当前条件下暂无趋势报警" :row-class-name="rowClassName" @row-click="showRowDetail">
           <el-table-column label="开始时间" min-width="165"><template #default="{ row }">{{ alarmTime(row.startedAt) }}</template></el-table-column>
           <el-table-column label="模块 / 点位" min-width="180"><template #default="{ row }"><strong>{{ row.moduleId }}</strong><small>{{ row.channelId }} / {{ row.pointCode }}</small></template></el-table-column>
           <el-table-column label="状态" width="95"><template #default="{ row }"><span :class="['risk-badge', row.status === 'Active' ? 'warning' : 'normal']">{{ row.status === 'Active' ? '当前报警' : row.status === 'Recovered' ? '已恢复' : row.status }}</span></template></el-table-column>

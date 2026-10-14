@@ -178,3 +178,5 @@
   .alarm-page .external-filter-grid { grid-template-columns: 140px minmax(300px, 1fr) auto; }
   .alarm-page .external-alarm-layout { grid-template-columns: minmax(0, 1fr) 310px; }
 }
+.legacy-alarm-panel tbody tr[data-colored-alarm] td,.legacy-alarm-panel tbody tr[data-colored-alarm] td small,.legacy-alarm-panel tbody tr[data-colored-alarm] td .el-button { color:var(--row-alarm-color); }
+.external-alarm-table tbody tr td,.external-alarm-table tbody tr td .cell,.external-alarm-table tbody tr td code,.external-alarm-table tbody tr td span,.external-alarm-table tbody tr td small { color:var(--row-alarm-color) !important; }

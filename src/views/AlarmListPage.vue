@@ -4,12 +4,22 @@ import { BarChart3, BellRing, CheckCircle2, CircleAlert, CircleHelp, FileAudio, 
 import { ElMessage } from 'element-plus'
 import LegacyAlarmPanel from '../components/LegacyAlarmPanel.vue'
 import AnalysisAlarmPanel from '../components/AnalysisAlarmPanel.vue'
+import AlarmColorSettings from '../components/AlarmColorSettings.vue'
+import { useAlarmColorsStore } from '../stores/alarmColors.js'
+import { useAlarmStore } from '../stores/alarms.js'
+import { useDigitalAlarmStore } from '../stores/digitalAlarms.js'
 import '../styles/alarms.css'
 import '../styles/analysis-alarms.css'
 import { api } from '../services/api'
 import { alarmTime, externalAlarmStatus } from '../charts/alarms.js'
 import { useRoute } from 'vue-router'
 const route = useRoute()
+const alarmColors = useAlarmColorsStore()
+alarmColors.ensureUser()
+const collectionAlarms = useAlarmStore()
+const digitalAlarms = useDigitalAlarmStore()
+const trendColorEvents = ref([])
+const colorEvents = computed(() => [...(collectionAlarms.rows || []), ...digitalAlarms.events, ...externalAlarms.rows, ...trendColorEvents.value])
 
 const activePane = ref('legacy')
 const externalSnapshot = reactive({ updatedAt: null, error: '', queryLabel: '尚未获取声纹告警' })
@@ -164,13 +174,13 @@ onMounted(() => {
 
 <template>
   <section class="page single-page alarm-page">
-    <header class="alarm-page-heading content-page-header"><h1 class="content-page-title">告警管理</h1></header>
+    <header class="alarm-page-heading content-page-header"><h1 class="content-page-title">告警管理</h1><AlarmColorSettings :events="colorEvents" /></header>
     <el-tabs v-model="activePane" class="alarm-tabs">
       <el-tab-pane label="采集报警" name="legacy">
-        <LegacyAlarmPanel :initial-module-id="String(route.query.moduleId || '')" :initial-point-code="String(route.query.pointCode || '')" />
+        <LegacyAlarmPanel :initial-module-id="String(route.query.moduleId || '')" :initial-point-code="String(route.query.pointCode || '')" :row-color="alarmColors.color" />
       </el-tab-pane>
       <el-tab-pane label="趋势报警" name="analysis">
-        <AnalysisAlarmPanel />
+        <AnalysisAlarmPanel :row-color="alarmColors.color" @color-events="trendColorEvents = $event" />
       </el-tab-pane>
       <el-tab-pane label="声纹告警" name="external">
         <article class="external-alarm-panel">
@@ -209,6 +219,7 @@ onMounted(() => {
               <el-table
                 v-loading="externalAlarms.loading"
                 :data="externalAlarms.rows"
+                :row-style="({ row }) => ({ '--row-alarm-color': alarmColors.color(row) })"
                 :row-key="rowId"
                 :current-row-key="rowId(externalAlarms.selected)"
                 empty-text="当前筛选条件下暂无设备告警"

@@ -2,13 +2,14 @@ import { auth } from './auth'
 import { healthApi } from './health'
 import { resolveServiceBase } from './endpoints.js'
 
-const LEGACY_API_BASE = resolveServiceBase(import.meta.env?.VITE_API_BASE_URL, 5158, {
+const LEGACY_API_BASE = resolveServiceBase(import.meta.env?.VITE_API_BASE_URL, 80, {
   development: Boolean(import.meta.env?.DEV),
   developmentUrl: import.meta.env?.VITE_DEV_API_BASE_URL,
 })
 const NEW_API_BASE = resolveServiceBase(import.meta.env?.VITE_NEW_API_BASE_URL, 18080, {
   sameOrigin: true,
 })
+const LOGIN_API_URL = String(import.meta.env?.VITE_LOGIN_API_URL || '').trim() || `${NEW_API_BASE}/auth/login`
 const LEGACY_API_DISABLED = import.meta.env.VITE_LEGACY_API_DISABLED !== 'false'
 
 const toQuery = (params = {}) => {
@@ -106,9 +107,9 @@ export const api = {
     form.set('username', username)
     form.set('password', password)
 
-    const body = await request('/auth/login', undefined, {
+    const body = await request('', undefined, {
       method: 'POST',
-      baseUrl: NEW_API_BASE,
+      baseUrl: LOGIN_API_URL,
       skipAuth: true,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form,

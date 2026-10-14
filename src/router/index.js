@@ -2,6 +2,9 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { auth } from '../services/auth'
 import LoginPage from '../views/LoginPage.vue'
 import HomePage from '../views/HomePage.vue'
+import MachineOverviewPage from '../views/MachineOverviewPage.vue'
+import MachineMonitorPage from '../views/MachineMonitorPage.vue'
+import ProductionLinePreviewPage from '../views/ProductionLinePreviewPage.vue'
 import DeviceDetailPage from '../views/DeviceDetailPage.vue'
 import DeviceMonitorPage from '../views/DeviceMonitorPage.vue'
 import AlarmListPage from '../views/AlarmListPage.vue'
@@ -11,6 +14,9 @@ import RecordingManagementPage from '../views/RecordingManagementPage.vue'
 export const routes = [
   { path: '/login', name: 'login', component: LoginPage, meta: { title: '登录', public: true } },
   { path: '/', name: 'home', component: HomePage, meta: { title: '设备监控' } },
+  { path: '/machine/overview', name: 'machine-overview', component: MachineOverviewPage, meta: { title: '机组概览' } },
+  { path: '/monitor', name: 'machine-monitor', component: MachineMonitorPage, props: route => ({ initialMachine: route.query.machine }), meta: { title: '设备实时监测' } },
+  { path: '/production-line/preview', name: 'production-line-preview', component: ProductionLinePreviewPage, meta: { title: '产线俯视图' } },
   { path: '/device', name: 'device-list', component: DeviceMonitorPage, meta: { title: '测点详情' } },
   { path: '/device/detail', name: 'device-detail', component: DeviceDetailPage, meta: { title: '测点详情' } },
   { path: '/gateway/communication', name: 'gateway-communication', component: GatewayCommPage, meta: { title: '网关通讯' } },

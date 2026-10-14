@@ -7,7 +7,7 @@ import { alarmTime, alarmValue, legacyAlarmStatus } from '../charts/alarms.js'
 import { useDigitalAlarmStore } from '../stores/digitalAlarms.js'
 import { filterDigitalAlarms } from '../charts/digitalAlarms.js'
 
-const props = defineProps({ initialModuleId: { type: String, default: '' }, initialPointCode: { type: String, default: '' } })
+const props = defineProps({ initialModuleId: { type: String, default: '' }, initialPointCode: { type: String, default: '' }, rowColor: { type: Function, default: () => 'var(--alarm-color-yellow, #f3c45c)' } })
 const alarms = useAlarmStore()
 const digitalAlarms = useDigitalAlarmStore()
 const filters = reactive({ moduleId: props.initialModuleId, pointId: '', isActive: 'all', start: '', end: '', limit: 200 })
@@ -109,7 +109,7 @@ onBeforeUnmount(() => { controller.abort(); queryController?.abort(); pointContr
     <div v-if="alarms.loading" role="status" class="alarm-muted">正在读取报警事件…</div>
     <div class="alarm-table-scroll">
       <table class="alarm-data-table"><thead><tr><th>开始时间</th><th>模块 / 点位</th><th>状态</th><th>报警值</th><th>原因</th><th>详情</th></tr></thead><tbody>
-        <tr v-for="(row, index) in rows" :key="String(row.alarmId ?? index)" :class="{ 'selected-alarm': alarms.selected === row }"><td>{{ alarmTime(row.startedAt) }}</td><td>{{ row.moduleId }}<small>{{ row.channelId }} / {{ row.pointCode }}</small><small v-if="row.source === 'digital-local'">{{ row.name }} · 本地 DI 告警</small></td><td>{{ legacyAlarmStatus(row.status) }}</td><td>{{ alarmValue(row.alarmValue, row.unit) }}</td><td class="alarm-reason">{{ row.reason || '—' }}</td><td><el-button text :icon="Eye" @click="alarms.selected = row">查看</el-button></td></tr>
+        <tr v-for="(row, index) in rows" :key="String(row.alarmId ?? index)" :class="{ 'selected-alarm': alarms.selected === row }" :style="{ '--row-alarm-color': props.rowColor(row) }" data-colored-alarm><td>{{ alarmTime(row.startedAt) }}</td><td>{{ row.moduleId }}<small>{{ row.channelId }} / {{ row.pointCode }}</small><small v-if="row.source === 'digital-local'">{{ row.name }} · 本地 DI 告警</small></td><td>{{ legacyAlarmStatus(row.status) }}</td><td>{{ alarmValue(row.alarmValue, row.unit) }}</td><td class="alarm-reason">{{ row.reason || '—' }}</td><td><el-button text :icon="Eye" @click="alarms.selected = row">查看</el-button></td></tr>
         <tr v-if="!rows.length"><td colspan="6" class="alarm-empty">{{ alarms.loading ? '正在加载…' : alarms.rows === null ? '报警事件暂不可用，请重试查询' : '本次查询没有匹配的报警事件' }}</td></tr>
       </tbody></table>
     </div>
@@ -122,3 +122,4 @@ onBeforeUnmount(() => { controller.abort(); queryController?.abort(); pointContr
     <details class="alarm-worker"><summary>分析 Worker 状态（独立于报警事件查询）</summary><el-button :icon="RefreshCcw" :loading="alarms.statusLoading" @click="alarms.loadStatus({ signal: controller.signal })">刷新分析状态</el-button><p v-if="alarms.statusError" class="alarm-error">{{ alarms.statusError }}</p><template v-if="alarms.status"><p>更新时间 {{ alarmTime(alarms.status.generatedAt) }} · 队列 {{ alarms.status.analysisPending ?? '—' }} · 累计分析 {{ alarms.status.runtimeStatus.totalAnalyzedCount ?? '—' }} · 累计报警 {{ alarms.status.runtimeStatus.totalAlarmCount ?? '—' }} · 累计恢复 {{ alarms.status.runtimeStatus.totalRecoveryCount ?? '—' }}</p><p v-for="item in alarms.status.runtimeStatus.activeAlarms || []" :key="[item.moduleId,item.channelId,item.pointCode].join('/')">{{ item.moduleId }} / {{ item.pointCode }} · {{ alarmValue(item.value, item.unit) }} · {{ item.reason }}</p></template></details>
   </section>
 </template>
+

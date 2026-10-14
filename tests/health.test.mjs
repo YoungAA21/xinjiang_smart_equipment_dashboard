@@ -92,6 +92,37 @@ test('proxy allowlist excludes unmigrated legacy routes and all new API routes',
   assert.equal(proxies[newApiProxyKey].ws, true)
 })
 
+test('login endpoint override preserves form submission and does not change other service URLs', async () => {
+  for (const endpoint of ['https://identity.example/custom/sign-in', '/gateway/auth/login']) {
+    const calls = []
+    const api = await loadApi(async (url, options) => { calls.push({ url, options }); return reply({ code: 200, data: { token: 'configured-token' } }) }, {
+      VITE_LOGIN_API_URL: ` ${endpoint} `,
+      VITE_NEW_API_BASE_URL: 'https://acoustic.example',
+    })
+    assert.equal((await api.login({ username: 'user', password: 'password' })).token, 'configured-token')
+    assert.equal(calls[0].url, endpoint)
+    assert.equal(calls[0].options.method, 'POST')
+    assert.equal(calls[0].options.headers.Authorization, undefined)
+    assert.equal(calls[0].options.headers['Content-Type'], 'application/x-www-form-urlencoded')
+    assert.equal(calls[0].options.body.get('username'), 'user')
+    assert.equal(calls[0].options.body.get('password'), 'password')
+    assert.equal(api.getNewApiBaseUrl(), 'https://acoustic.example')
+  }
+})
+
+test('blank login override falls back to development or production service configuration', async () => {
+  for (const [env, location, expected] of [
+    [{ DEV: true, VITE_DEV_NEW_API_BASE_URL: 'http://dev.example:18080/' }, undefined, 'http://dev.example:18080/auth/login'],
+    [{ VITE_NEW_API_BASE_URL: 'https://service.example/v1/' }, undefined, 'https://service.example/v1/auth/login'],
+    [{}, { origin: 'https://dashboard.example' }, 'https://dashboard.example:18080/auth/login'],
+  ]) {
+    const calls = []
+    const api = await loadApi(async (url) => { calls.push(url); return reply({ token: 'token' }) }, { ...env, VITE_LOGIN_API_URL: '  ' }, location)
+    await api.login({ username: 'user', password: 'password' })
+    assert.equal(calls[0], expected)
+  }
+})
+
 test('new API methods, auth, body, unwrapping and audio URLs remain unchanged', async () => {
   const calls = []
   const api = await loadApi(async (url, options) => { calls.push({ url, options }); return reply({ code: 200, data: { token: 'new-token', id: 1 } }) }, {}, { origin: 'http://localhost:5175' })

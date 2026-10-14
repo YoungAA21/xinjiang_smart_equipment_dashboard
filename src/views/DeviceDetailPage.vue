@@ -69,7 +69,10 @@ function resetDeviceFilters() { deviceSearch.value = ''; statusFilter.value = 'a
 const selected = computed(() => entries.value.find((entry) => entry.key === selectedKey.value) || null)
 const profileLocation = computed(() => monitoringLocations.find(item => item.id === route.query.location))
 const profileName = computed(() => profileLocation.value ? `${profileLocation.value.machine} · ${profileLocation.value.name}` : selected.value?.name || '')
-const profileImage = computed(() => ({ ve: '/equipment/ve-fan.png', max: '/equipment/max-fan.png', 'main-motor': '/equipment/main-motor.png' })[profileLocation.value?.id] || '')
+const profileImage = computed(() => {
+  if (selected.value?.source === 'legacy' && selected.value.id === 'PRESS03') return '/equipment/yb55-pressure.png'
+  return ({ ve: '/equipment/ve-fan.png', max: '/equipment/max-fan.png', 'spider-pressure': '/equipment/spider-pressure.png', 'main-motor': '/equipment/main-motor.png' })[profileLocation.value?.id] || ''
+})
 const isLegacy = computed(() => selected.value?.source === 'legacy')
 const detailTabs = computed(() => allDetailTabs.filter(tab => {
   const deviceSource = selected.value?.source || route.query.source

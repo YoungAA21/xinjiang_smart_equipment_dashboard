@@ -23,6 +23,7 @@ watch(() => route.path, path => {
   }
 }, { immediate: true })
 const isLightTheme = ref(localStorage.getItem('dashboard-theme') === 'light')
+provide('isLightTheme', isLightTheme)
 const isFullscreen = ref(false)
 
 const activePath = computed(() => route.path)

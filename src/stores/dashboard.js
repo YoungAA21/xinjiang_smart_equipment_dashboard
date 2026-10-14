@@ -115,6 +115,7 @@ export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     menus: [
       { label: '设备监控', icon: Home, path: '/' },
+      { label: '机组概览', icon: BarChart3, path: '/machine/overview' },
       { label: '测点详情', icon: MonitorCog, path: '/device' },
       { label: '网关通讯', icon: Router, path: '/gateway/communication' },
       { label: '录音管理', icon: FileAudio, path: '/recordings' },

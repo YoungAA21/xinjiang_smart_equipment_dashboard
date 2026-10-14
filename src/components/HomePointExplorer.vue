@@ -6,6 +6,7 @@ import { api } from '../services/api'
 import { localInputTime, numericValue, pointKey, telemetryLine } from '../charts/telemetry'
 import { monitoringPointName } from '../charts/equipmentCatalog.js'
 import { acousticChannelDisplayName } from '../charts/machineGroups.js'
+import { shiftRange } from '../charts/shiftRange.js'
 
 const props = defineProps({ row: Object, buffers: Object, paused: Boolean })
 const emit = defineEmits(['close', 'live-change'])
@@ -16,26 +17,12 @@ const points = computed(() => props.row.combined
   : [props.row.point])
 const point = computed(() => points.value[pointIndex.value])
 const title = computed(() => acoustic.value ? acousticChannelDisplayName(props.row.member.raw, point.value) : monitoringPointName(point.value))
-const start = ref(localInputTime(Date.now() - 600000))
-const end = ref(localInputTime(Date.now()))
-const queryMode = ref('custom')
-const shiftDate = ref(localInputTime(Date.now()).slice(0, 10))
-const queryRange = computed(() => {
-  if (queryMode.value === 'custom') return { start: start.value, end: end.value }
-  const from = new Date(`${shiftDate.value}T00:00:00`)
-  if (!Number.isFinite(from.getTime())) return { start: '', end: '' }
-  const to = new Date(from)
-  if (queryMode.value === 'day') {
-    from.setHours(9, 30, 0, 0)
-    to.setHours(18, 0, 0, 0)
-  } else {
-    from.setHours(18, 0, 0, 0)
-    to.setDate(to.getDate() + 1)
-    to.setHours(2, 0, 0, 0)
-  }
-  return { start: localInputTime(from.getTime()), end: localInputTime(to.getTime()) }
-})
-const live = ref(true)
+const initialRange = shiftRange()
+const start = ref(initialRange.start)
+const end = ref(initialRange.end)
+const queryMode = ref('current')
+const queryRange = computed(() => ({ start: start.value, end: end.value }))
+const live = ref(false)
 const loading = ref(false)
 const error = ref('')
 const history = ref([])
@@ -62,7 +49,15 @@ function showLive() {
   chartVersion.value++
 }
 watch(live, value => emit('live-change', value))
-watch(pointIndex, showLive)
+watch(pointIndex, () => { invalidate(); history.value = []; query() })
+function selectRange(mode) {
+  queryMode.value = mode
+  if (mode === 'custom') return
+  const range = shiftRange(mode)
+  start.value = range.start
+  end.value = range.end
+  query()
+}
 async function loadRecording(id, version) {
   if (!id) return
   const detail = await api.getRecording(id)
@@ -179,6 +174,8 @@ function dragMove(event) {
   clampPosition()
 }
 onMounted(async () => {
+  emit('live-change', false)
+  query()
   previousFocus = document.activeElement
   await nextTick()
   position.x = (window.innerWidth - panel.value.offsetWidth) / 2
@@ -202,17 +199,14 @@ onBeforeUnmount(() => {
       </header>
       <form class="explorer-controls" @submit.prevent="query()">
         <select v-if="points.length > 1" v-model="pointIndex" aria-label="选择参数"><option v-for="(item, index) in points" :key="item.pointId" :value="index">{{ item.name }}</option></select>
-        <select v-model="queryMode" aria-label="查询方式"><option value="custom">自定义时间</option><option value="day">早班 09:30–18:00</option><option value="night">晚班 18:00–次日 02:00</option></select>
-        <template v-if="queryMode === 'custom'">
-          <label>开始<input v-model="start" type="datetime-local" step="1" aria-label="开始日期" required /></label>
-          <label>结束<input v-model="end" type="datetime-local" step="1" aria-label="结束日期" required /></label>
-        </template>
-        <label v-else>班次日期<input v-model="shiftDate" type="date" aria-label="班次开始日期" required /></label>
+        <div class="shift-buttons" role="group" aria-label="查询班次"><button type="button" :class="{ active: queryMode === 'current' && !live }" :aria-pressed="queryMode === 'current' && !live" @click="selectRange('current')">当班</button><button type="button" :class="{ active: queryMode === 'previous' && !live }" :aria-pressed="queryMode === 'previous' && !live" @click="selectRange('previous')">上一班</button><button type="button" :class="{ active: queryMode === 'custom' && !live }" :aria-pressed="queryMode === 'custom' && !live" @click="selectRange('custom')">自定义</button></div>
+        <label>开始<input v-model="start" type="datetime-local" step="1" aria-label="开始日期" required @input="queryMode = 'custom'" /></label>
+        <label>结束<input v-model="end" type="datetime-local" step="1" aria-label="结束日期" required @input="queryMode = 'custom'" /></label>
         <button type="submit" :disabled="loading">{{ loading ? '查询中' : '查询' }}</button>
         <button type="button" :class="{ active: live }" @click="showLive">实时</button>
         <button type="button" @click="chartVersion++">重置视图</button>
       </form>
-      <div v-if="!acoustic" class="explorer-value"><strong>{{ lastValue }}</strong><span>{{ point.unit }}</span><time>{{ dateText(last?.collectedAt) }}</time><span>{{ live ? paused ? '已暂停' : '实时' : '历史' }}</span></div>
+      <div v-if="!acoustic" class="explorer-value"><strong>{{ lastValue }}</strong><span>{{ point.unit }}</span><time>{{ dateText(last?.collectedAt) }}</time><span>{{ live ? paused ? '已暂停' : '实时' : loading ? '加载班次数据' : '历史 · ' + history.length + ' 条' }}</span></div>
       <div v-if="acoustic && !live && recordings.length" class="explorer-recordings">
         <select v-model="recordingId" aria-label="选择录音" :disabled="loading" @change="selectRecording"><option v-for="recording in recordings" :key="recording.id" :value="recording.id">{{ recording.fileName || recording.id }}</option></select>
         <button :disabled="loading || recordingPage <= 1" @click="query(recordingPage - 1)">上一页</button><span>{{ recordingPage }} / {{ Math.ceil(recordingTotal / 20) }}</span><button :disabled="loading || recordingPage * 20 >= recordingTotal" @click="query(recordingPage + 1)">下一页</button>
@@ -232,6 +226,7 @@ button,input,select { color:var(--text-main); background:var(--glass-card); bord
 button { cursor:pointer; } button:disabled { opacity:.5; cursor:default; } button:hover,button.active { border-color:#368ce8; } button:focus-visible,input:focus-visible,select:focus-visible { outline:2px solid #368ce8; outline-offset:2px; }
 .explorer-heading button { border:0; background:transparent; font-size:28px; padding:0 12px; }
 .explorer-controls,.explorer-recordings { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:14px 0; font-size:14px; }
+.shift-buttons { display:flex; gap:5px; }.shift-buttons button.active { background:color-mix(in srgb,#368ce8 15%,var(--glass-card)); }
 label { display:flex; align-items:center; gap:8px; } input { color-scheme:dark; } :global(.light-theme) input { color-scheme:light; }
 .explorer-value { display:flex; align-items:baseline; gap:12px; } .explorer-value strong { color:#368ce8; font-size:30px; } .explorer-value time { margin-left:auto; }
 .explorer-chart { flex:1; min-height:0; margin-top:12px; } .explorer-chart :deep(.echart) { height:100%; width:100%; }

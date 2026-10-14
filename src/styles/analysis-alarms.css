@@ -415,3 +415,4 @@
     flex-direction: column;
   }
 }
+.analysis-event-table tbody tr td,.analysis-event-table tbody tr td .cell,.analysis-event-table tbody tr td span,.analysis-event-table tbody tr td strong,.analysis-event-table tbody tr td small { color:var(--row-alarm-color) !important; }
