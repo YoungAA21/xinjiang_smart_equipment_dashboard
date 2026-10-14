@@ -2,6 +2,25 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { isVibrationPoint, moduleDisplayName, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../src/charts/equipmentCatalog.js'
 
+test('confirmed temperature names override stale labels while preserving measurements', () => {
+  for (const [moduleId, code, name] of [
+    ['TEMP01', '01', '辅机电机温度'],
+    ['TEMP03', '05', '主机电机温度'],
+    ['TEMP03', '06', '主机皮带轮温度'],
+    ['TEMP02', '07', 'MAX电机温度'],
+    ['TEMP02', '08', 'MAX风机温度'],
+    ['TEMP02', '09', 'VE电机温度'],
+    ['TEMP02', '10', 'VE风机温度'],
+  ]) {
+    const point = Object.freeze({ moduleId, pointId: code, pointCode: `BEARING_TEMP_${code}`, metricType: 'Temperature', name: '旧名称', value: 42, unit: '°C' })
+    const original = { ...point }
+    assert.equal(monitoringPointName(point), name)
+    assert.deepEqual(point, original)
+    assert.equal(monitoringPointName({ ...point, metricType: 'AlarmStatus' }), '旧名称')
+  }
+  assert.equal(monitoringPointName({ moduleId: 'OTHER', pointCode: 'BEARING_TEMP_01', metricType: 'Temperature', name: '原名称' }), '原名称')
+})
+
 test('documented vibration modules and measuring locations have readable equipment labels', () => {
   assert.match(moduleDisplayName({ moduleId: 'VSE03', moduleName: '振动采集模块' }), /ZJ117.*振动/)
   assert.match(moduleDisplayName({ moduleId: 'VSE04', moduleName: '振动采集模块' }), /ZB25.*振动/)

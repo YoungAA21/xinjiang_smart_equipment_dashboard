@@ -91,7 +91,10 @@ export function mergeGatewayInventory({ modules = [], devices = [], statuses = [
   }
   const entries = gatewayCatalog.map(config => {
     const entry = sources.find(entry => !used.has(entry) && entry.source === config.source && (config.source === 'legacy' ? config.moduleIds.includes(entry.id) : entry.host === config.host))
-    return decorate(config, entry)
+    const currentConfig = config.source === 'legacy'
+      ? { ...config, name: moduleDisplayName({ moduleId: config.moduleIds[0] }).split(' · ').at(-1) }
+      : config
+    return decorate(currentConfig, entry)
   })
   for (const entry of sources.filter(entry => !used.has(entry))) entries.push(decorate({ key: `${entry.source}:${entry.id}`, machine: '其他', name: entry.raw.moduleName || entry.raw.name || entry.id, kind: entry.source === 'monitor' ? '声纹' : '其他', host: '', location: '', source: entry.source, moduleIds: [], bindings: [], origin: '接口' }, entry))
   return entries

@@ -18,7 +18,12 @@ test('runtime module identity and address override document IP assumptions', () 
   assert.equal(rows.find(r=>r.key==='legacy:VSE04').entry,undefined)
 })
 test('home and gateway use identical fan temperature and sound assignments', () => {
-  for (const [code,group] of [['07','ve'],['08','ve'],['09','max'],['10','max']]) assert.equal(fanGroupOf({member:{source:'legacy',id:'TEMP02'},point:{pointCode:'BEARING_TEMP_'+code}}),group)
+  for (const [code,group] of [['07','max'],['08','max'],['09','ve'],['10','ve']]) {
+    const member = { source: 'legacy', id: 'TEMP02' }
+    const point = { pointCode: 'BEARING_TEMP_' + code }
+    assert.equal(fanGroupOf({ member, point }), group)
+    assert.equal(monitoringLocationOf(member, point), group)
+  }
   for(const ch of [1,2]) assert.equal(fanGroupOf({member:{source:'monitor',raw:{collectors:[{ip:'192.168.3.51'}]}},point:{channelId:'CH'+ch}}),'ve')
   for(const ch of [1,2]) assert.equal(fanGroupOf({member:{source:'monitor',raw:{collectors:[{ip:'192.168.3.52'}]}},point:{channelId:'CH'+ch}}),'max')
 })

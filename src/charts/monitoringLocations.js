@@ -1,4 +1,4 @@
-import { isMeasurementPoint } from './equipmentCatalog.js'
+import { isMeasurementPoint, monitoringPointName } from './equipmentCatalog.js'
 import { acousticPointIp } from './pointAddress.js'
 
 // Physical monitoring locations, distinct from individual sensor measurements.
@@ -56,7 +56,6 @@ export function monitoringLocationOf(member, point) {
 
 export function locationPoint(point) {
   // Distinguish the two pressure sources without changing their actual identities.
-  if (point.moduleId === 'PRESS01') return { ...point, name: 'ZB25 负压' }
-  if (point.moduleId === 'PRESS03') return { ...point, name: 'YB55 负压' }
+  if (['PRESS01', 'PRESS03'].includes(point.moduleId)) return { ...point, name: monitoringPointName(point) }
   return point
 }
