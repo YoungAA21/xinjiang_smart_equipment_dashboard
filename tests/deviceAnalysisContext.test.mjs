@@ -4,6 +4,9 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import { parse, compileScript } from '@vue/compiler-sfc'
 import * as vue from 'vue'
+import * as catalog from '../src/charts/equipmentCatalog.js'
+import * as groups from '../src/charts/machineGroups.js'
+import * as addresses from '../src/charts/pointAddress.js'
 import * as analysisCharts from '../src/charts/analysis.js'
 
 const flush = async () => { for (let i = 0; i < 12; i++) await vue.nextTick() }
@@ -18,6 +21,7 @@ async function mountView(name, props, dependencies) {
   await code.link((specifier) => {
     const exports = specifier === 'vue' ? vue : specifier.endsWith('.vue') ? { default: {} }
       : specifier.endsWith('.css') ? {} : dependencies[specifier]
+        || ({ '../charts/machineGroups.js': groups, '../charts/pointAddress.js': addresses })[specifier]
     assert.ok(exports, `Unexpected dependency: ${specifier}`)
     return new vm.SyntheticModule(Object.keys(exports), function () {
       for (const [key, value] of Object.entries(exports)) this.setExport(key, value)
@@ -53,6 +57,7 @@ test('embedded trend queries the parent point and ignores a late response after 
     '../services/telemetry.js': { telemetryApi: { getModules() { throw new Error('Parent owns device selection') } } },
     '../services/analysis.js': { analysisApi: { getDailyLimitTrends: query('daily'), getTrendInsights: query('insight') } },
     '../charts/analysis.js': analysisCharts,
+    '../charts/equipmentCatalog.js': catalog,
   })
   t.after(() => app.unmount())
   assert.equal(calls[0].params.pointId, 22)

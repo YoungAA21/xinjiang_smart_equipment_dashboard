@@ -1,4 +1,5 @@
 <script setup>
+import { presentMonitoringPoint } from '../charts/equipmentCatalog.js'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { CircleAlert, RefreshCcw, RotateCcw, Search, TrendingUp, X } from 'lucide-vue-next'
 import EChart from './EChart.vue'
@@ -10,10 +11,13 @@ const props = defineProps({ rowColor: { type: Function, default: () => 'var(--al
 const emit = defineEmits(['color-events'])
 
 const modules = ref([])
-const points = ref([])
-const rows = ref(null)
+const rawPoints = ref([])
+const points = computed(() => rawPoints.value.map(presentMonitoringPoint))
+const rawRows = ref(null)
+const rows = computed(() => rawRows.value?.map(presentMonitoringPoint) || null)
 watch(rows, value => emit('color-events', value || []))
-const selected = ref(null)
+const rawSelected = ref(null)
+const selected = computed(() => rawSelected.value ? presentMonitoringPoint(rawSelected.value) : null)
 const loading = ref(false)
 const metadataLoading = ref(false)
 const error = ref('')
@@ -54,7 +58,7 @@ async function loadModules() {
 
 async function changeModule() {
   pointController?.abort()
-  points.value = []
+  rawPoints.value = []
   filters.pointId = ''
   if (!filters.moduleId) return
   pointController = new AbortController()
@@ -62,7 +66,7 @@ async function changeModule() {
   try {
     const result = await telemetryApi.getModulePoints(filters.moduleId, { signal: AbortSignal.any([pageController.signal, pointController.signal]) })
     if (!Array.isArray(result?.points)) throw new Error('点位接口返回格式不正确')
-    points.value = result.points
+    rawPoints.value = result.points.map(point => ({ ...point, moduleId: filters.moduleId }))
     filters.pointId = points.value[0]?.pointId ?? ''
   } catch (reason) {
     if (!pageController.signal.aborted && reason.name !== 'AbortError') error.value = reason.message || '点位加载失败'
@@ -82,8 +86,8 @@ async function query() {
     const result = await analysisApi.getTrendAlarms(params, { signal: controller.signal })
     if (pageController.signal.aborted || controller.signal.aborted || currentVersion !== version) return
     if (!Array.isArray(result?.events)) throw new Error('分析事件返回格式不正确')
-    rows.value = result.events
-    selected.value = null
+    rawRows.value = result.events
+    rawSelected.value = null
     page.value = 1
     updatedAt.value = result.generatedAt || new Date().toISOString()
   } catch (reason) {
@@ -100,15 +104,15 @@ async function handleModuleChange() {
 
 async function resetFilters() {
   Object.assign(filters, { moduleId: modules.value[0]?.moduleId || '', pointId: '', isActive: '', range: [], limit: 200 })
-  points.value = []
-  selected.value = null
+  rawPoints.value = []
+  rawSelected.value = null
   page.value = 1
   if (filters.moduleId) await changeModule()
   await query()
 }
 
 function showRowDetail(row) {
-  selected.value = selectedId.value === rowId(row) ? null : row
+  rawSelected.value = selectedId.value === rowId(row) ? null : row
 }
 
 function rowClassName({ row }) {
@@ -116,7 +120,7 @@ function rowClassName({ row }) {
 }
 
 watch(pageSize, () => { page.value = 1 })
-watch(page, () => { selected.value = null })
+watch(page, () => { rawSelected.value = null })
 onMounted(async () => { await loadModules(); await query() })
 onBeforeUnmount(() => { pageController.abort(); pointController?.abort(); queryController?.abort(); version += 1 })
 </script>
@@ -156,7 +160,7 @@ onBeforeUnmount(() => { pageController.abort(); pointController?.abort(); queryC
         <header><div><TrendingUp :size="15" /><h3>趋势报警列表</h3></div><el-button text :icon="RefreshCcw" :loading="loading" title="刷新列表" @click="query" /></header>
         <el-table v-loading="loading" :data="pagedRows" :row-style="({ row }) => ({ '--row-alarm-color': props.rowColor(row) })" class="dark-table analysis-event-table" empty-text="当前条件下暂无趋势报警" :row-class-name="rowClassName" @row-click="showRowDetail">
           <el-table-column label="开始时间" min-width="165"><template #default="{ row }">{{ alarmTime(row.startedAt) }}</template></el-table-column>
-          <el-table-column label="模块 / 点位" min-width="180"><template #default="{ row }"><strong>{{ row.moduleId }}</strong><small>{{ row.channelId }} / {{ row.pointCode }}</small></template></el-table-column>
+          <el-table-column label="模块 / 点位" min-width="180"><template #default="{ row }"><strong>{{ row.name || row.pointCode }}</strong><small>{{ row.moduleId }}</small><small>{{ row.channelId }} / {{ row.pointCode }}</small></template></el-table-column>
           <el-table-column label="状态" width="95"><template #default="{ row }"><span :class="['risk-badge', row.status === 'Active' ? 'warning' : 'normal']">{{ row.status === 'Active' ? '当前报警' : row.status === 'Recovered' ? '已恢复' : row.status }}</span></template></el-table-column>
           <el-table-column label="风险" width="85"><template #default="{ row }"><span :class="['risk-badge', riskTone(row.riskLevel)]">{{ riskLabel(row.riskLevel) }}</span></template></el-table-column>
           <el-table-column label="报警值" min-width="105"><template #default="{ row }">{{ valueText(row.alarmValue, row.unit) }}</template></el-table-column>
@@ -166,7 +170,7 @@ onBeforeUnmount(() => { pageController.abort(); pointController?.abort(); queryC
         <aside v-if="selected" class="analysis-floating-detail">
           <header>
             <div><CircleAlert :size="15" /><strong>事件详情</strong></div>
-            <button type="button" title="关闭详情" @click="selected = null"><X :size="14" /></button>
+            <button type="button" title="关闭详情" @click="rawSelected = null"><X :size="14" /></button>
           </header>
           <span>{{ selectedId }}</span>
           <dl>

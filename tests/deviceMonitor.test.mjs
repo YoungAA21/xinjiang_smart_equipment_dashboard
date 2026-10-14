@@ -7,12 +7,16 @@ import * as vue from 'vue'
 import * as groups from '../src/charts/machineGroups.js'
 import * as addresses from '../src/charts/pointAddress.js'
 import * as catalog from '../src/charts/equipmentCatalog.js'
+import * as locations from '../src/charts/monitoringLocations.js'
+import * as configuration from '../src/stores/pointConfiguration.js'
+import { parameterKey } from '../src/charts/pointConfiguration.js'
 import * as charts from '../src/charts/telemetry.js'
 
-test('whole-machine monitor keeps ownership, hides state points, caches configuration and preserves drill-down context', async () => {
+test('point monitoring caches metadata and freely arranges cards across secondary targets', async () => {
+  const original = configuration.configurationSnapshot()
   const calls = []
-  const route = vue.reactive({ query: { machine: 'ZB25' } })
-  const telemetry = vue.reactive({ modules: null, errors: {}, buffers: {},
+  const route = vue.reactive({ query: { location: 'unconfigured' } })
+  const telemetry = vue.reactive({ modules: null, errors: {}, buffers: {}, latest: [],
     async refreshModules() { this.modules = ['PRESS01','PRESS03','VSE04'].map(moduleId => ({ moduleId, host: moduleId === 'PRESS01' ? '192.168.3.104' : '192.168.3.103', runtimeStatus: { isOnline: true } })) },
     async refreshLatest() {}, clear() {},
   })
@@ -26,16 +30,19 @@ test('whole-machine monitor keeps ownership, hides state points, caches configur
     ] }
   } }
   const dependencies = {
-    vue, 'vue-router': { useRoute: () => route },
+    vue, 'vue-router': { useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query } }) },
     '../stores/telemetry': { useTelemetryStore: () => telemetry },
     '../stores/homeDevices': { useHomeDevicesStore: () => monitor },
     '../services/telemetry.js': { telemetryApi: transport },
+    '../services/api.js': { api: {} }, '../services/auth.js': { auth: { getToken: () => '' } },
+    '../services/soundPreview.js': { createSoundPreview: () => ({ stop: async () => {}, setTarget: async () => {} }) },
+    '../charts/monitoringLocations.js': locations, '../stores/pointConfiguration.js': configuration,
     '../charts/machineGroups.js': groups, '../charts/pointAddress.js': addresses,
     '../charts/equipmentCatalog.js': catalog, '../charts/telemetry.js': charts,
   }
   const source = await readFile(new URL('../src/views/DeviceMonitorPage.vue', import.meta.url), 'utf8')
   const compiled = compileScript(parse(source).descriptor, { id: 'machine-monitor-test' })
-  const context = vm.createContext({ console, Date, AbortController, setInterval: () => 1, clearInterval() {} })
+  const context = vm.createContext({ console, Date, AbortController, WebSocket: class {}, setInterval: () => 1, clearInterval() {} })
   const module = new vm.SourceTextModule(compiled.content, { context })
   await module.link(specifier => {
     const exports = specifier.endsWith('.vue') ? { default: {} } : dependencies[specifier]
@@ -51,26 +58,42 @@ test('whole-machine monitor keeps ownership, hides state points, caches configur
   try {
     for (let i = 0; i < 20; i++) await vue.nextTick()
     assert.equal(state.busy, false)
-    assert.equal(state.selected.id, 'ZB25')
-    assert.equal(state.selected.pointCount, 4)
-    assert.ok(state.selected.members.some(member => member.id === 'PRESS03'))
-    assert.equal(state.grouped.pending.members.length, 0)
-    assert.equal(state.pointMap.PRESS01.length, 1)
+    assert.equal(state.selected.id, 've')
+    assert.equal(state.rows.length, 0)
+    assert.ok(state.locationOptions.every(location => location.id !== 'unconfigured'))
+    assert.equal(state.pointMap.PRESS01.length, 3)
+    assert.equal(state.pointMap.PRESS03.length, 3)
     assert.equal(calls.length, 3)
     await state.refresh()
     assert.equal(calls.length, 3)
     await state.refresh(true)
     assert.equal(calls.length, 6)
-    const link = state.detailLink(state.selected.members[0], 'history', state.pointMap.PRESS01[0])
-    assert.equal(link.query.machine, 'ZB25')
-    assert.equal(link.query.pointId, 1)
-    assert.equal(link.query.source, 'legacy')
-    route.query = { machine: 'main-pressure' }
+    // Hidden parameters remain available to configuration; the removed tab has no list.
+    assert.ok(state.pointMap.PRESS01.some(point => point.metricType === 'AlarmStatus'))
+    assert.ok(state.pointMap.PRESS01.some(point => point.metricType === 'SelfTestResult'))
+    const point = state.pointMap.PRESS03[0]
+    const saved = configuration.configurationSnapshot()
+    saved.targets.push({ id: 'test-bearing', name: '测试被测点位', locationId: 'max' })
+    saved.targets.push({ id: 'test-motor', name: '另一个被测点位', locationId: 'max' })
+    saved.parameters[parameterKey(point)] = { displayName: '自定义压力', unit: 'Pa', locationId: 'max', targetId: 'test-bearing' }
+    saved.parameters[parameterKey(state.pointMap.PRESS01[0])] = { displayName: '另一压力', unit: 'Pa', locationId: 'max', targetId: 'test-motor' }
+    configuration.savePointConfiguration(saved, { setItem() {} })
+    state.selectLocation('max')
     await vue.nextTick()
-    assert.equal(state.selected.id, 'ZB25')
-    route.query = { machine: 'missing' }
+    assert.equal(state.targetGroups, undefined)
+    assert.equal(state.layoutItems.length, 2)
+    assert.deepEqual(new Set(state.layoutItems.map(item => item.title)), new Set(['自定义压力', '另一压力']))
+    const pressureRow = state.rows.find(row => row.member.id === 'PRESS03')
+    assert.equal(pressureRow.point.unit, 'Pa')
+    assert.equal(state.rowName(pressureRow), '自定义压力')
+    assert.match(source, /<ConfigurableDashboard uniform/)
+    assert.doesNotMatch(source, /targetGroups|target-group/)
+    state.openPoint(pressureRow)
+    assert.equal(state.selectedRow.point.pointId, 1)
+    assert.equal(state.selectedRow.member.id, 'PRESS03')
+    state.selectLocation('unconfigured')
     await vue.nextTick()
-    assert.equal(state.selected, undefined)
-  } finally { app.unmount() }
+    assert.equal(state.selectedRow, null)
+  } finally { app.unmount(); configuration.savePointConfiguration(original, { setItem() {} }) }
   assert.ok(calls.every(call => call.signal.aborted))
 })

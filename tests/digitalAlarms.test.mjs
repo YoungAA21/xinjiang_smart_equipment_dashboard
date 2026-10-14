@@ -53,7 +53,7 @@ test('signal labels and point filters match the supplied installation sheet', ()
   assert.equal(filterDigitalAlarms(events, { isActive: false }).length, 0)
   assert.equal(filterDigitalAlarms(events, { start: '2026-10-13T20:01:00+08:00' }).length, 0)
 })
-test('local cache survives restart, preserves metadata and avoids replaying a continuing high alarm', async () => {
+test('local cache preserves unacknowledged alarms across restart without replaying prompts', async () => {
   const originalStorage = globalThis.localStorage, originalFetch = globalThis.fetch
   const cache = new Map()
   globalThis.localStorage = { getItem: key => cache.get(key) ?? null, setItem: (key, value) => cache.set(key, value) }
@@ -66,11 +66,12 @@ test('local cache survives restart, preserves metadata and avoids replaying a co
     await new Promise(resolve => setTimeout(resolve, 20))
     assert.equal(store.events.length, 1)
     assert.equal(store.events[0].pointId, 75)
-    assert.equal(store.notifications.length, 1)
+    assert.equal(store.notifications.length, 0)
+    assert.equal(store.events[0].acknowledgedAt, null)
     store.start('operator')
     await new Promise(resolve => setTimeout(resolve, 20))
     assert.equal(store.events.length, 1)
-    assert.equal(store.notifications.length, 1)
+    assert.equal(store.notifications.length, 0)
     store.dismiss()
     assert.equal(store.notifications.length, 0)
     assert.equal(store.events[0].isActive, true)
@@ -81,4 +82,28 @@ test('local cache survives restart, preserves metadata and avoids replaying a co
     store.start('another-operator')
     assert.equal(store.events.length, 0)
   } finally { store.stop(); globalThis.localStorage = originalStorage; globalThis.fetch = originalFetch }
+})
+
+test('new alarms and recoveries remain recorded without generating automatic notifications', () => {
+  const originalStorage = globalThis.localStorage
+  const cache = new Map()
+  globalThis.localStorage = { setItem: (key, value) => cache.set(key, value) }
+  setActivePinia(createPinia())
+  const store = useDigitalAlarmStore()
+  store.storageKey = 'silent-alarm-test'
+  try {
+    store.ingest([sample()])
+    assert.equal(store.events.length, 1)
+    assert.equal(store.events[0].isActive, true)
+    assert.equal(store.events[0].acknowledgedAt, null)
+    assert.deepEqual(store.notifications, [])
+    store.ingest([sample('PRESS02', 1, 0, 2)])
+    assert.equal(store.events[0].status, 'Recovered')
+    store.ingest([sample('PRESS02', 1, 1, 3)])
+    assert.equal(store.events.length, 2)
+    assert.deepEqual(store.notifications, [])
+    const saved = JSON.parse(cache.get(store.storageKey))
+    assert.equal(saved.events.length, 2)
+    assert.ok(saved.events.every(row => row.acknowledgedAt === null))
+  } finally { globalThis.localStorage = originalStorage }
 })

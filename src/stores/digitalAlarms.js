@@ -19,7 +19,8 @@ export const useDigitalAlarmStore = defineStore('digitalAlarms', {
       if (!result.changed) return
       this.events = result.events
       this.states = result.states
-      this.pending.push(...result.triggered)
+      // Automatic alarm prompts are paused until they move to alarm configuration.
+      this.pending = []
       this.save()
     },
     async refresh() {
@@ -57,7 +58,6 @@ export const useDigitalAlarmStore = defineStore('digitalAlarms', {
         if (cached?.version === 1 && Array.isArray(cached.events) && cached.states && typeof cached.states === 'object') {
           this.events = cached.events.filter(row => isDigitalSignal(row) && Number.isFinite(Date.parse(row.startedAt)))
           this.states = cached.states
-          this.pending = this.events.filter(row => !row.acknowledgedAt).map(row => row.alarmId)
         }
       } catch { this.cacheError = 'DI 告警缓存读取失败' }
       controller = new AbortController()

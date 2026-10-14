@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import * as vue from 'vue'
+import * as groups from '../src/charts/machineGroups.js'
 import * as line from '../src/charts/productionLine.js'
 import * as catalog from '../src/charts/equipmentCatalog.js'
 import * as telemetryCharts from '../src/charts/telemetry.js'
@@ -24,6 +25,7 @@ test('leaving the production home cancels requests, clears timers and ignores la
     '../services/alarms.js': { alarmApi: { async getAlarms(_query, options) { signals.push(options.signal); return [] } } },
     '../stores/alarms.js': { alarmEvents: body => body },
     '../charts/productionLine.js': line,
+    '../charts/machineGroups.js': groups,
     '../charts/equipmentCatalog.js': catalog,
     '../charts/telemetry.js': telemetryCharts,
     '../charts/productionLineStatus.js': status,

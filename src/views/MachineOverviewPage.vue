@@ -1,5 +1,6 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import ConfigurableDashboard from '../components/ConfigurableDashboard.vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Search, RefreshCw, Activity, AudioLines, Thermometer, Gauge, Eye, EyeOff } from 'lucide-vue-next'
 import HomeMonitorTile from '../components/HomeMonitorTile.vue'
 import HomePointExplorer from '../components/HomePointExplorer.vue'
@@ -10,11 +11,12 @@ import { useTelemetryStore } from '../stores/telemetry'
 import { useHomeDevicesStore } from '../stores/homeDevices'
 import { telemetryApi } from '../services/telemetry'
 import { pointKey } from '../charts/telemetry'
-import { groupMachineDevices, fanGroupOf } from '../charts/machineGroups.js'
-import { isMeasurementPoint, moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
+import { groupMachineDevices, fanGroupOf, presentAcousticChannels } from '../charts/machineGroups.js'
+import { configuredMonitoringPoints, discoveredMonitoringModules, moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 
 const telemetry = useTelemetryStore()
 const homeControlsExpanded = ref(false)
+const headerControlsExpanded = inject('homeControlsExpanded', ref(false))
 const monitor = useHomeDevicesStore()
 const pointMap = ref({})
 const pointLoadedAt = new Map()
@@ -41,10 +43,11 @@ async function openPointChart(row) {
 }
 function closePointChart() { selectedRowKey.value = '' }
 const devices = computed(() => [
-  ...sortMonitoringModules(telemetry.modules || []).map(module => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', id: module.moduleId, name: moduleDisplayName(module), online: module.runtimeStatus?.isOnline, points: pointMap.value[module.moduleId] || [], raw: module })),
-  ...(monitor.devices || []).map(device => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', id: device.deviceId, name: device.deviceName || device.deviceId, online: device.online, points: device.channels || [], raw: device })),
+  ...sortMonitoringModules(discoveredMonitoringModules(telemetry.modules || [], telemetry.latest || [])).map(module => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', id: module.moduleId, name: moduleDisplayName(module), online: module.runtimeStatus?.isOnline, points: configuredMonitoringPoints(pointMap.value[module.moduleId] || [], telemetry.latest, module.moduleId), raw: module })),
+  ...(monitor.devices || []).map(device => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', id: device.deviceId, name: device.deviceName || device.deviceId, online: device.online, points: presentAcousticChannels(device), raw: device })),
 ])
 const machineData = computed(() => groupMachineDevices(devices.value))
+const machineButtonNames = { ZB25: 'ZB25主机', YB55: 'ZB25辅机' }
 const activeMachineId = ref('ZJ117')
 const activeMachine = computed(() => machineData.value.groups.find(machine => machine.id === activeMachineId.value) || machineData.value.groups[0])
 const connectionKey = (device, channel) => JSON.stringify([device.id, channel.channelId])
@@ -59,7 +62,6 @@ const categories = [
 ]
 const categoryOf = (point, member) => member.source === 'monitor' ? 'acoustic' : String(point.metricType || '').startsWith('Vibration') ? 'vibration' : point.metricType === 'Temperature' ? 'temperature' : point.metricType === 'NegativePressure' ? 'pressure' : 'other'
 const allRows = computed(() => activeMachine.value.members.flatMap(member => member.points
-  .filter(point => member.source !== 'legacy' || point.metricType !== 'DigitalInput')
   .map(point => ({ member, point, key: member.source === 'legacy' ? pointKey(point) : connectionKey(member, point), category: categoryOf(point, member) }))))
 const sections = computed(() => categories.map(category => ({ ...category, rows: allRows.value.filter(row => row.category === category.id && (source.value === 'all' || row.member.source === source.value) && `${row.member.name} ${row.member.id} ${row.point.name || row.point.channelName || ''} ${row.point.pointCode || row.point.channelId}`.toLowerCase().includes(search.value.trim().toLowerCase())) })).filter(category => category.rows.length))
 const activeErrors = computed(() => activeMachine.value.members.filter(member => pointErrors.value[member.id]).map(member => `${member.id}：${pointErrors.value[member.id]}`))
@@ -121,19 +123,21 @@ const displayRows = computed(() => {
     const speedIndex = rows.findIndex(row => row.member.id === pair.moduleId && row.point.pointCode === pair.speedCode)
     const currentIndex = rows.findIndex(row => row.member.id === pair.moduleId && row.point.pointCode === pair.currentCode)
     if (speedIndex < 0 || currentIndex < 0) continue
+    if (rows[speedIndex].point.targetId !== rows[currentIndex].point.targetId) continue
     const speed = rows[speedIndex], current = rows[currentIndex]
     rows.splice(Math.max(speedIndex, currentIndex), 1)
     rows.splice(Math.min(speedIndex, currentIndex), 1)
     rows.push({
       key: `${pair.moduleId}-COMBINED-READINGS`, member: speed.member, point: speed.point,
       category: speed.category, categoryName: pair.title, color: speed.color,
-      combined: { ...pair, speed: { ...speed.point, key: speed.key }, current: { ...current.point, key: current.key } },
+      combined: { ...pair, speedName: speed.point.name, currentName: current.point.name, speed: { ...speed.point, key: speed.key }, current: { ...current.point, key: current.key } },
     })
   }
   return rows.map(row => row.member.source === 'monitor'
     ? { ...row, soundFrame: soundFrames.value[row.key], soundStatus: soundCardStatus(row) }
     : row)
 })
+const layoutItems = computed(() => displayRows.value.map(row => ({ id: row.key, title: row.combined?.title || row.point.name || row.point.channelName || row.point.pointCode || row.point.channelId, row })))
 const soundFrames = ref({})
 const soundStatus = ref('等待连接')
 const preview = createSoundPreview({ api, token: () => auth.getToken(), Socket: WebSocket,
@@ -227,7 +231,7 @@ const homeCardSize = computed(() => {
   rows = Math.max(4, rows)
   const warningHeight = (activeErrors.value.length + Number(historyFailed.value)) * 56
   const height = Math.floor((panelSize.value.height - 96 - 16 - overhead - warningHeight - (rows - 1) * 8) / rows)
-  return { '--home-point-height': `${Math.max(24, height)}px` }
+  return { '--home-point-height': `${Math.max(150, height)}px` }
 })
 
 async function refresh({ reloadPoints = true } = {}) {
@@ -248,8 +252,8 @@ async function refresh({ reloadPoints = true } = {}) {
           const result = await telemetryApi.getModulePoints(module.moduleId, { signal: controller.signal })
           if (controller.signal.aborted) return
           if (!Array.isArray(result?.points) || result.moduleId !== module.moduleId) throw new Error('点位返回格式不正确')
-          // Home charts and counts include measurements only.
-          pointMap.value[module.moduleId] = sortMonitoringPoints(result.points.filter(isMeasurementPoint))
+          // Keep every backend parameter visible, including status and newly discovered values.
+          pointMap.value[module.moduleId] = sortMonitoringPoints(result.points.map(point => ({ ...point, moduleId: module.moduleId })))
           pointLoadedAt.set(module.moduleId, Date.now())
           delete pointErrors.value[module.moduleId]
         } catch (error) {
@@ -299,9 +303,9 @@ onBeforeUnmount(() => {
   <section class="page home-monitor" :class="{ paused: !autoRefresh }" :style="homeCardSize">
     <div class="station-bar">
     <nav class="machine-tabs" role="tablist" aria-label="选择监测设备">
-      <button v-for="(machine, index) in machineData.groups" :id="'machine-tab-'+machine.id" :key="machine.id" role="tab" :aria-selected="activeMachineId === machine.id" :aria-controls="'machine-panel-'+machine.id" :tabindex="activeMachineId === machine.id ? 0 : -1" :class="{ active: activeMachineId === machine.id }" :disabled="switchingAcoustic" @click="selectMachine(machine.id)" @keydown="navigateTab($event, index)"><span class="tab-number">0{{ index + 1 }}</span><span class="tab-title"><strong>{{ machine.name }}</strong></span><span class="tab-dot" :class="{ online: machineState(machine) === '采集在线', warning: ['部分离线', '采集离线'].includes(machineState(machine)) }"></span></button>
+      <button v-for="(machine, index) in machineData.groups" :id="'machine-tab-'+machine.id" :key="machine.id" role="tab" :aria-selected="activeMachineId === machine.id" :aria-controls="'machine-panel-'+machine.id" :tabindex="activeMachineId === machine.id ? 0 : -1" :class="{ active: activeMachineId === machine.id }" :disabled="switchingAcoustic" @click="selectMachine(machine.id)" @keydown="navigateTab($event, index)"><span class="tab-number">0{{ index + 1 }}</span><span class="tab-title"><strong>{{ machineButtonNames[machine.id] || machine.name }}</strong></span><span class="tab-dot" :class="{ online: machineState(machine) === '采集在线', warning: ['部分离线', '采集离线'].includes(machineState(machine)) }"></span></button>
     </nav>
-    <div class="station-actions"><span class="refresh-indicator"><i></i>{{ autoRefresh ? '实时' : '暂停' }} · {{ currentTime }}</span><button class="plain-button view-settings" :aria-label="homeControlsExpanded ? '隐藏设置' : '显示设置'" :title="homeControlsExpanded ? '隐藏设置' : '显示设置'" :aria-expanded="homeControlsExpanded" @click="homeControlsExpanded = !homeControlsExpanded"><EyeOff v-if="homeControlsExpanded" :size="18"/><Eye v-else :size="18"/></button><el-button :icon="RefreshCw" :loading="refreshing" @click="refresh">刷新</el-button></div>
+    <div class="station-actions"><span class="refresh-indicator"><i></i>{{ autoRefresh ? '实时' : '暂停' }} · {{ currentTime }}</span><button class="plain-button view-settings" :aria-label="homeControlsExpanded ? '隐藏设置' : '显示设置'" :title="homeControlsExpanded ? '隐藏设置' : '显示设置'" :aria-expanded="homeControlsExpanded" @click="homeControlsExpanded = !homeControlsExpanded"><EyeOff v-if="homeControlsExpanded" :size="18"/><Eye v-else :size="18"/></button><span id="machine-layout-actions" class="machine-layout-actions"></span><button type="button" class="plain-button view-settings" aria-label="刷新数据" title="刷新数据" :disabled="refreshing" @click="refresh"><RefreshCw :size="18" :class="{ spinning: refreshing }" /></button><button type="button" class="plain-button view-settings" :aria-label="headerControlsExpanded ? '隐藏主题与账户设置' : '显示主题与账户设置'" :title="headerControlsExpanded ? '隐藏主题与账户设置' : '显示主题与账户设置'" :aria-expanded="headerControlsExpanded" @click="headerControlsExpanded = !headerControlsExpanded"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button></div>
     </div>
     <div v-if="homeControlsExpanded" class="home-controls"><label><Search :size="16"/><input v-model="search" aria-label="搜索当前设备点位" placeholder="搜索当前设备点位" /></label><select v-model="source" aria-label="点位来源"><option value="all">全部点位</option><option value="legacy">数值监测</option><option value="monitor">声纹通道</option></select><el-switch v-model="autoRefresh" aria-label="自动刷新" @change="toggleLive" /><span>自动刷新</span></div>
     <p v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="home-warning" role="alert">{{ [telemetry.errors.modules, telemetry.errors.latest, monitor.error].filter(Boolean).join('；') }}</p>
@@ -309,6 +313,17 @@ onBeforeUnmount(() => {
       <main :ref="observePanel" :id="'machine-panel-'+activeMachineId" :key="activeMachineId" role="tabpanel" :aria-labelledby="'machine-tab-'+activeMachineId" class="machine-panel">
         <p v-if="historyFailed" class="home-warning">历史采样加载失败。<button @click="retryHistory">重试历史</button></p>
         <p v-for="error in activeErrors" :key="error" class="home-warning">{{ error }}</p>
+        <ConfigurableDashboard :scope="'machine-overview:' + activeMachineId" :items="layoutItems" :default-height="240">
+        <template #toolbar="{ editing, toggleEditing, reset }">
+          <Teleport to="#machine-layout-actions" defer>
+            <button type="button" class="plain-button view-settings layout-icon" :class="{ active: editing }" :aria-label="editing ? '完成布局' : '编辑布局'" :title="editing ? '完成布局' : '编辑布局'" :aria-pressed="editing" @click="toggleEditing">
+              <svg v-if="editing" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4 10-10" /></svg>
+              <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            </button>
+            <button v-if="editing" type="button" class="plain-button view-settings" aria-label="恢复默认布局" title="恢复默认布局" @click="reset"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.7 7M3 4v7h7"/></svg></button>
+          </Teleport>
+        </template>
+        <template #card="{ item }"><HomeMonitorTile :row="item.row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></template>
         <div v-if="isFanLayout" class="fan-layout">
           <section v-for="group in fanGroups" :key="group.id" class="fan-group" :class="group.id">
             <header class="fan-group-heading"><h2>{{ group.title }}</h2></header>
@@ -327,6 +342,7 @@ onBeforeUnmount(() => {
         </div>
         <div v-else class="monitor-grid" :class="{ 'yb55-grid': activeMachineId === 'YB55' }"><HomeMonitorTile v-for="row in displayRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
         <div v-if="!displayRows.length" class="home-empty"><Activity :size="32"/><h3>{{ refreshing ? '正在加载监测点位' : '暂无可展示的点位' }}</h3></div>
+        </ConfigurableDashboard>
       </main>
     </Transition>
     <HomePointExplorer v-if="selectedRow" :key="selectedRow.key" :row="selectedRow" :buffers="telemetry.buffers" :paused="!autoRefresh" @close="closePointChart" @live-change="explorerLive = $event" />
@@ -360,10 +376,14 @@ a { color: var(--text-soft); text-decoration: none; }.home-topbar, .top-actions 
 .station-bar .tab-title { display:flex; align-items:center; gap:14px; }
 .station-bar .tab-title strong { font-size:16px; }
 .station-bar .tab-title small { font-size:11px; }
+.spinning { animation:overview-refresh-spin 1s linear infinite; }
+@keyframes overview-refresh-spin { to { transform:rotate(360deg); } }
+.machine-layout-actions { display:flex; align-items:center; gap:4px; }
+.layout-icon.active { color:var(--text-highlight); background:var(--control-bg-active); box-shadow:inset 0 0 0 1px var(--control-border-active); }
 .station-actions { display:flex; align-items:center; gap:10px; }
 .station-actions .view-settings { display:grid; place-items:center; padding:8px; border-radius:6px; }
 .station-actions .view-settings:hover { color:var(--text-main); background:var(--glass-card); }
-.machine-panel { flex:1; min-height:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 16px; align-content:start; }
+.machine-panel { flex:1; min-height:0; overflow-y:auto; scrollbar-width:thin; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 16px; align-content:start; }
 .device-summary,.machine-panel > .home-warning,.machine-panel > .home-empty { grid-column:1 / -1; }
 .device-summary { gap:20px; margin:0; font-size:11px; color:var(--text-muted); }
 .device-summary b { color:#db8b2b; font-weight:500; }

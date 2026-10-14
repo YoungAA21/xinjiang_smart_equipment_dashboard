@@ -5,6 +5,7 @@ import EChart from '../components/EChart.vue'
 import { telemetryApi } from '../services/telemetry.js'
 import { analysisApi } from '../services/analysis.js'
 import { dailyLimitTrendOption, percent, riskLabel, riskTone, valueText } from '../charts/analysis.js'
+import { presentMonitoringPoint } from '../charts/equipmentCatalog.js'
 import '../styles/analysis.css'
 
 const props = defineProps({
@@ -13,7 +14,8 @@ const props = defineProps({
   point: { type: Object, default: null },
 })
 const modules = ref([])
-const points = ref([])
+const rawPoints = ref([])
+const points = computed(() => rawPoints.value.map(presentMonitoringPoint))
 const selectedModuleId = ref('')
 const selectedPointId = ref(null)
 const dateRange = ref([])
@@ -76,7 +78,7 @@ async function loadPoints() {
   try {
     const result = await telemetryApi.getModulePoints(selectedModuleId.value, { signal: AbortSignal.any([pageController.signal, pointController.signal]) })
     if (!Array.isArray(result?.points)) throw new Error('点位接口返回格式不正确')
-    points.value = result.points
+    rawPoints.value = result.points.map(point => ({ ...point, moduleId: selectedModuleId.value }))
     selectedPointId.value = points.value[0]?.pointId ?? null
     if (selectedPointId.value) await loadAnalysis()
   } catch (error) {
@@ -127,7 +129,7 @@ function syncSelection() {
   days.value = []
   insight.value = null
   analysisError.value = ''
-  points.value = props.point ? [props.point] : []
+  rawPoints.value = props.point ? [props.point] : []
   selectedModuleId.value = props.moduleId
   selectedPointId.value = props.point?.pointId ?? null
   if (props.point) loadAnalysis()
@@ -180,10 +182,10 @@ onBeforeUnmount(() => {
           <div v-if="!insight" class="trend-empty compact">暂无趋势洞察</div>
           <template v-else>
             <dl class="insight-metrics">
-              <div><dt>近期均值</dt><dd>{{ valueText(insight.recentAverageValue, insight.unit) }}</dd></div>
-              <div><dt>基线均值</dt><dd>{{ valueText(insight.baselineAverageValue, insight.unit) }}</dd></div>
+              <div><dt>近期均值</dt><dd>{{ valueText(insight.recentAverageValue, selectedPoint?.unit) }}</dd></div>
+              <div><dt>基线均值</dt><dd>{{ valueText(insight.baselineAverageValue, selectedPoint?.unit) }}</dd></div>
               <div><dt>变化率</dt><dd>{{ percent(insight.changeRate) }}</dd></div>
-              <div><dt>每日斜率</dt><dd>{{ valueText(insight.trendSlopePerDay, `${insight.unit || ''}/天`) }}</dd></div>
+              <div><dt>每日斜率</dt><dd>{{ valueText(insight.trendSlopePerDay, `${selectedPoint?.unit || ''}/天`) }}</dd></div>
               <div><dt>P95 / P99</dt><dd>{{ valueText(insight.p95Value) }} / {{ valueText(insight.p99Value) }}</dd></div>
               <div><dt>标准差</dt><dd>{{ valueText(insight.standardDeviation) }}</dd></div>
             </dl>
@@ -196,9 +198,9 @@ onBeforeUnmount(() => {
       <header><div><CalendarRange :size="15" /><h2>每日分析明细</h2></div><span>{{ days.length }} 天</span></header>
       <el-table :data="days" :height="360" scrollbar-always-on class="dark-table trend-table" empty-text="暂无每日分析数据">
         <el-table-column label="日期" min-width="115"><template #default="{ row }">{{ String(row.date || '').slice(0, 10) }}</template></el-table-column>
-        <el-table-column label="最小值" min-width="105"><template #default="{ row }">{{ valueText(row.minValue, row.unit) }}</template></el-table-column>
-        <el-table-column label="平均值" min-width="105"><template #default="{ row }">{{ valueText(row.averageValue, row.unit) }}</template></el-table-column>
-        <el-table-column label="最大值" min-width="105"><template #default="{ row }">{{ valueText(row.maxValue, row.unit) }}</template></el-table-column>
+        <el-table-column label="最小值" min-width="105"><template #default="{ row }">{{ valueText(row.minValue, selectedPoint?.unit) }}</template></el-table-column>
+        <el-table-column label="平均值" min-width="105"><template #default="{ row }">{{ valueText(row.averageValue, selectedPoint?.unit) }}</template></el-table-column>
+        <el-table-column label="最大值" min-width="105"><template #default="{ row }">{{ valueText(row.maxValue, selectedPoint?.unit) }}</template></el-table-column>
         <el-table-column label="下限 / 上限" min-width="150"><template #default="{ row }">{{ valueText(row.minimumValue) }} / {{ valueText(row.maximumValue) }}</template></el-table-column>
         <el-table-column prop="sampleCount" label="样本数" min-width="100" />
         <el-table-column label="超限分钟" min-width="110"><template #default="{ row }">{{ Number(row.belowLimitMinutes || 0) + Number(row.aboveLimitMinutes || 0) }}</template></el-table-column>

@@ -3,6 +3,7 @@ import { readingState } from './productionLine.js'
 import { pointKey } from './telemetry.js'
 import { monitoringPointName } from './equipmentCatalog.js'
 import { monitoringLocations, monitoringLocationOf } from './monitoringLocations.js'
+import { configuredMachineId } from '../stores/pointConfiguration.js'
 
 export function acquisitionConnectionStatus(modules, devices, { legacyError = '', monitorError = '' } = {}) {
   const states = [...(modules || []).map(module => module.runtimeStatus?.isOnline), ...(devices || []).map(device => device.online)]
@@ -11,13 +12,16 @@ export function acquisitionConnectionStatus(modules, devices, { legacyError = ''
   return states.length ? { label: '系统正常', state: 'normal' } : { label: '暂无采集设备', state: 'unknown' }
 }
 
+export const configuredHomeReadings = rows => rows.filter(row => row.point.configurationState === 'configured')
+
 export function groupedMonitoringPoints(rows) {
   const groups = new Map()
   for (const row of rows) {
     const location = monitoringLocationOf(row.member, row.point)
-    const key = location || JSON.stringify([row.member.source, row.member.id])
-    if (!groups.has(key)) groups.set(key, { key, location, name: monitoringLocations.find(item => item.id === location)?.name || row.member.name || String(row.member.id), rows: [] })
-    groups.get(key).rows.push(row)
+    const configuredLocation = monitoringLocations.find(item => item.id === location)
+    if (!configuredLocation) continue
+    if (!groups.has(location)) groups.set(location, { key: location, location, name: configuredLocation.name, rows: [] })
+    groups.get(location).rows.push(row)
   }
   return [...groups.values()].map(group => {
     const alarm = group.rows.some(row => row.alarm)
@@ -28,7 +32,7 @@ export function groupedMonitoringPoints(rows) {
 
 export const isActiveAlarm = event => event.isActive === true || event.status === 'Active'
 export function alarmMachineId(event) {
-  const id = machines.find(machine => machine.modules.includes(event.moduleId))?.id
+  const id = configuredMachineId(event) || machines.find(machine => machine.modules.includes(event.moduleId))?.id
   return id === 'ZB25' ? 'YB25' : id || null
 }
 export function alarmMatchesRow(event, row) {

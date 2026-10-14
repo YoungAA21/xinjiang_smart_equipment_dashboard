@@ -275,20 +275,14 @@ function selectCollector(row) {
 
 <template>
   <section class="page gateway-page">
-    <header class="monitor-toolbar gateway-toolbar content-page-header">
-      <div>
-        <h1 class="content-page-title">网关通讯</h1>
-      </div>
+    <div class="gateway-controls">
+      <nav class="gateway-view-tabs" aria-label="通讯视图"><button :class="{active: view === 'modules'}" :aria-pressed="view === 'modules'" @click="changeView('modules')">模块总览</button><button :class="{active: view === 'acoustic'}" :aria-pressed="view === 'acoustic'" @click="changeView('acoustic')">声纹通讯</button></nav>
       <div class="monitor-actions gateway-filter-actions">
         <label v-if="view === 'acoustic'">历史范围 <el-input-number v-model="historyFilter.hours" :min="1" :max="720" /> 小时</label>
         <label v-if="view === 'acoustic'">每网关事件 <el-input-number v-model="historyFilter.limitPerCollector" :min="10" :max="1000" /></label>
-        <el-button :icon="RefreshCcw" :loading="loading || detailLoading || historyLoading || eventsLoading" type="primary" @click="view === 'modules' ? overview?.refresh() : loadAll()">
-          刷新状态
-        </el-button>
+        <el-button :icon="RefreshCcw" :loading="view === 'modules' ? overview?.loading : loading || detailLoading || historyLoading || eventsLoading" type="primary" circle aria-label="刷新状态" title="刷新状态" @click="view === 'modules' ? overview?.refresh() : loadAll()" />
       </div>
-    </header>
-
-    <nav class="gateway-view-tabs" aria-label="通讯视图"><button :class="{active: view === 'modules'}" :aria-pressed="view === 'modules'" @click="changeView('modules')">模块总览</button><button :class="{active: view === 'acoustic'}" :aria-pressed="view === 'acoustic'" @click="changeView('acoustic')">声纹通讯</button></nav>
+    </div>
     <GatewayModuleOverview v-if="view === 'modules'" ref="overview" />
     <template v-else>
     <section class="panel gateway-device-section">
@@ -465,7 +459,13 @@ function selectCollector(row) {
 </template>
 
 <style scoped>
+.gateway-controls { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+.gateway-filter-actions { flex-wrap:wrap; }
 .gateway-view-tabs { display:flex; gap:10px; margin:10px 0; }
 .gateway-view-tabs button { padding:9px 22px; border:1px solid var(--glass-border); border-radius:6px; background:var(--glass-card); color:var(--text-main); font:inherit; cursor:pointer; }
 .gateway-view-tabs button.active { color:#50b9a8; border-color:#50b9a8; }
+@media(max-height:800px) {
+  .gateway-view-tabs { margin:8px 0; }
+  .gateway-view-tabs button { padding:6px 18px; font-size:16px; }
+}
 </style>

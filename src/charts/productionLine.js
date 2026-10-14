@@ -1,5 +1,6 @@
 import { machines, groupMachineDevices } from './machineGroups.js'
 import { numericValue, pointKey } from './telemetry.js'
+import { configuredMachineId } from '../stores/pointConfiguration.js'
 
 // The site SVG owns physical footprints; these records own monitoring identities.
 // YB25 is the display alias for the existing ZB25 mapping only.
@@ -14,16 +15,17 @@ export const lineMachines = [
 export function buildLineMachines(devices, events = [], sourceErrors = {}) {
   const grouped = groupMachineDevices(devices)
   return lineMachines.map(machine => {
-    const group = grouped.groups.find(group => group.id === machine.sourceId)
+    const group = grouped.groups.find(group => group.id === (machine.sourceId || machine.id))
+    const sourceId = machine.sourceId || (group?.members.length ? machine.id : null)
     const members = group?.members || []
-    const modules = machines.find(item => item.id === machine.sourceId)?.modules || []
-    const activeAlarms = events.filter(event => modules.includes(event.moduleId) && (event.isActive === true || event.status === 'Active'))
+    const modules = [...(machines.find(item => item.id === sourceId)?.modules || []), ...members.filter(member => member.source === 'legacy').map(member => member.id)]
+    const activeAlarms = events.filter(event => (configuredMachineId(event) ? configuredMachineId(event) === sourceId : modules.includes(event.moduleId)) && (event.isActive === true || event.status === 'Active'))
     const uncertain = members.some(member => sourceErrors[member.source])
-    const state = !machine.sourceId ? 'unconfigured' : uncertain ? 'unknown' : !members.length ? 'unknown'
+    const state = !sourceId ? 'unconfigured' : uncertain ? 'unknown' : !members.length ? 'unknown'
       : members.some(member => member.online === false) ? 'offline'
         : members.some(member => member.online !== true) ? 'unknown' : activeAlarms.length ? 'alarm' : 'online'
     const label = { unconfigured: '未配置', unknown: '状态待确认', offline: '采集离线', alarm: '存在告警', online: '采集在线' }[state]
-    return { ...machine, members, pointCount: group?.pointCount || 0, state, label, activeAlarms }
+    return { ...machine, sourceId, members, pointCount: group?.pointCount || 0, state, label, activeAlarms }
   })
 }
 

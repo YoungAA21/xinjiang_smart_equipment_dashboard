@@ -1,4 +1,6 @@
-// Installation locations come from the supplied point list; metric values and units stay with the API.
+import { configuredParameter, presentPoint } from '../stores/pointConfiguration.js'
+import { mergeDiscoveredPoints } from './pointConfiguration.js'
+// Supplied installation labels are suggestions until explicitly configured.
 const moduleNames = {
   VSE03: 'ZJ117 卷接机 · VE/MAX 风机振动',
   VSE04: 'ZB25 小盒包装机 · 电机与铝纸切刀振动',
@@ -47,9 +49,11 @@ export const isVibrationModule = module => module?.moduleId?.startsWith('VSE') |
 export const sortMonitoringModules = modules => [...modules].sort((a, b) => Number(isVibrationModule(b)) - Number(isVibrationModule(a)))
 
 export function monitoringPointName(point) {
+  const configured = configuredParameter(point || {})
+  if (configured) return configured.displayName
   const location = vibrationLocations[point?.moduleId]?.[point?.pointCode]
-  if (location && point.metricType === 'VibrationRms') return `${location} · 振动速度 RMS`
-  return point?.name || point?.pointCode || ''
+  const name = location && point.metricType === 'VibrationRms' ? `${location} · 振动速度 RMS` : point?.backendName || point?.name || point?.pointCode || ''
+  return `${name}${point?.configurationState === 'unconfigured' ? ' · 未配置' : ''}`
 }
 
 export const isVibrationPoint = point => point?.metricType === 'VibrationRms' || point?.metricType === 'VibrationUnbalance'
@@ -59,4 +63,21 @@ export const isMeasurementPoint = point => !['AlarmStatus', 'SelfTestResult'].in
 export function sortMonitoringPoints(points = []) {
   const priority = point => isVibrationPoint(point) ? 0 : ['AlarmStatus', 'SelfTestResult'].includes(point?.metricType) ? 2 : 1
   return [...points].sort((a, b) => priority(a) - priority(b))
+}
+
+export const presentMonitoringPoint = point => {
+  const presented = presentPoint(point)
+  return { ...presented, name: monitoringPointName(presented) }
+}
+export function configuredMonitoringPoints(points = [], latest = [], moduleId = '') {
+  return sortMonitoringPoints(mergeDiscoveredPoints(points, latest, moduleId).map(presentMonitoringPoint))
+}
+
+export function discoveredMonitoringModules(modules = [], latest = []) {
+  const rows = new Map(modules.map(module => [String(module.moduleId), module]))
+  for (const sample of latest) {
+    if (!sample.moduleId || rows.has(String(sample.moduleId))) continue
+    rows.set(String(sample.moduleId), { moduleId: sample.moduleId, moduleName: sample.moduleId, discoveredFromLatest: true })
+  }
+  return [...rows.values()]
 }

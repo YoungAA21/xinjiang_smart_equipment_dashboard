@@ -6,7 +6,7 @@ import EChart from '../components/EChart.vue'
 import AudioVisualizationPanel from '../components/AudioVisualizationPanel.vue'
 import { api } from '../services/api'
 import { auth } from '../services/auth'
-import { acousticChannelDisplayName } from '../charts/machineGroups.js'
+import { acousticChannelDisplayName, presentAcousticChannels } from '../charts/machineGroups.js'
 
 const props = defineProps({
   embedded: Boolean,
@@ -59,7 +59,7 @@ const AUDIO_START_DELAY = 0.025
 const selectedDevice = computed(() =>
   props.embedded ? props.device : devices.value.find((device) => device.deviceId === selectedDeviceId.value) || devices.value[0] || null)
 
-const channelOptions = computed(() => selectedDevice.value?.channels || [])
+const channelOptions = computed(() => selectedDevice.value ? presentAcousticChannels(selectedDevice.value) : [])
 const selectedChannels = computed(() =>
   channelOptions.value.filter((channel) => channel.channelId === selectedChannelId.value))
 const channelName = channel => acousticChannelDisplayName(selectedDevice.value, channel)

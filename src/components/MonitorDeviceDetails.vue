@@ -1,9 +1,10 @@
 <script setup>
+import { presentAcousticChannels } from '../charts/machineGroups.js'
 import { acousticPointIp } from '../charts/pointAddress.js'
 import { computed } from 'vue'
 const props = defineProps({ device: { type: Object, required: true } })
 const collectorRows = computed(() => props.device.collectors || [])
-const channelRows = computed(() => props.device.channels || [])
+const channelRows = computed(() => presentAcousticChannels(props.device))
 const formatDateTime = (value) => {
   if (!value) return '-'
   const date = new Date(value)

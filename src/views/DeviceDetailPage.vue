@@ -1,4 +1,5 @@
 <script setup>
+import ConfigurableDashboard from '../components/ConfigurableDashboard.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import TrendPage from './TrendPage.vue'
@@ -11,8 +12,8 @@ import TelemetryHistoryList from '../components/TelemetryHistoryList.vue'
 import { api } from '../services/api'
 import { useTelemetryStore } from '../stores/telemetry'
 import { localInputTime, numericValue, pointKey, telemetryLine } from '../charts/telemetry'
-import { isVibrationPoint, isMeasurementPoint, moduleDisplayName, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
-import { acousticChannelDisplayName } from '../charts/machineGroups.js'
+import { isVibrationPoint, configuredMonitoringPoints, discoveredMonitoringModules, moduleDisplayName, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
+import { acousticChannelDisplayName, presentAcousticChannels } from '../charts/machineGroups.js'
 import { monitoringLocations } from '../charts/monitoringLocations.js'
 
 const props = defineProps({ embedded: Boolean, detailContext: Object })
@@ -38,7 +39,7 @@ const allDetailTabs = [
   { id: 'history', label: '数据列表' },
   { id: 'info', label: '设备信息' },
 ]
-const channels = computed(() => !isLegacy.value ? (selected.value?.raw.channels || []).filter(channel => !props.embedded || !route.query.channelId || channel.channelId === route.query.channelId) : [])
+const channels = computed(() => !isLegacy.value ? (selected.value ? presentAcousticChannels(selected.value.raw) : []).filter(channel => !props.embedded || !route.query.channelId || channel.channelId === route.query.channelId) : [])
 const selectedChannel = computed(() => channels.value.find((channel) => channel.channelId === selectedChannelId.value) || channels.value.find((channel) => channel.online) || channels.value[0] || null)
 const clock = ref(Date.now())
 const historyStart = ref(localInputTime(Date.now() - 10 * 60 * 1000))
@@ -47,7 +48,7 @@ const historyLimit = ref(5000)
 const pageController = new AbortController()
 let pointController, historyController, pollTimer, metadataTimer
 const entries = computed(() => [
-  ...sortMonitoringModules(telemetry.modules || []).map((module) => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', name: moduleDisplayName(module), id: module.moduleId, online: module.runtimeStatus?.isOnline, raw: module })),
+  ...sortMonitoringModules(discoveredMonitoringModules(telemetry.modules || [], telemetry.latest || [])).map((module) => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', name: moduleDisplayName(module), id: module.moduleId, online: module.runtimeStatus?.isOnline, raw: module })),
   ...(monitorDevices.value || []).map((device) => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', name: device.deviceName || device.deviceId, id: device.deviceId, online: device.online, raw: device })),
 ])
 const deviceSearch = ref('')
@@ -70,8 +71,19 @@ const selected = computed(() => entries.value.find((entry) => entry.key === sele
 const profileLocation = computed(() => monitoringLocations.find(item => item.id === route.query.location))
 const profileName = computed(() => profileLocation.value ? `${profileLocation.value.machine} · ${profileLocation.value.name}` : selected.value?.name || '')
 const profileImage = computed(() => {
+  if (selected.value?.source === 'legacy' && selected.value.id === 'PRESS01') return '/equipment/zb25-pressure.png'
+  if (selected.value?.source === 'legacy' && selected.value.id === 'PRESS02') return '/equipment/spider-pressure.png'
   if (selected.value?.source === 'legacy' && selected.value.id === 'PRESS03') return '/equipment/yb55-pressure.png'
-  return ({ ve: '/equipment/ve-fan.png', max: '/equipment/max-fan.png', 'spider-pressure': '/equipment/spider-pressure.png', 'main-motor': '/equipment/main-motor.png' })[profileLocation.value?.id] || ''
+  return ({
+    ve: '/equipment/ve-fan.png',
+    max: '/equipment/max-fan.png',
+    'spider-pressure': '/equipment/spider-pressure.png',
+    'main-motor': '/equipment/main-motor.png',
+    cutter: '/equipment/aluminum-paper-cutter.jpg',
+    seal: '/equipment/sealing-component.jpg',
+    'aux-motor': '/equipment/auxiliary-main-motor.png',
+    'paper-wheel': '/equipment/gearbox.png',
+  })[profileLocation.value?.id] || ''
 })
 const isLegacy = computed(() => selected.value?.source === 'legacy')
 const detailTabs = computed(() => allDetailTabs.filter(tab => {
@@ -87,7 +99,7 @@ watch([chartMode, detailTabs], () => {
   if (!detailTabs.value.some(tab => tab.id === chartMode.value)) chartMode.value = 'live'
 }, { immediate: true })
 const points = computed(() => isLegacy.value && telemetry.pointModuleId === selected.value.id
-  ? sortMonitoringPoints(telemetry.points.filter(isMeasurementPoint).filter(point => !props.embedded || !route.query.pointId || point.pointId === Number(route.query.pointId))).map(point => ({ ...point, name: monitoringPointName(point) })) : [])
+  ? configuredMonitoringPoints(telemetry.points, telemetry.latest, selected.value.id).filter(point => !props.embedded || !route.query.pointId || point.pointId === Number(route.query.pointId)).map(point => ({ ...point, name: monitoringPointName(point) })) : [])
 const selectedPoint = computed(() => points.value.find((point) => point.pointId === selectedPointId.value) || points.value[0] || null)
 const pointPalette = ['#39a9ff', '#ff9800', '#00c875']
 const pointColors = new Map()
@@ -277,16 +289,17 @@ onBeforeUnmount(() => {
                 <template v-if="chartMode === 'live'">
                   <header class="chart-toolbar"><strong>全部监测点位 · {{ points.length }} 个<span v-if="points.some(isVibrationPoint)"> · 振动 {{ points.filter(isVibrationPoint).length }} 项</span></strong><label><el-switch v-model="autoLive" aria-label="实时自动刷新" /><span>{{ autoLive ? '每 2 秒刷新' : '刷新已暂停' }}</span></label></header>
                   <div v-if="telemetry.errors.latest" class="monitor-error" role="alert">实时更新失败：{{ telemetry.errors.latest }}</div>
-                  <div class="live-point-grid">
-                    <article v-for="card in pointCards" :key="pointKey(card.point)" class="live-point-card" :style="{ '--point-color': card.color }">
-                      <header><h3>{{ card.point.name || card.point.pointCode }}</h3><span :class="card.stale ? 'warn' : 'muted'">{{ card.stale ? '数据未更新' : card.latest ? '实时采样' : '等待采样' }}</span></header>
-                      <div class="point-value">{{ numberText(card.latest?.value) }} <small>{{ card.point.unit }}</small></div>
+                  <ConfigurableDashboard default-grid-class="live-point-grid" :scope="'point-device:' + selected.key" :items="pointCards.map(card => ({ id: pointKey(card.point), title: card.point.name || card.point.pointCode, card }))" :default-span="embedded ? 4 : 2" :default-height="embedded ? 500 : 330">
+                    <template #card="{ item }">                    <article class="live-point-card" :style="{ '--point-color': item.card.color }">
+                      <header><h3>{{ item.card.point.name || item.card.point.pointCode }}</h3><span :class="item.card.stale ? 'warn' : 'muted'">{{ item.card.stale ? '数据未更新' : item.card.latest ? '实时采样' : '等待采样' }}</span></header>
+                      <div class="point-value">{{ numberText(item.card.latest?.value) }} <small>{{ item.card.point.unit }}</small></div>
                       <p class="point-meta">采集 IP：{{ selected.raw.host || '未提供' }}</p>
-                      <p class="point-meta">{{ card.point.channelId }} · {{ card.point.pointCode }}</p>
-                      <div class="point-chart" role="img" :aria-label="(card.point.name || card.point.pointCode)+'实时折线，'+card.count+'个已采集样本'"><EChart :option="card.option" /></div>
-                      <footer>{{ dateTime(card.latest?.collectedAt) }} · 质量 {{ card.latest?.quality ?? '—' }}</footer>
-                    </article>
-                  </div>
+                      <p class="point-meta">{{ item.card.point.channelId }} · {{ item.card.point.pointCode }}</p>
+                      <div class="point-chart" role="img" :aria-label="(item.card.point.name || item.card.point.pointCode)+'实时折线，'+item.card.count+'个已采集样本'"><EChart :option="item.card.option" /></div>
+                      <footer>{{ dateTime(item.card.latest?.collectedAt) }} · 质量 {{ item.card.latest?.quality ?? '—' }}</footer>
+                    </article></template>
+
+                  </ConfigurableDashboard>
 
                 </template>
                 <TrendPage v-else-if="chartMode === 'trend'" embedded :module-id="selected.id" :point="selectedPoint" />
@@ -303,7 +316,9 @@ onBeforeUnmount(() => {
             </template>
             <template v-else>
               <p v-if="!channels.length" class="empty-copy">该设备暂无声纹点位</p>
-              <div v-else-if="chartMode === 'live'" class="live-point-grid"><SpectrumPage show-address v-for="channel in channels" :key="selected.key + channel.channelId" embedded compact :accent-color="pointColor(JSON.stringify([selected.id, channel.channelId]))" :device="selected.raw" :channel-id="channel.channelId" display-mode="live" /></div>
+              <ConfigurableDashboard default-grid-class="live-point-grid" v-else-if="chartMode === 'live'" :scope="'point-device:' + selected.key" :items="channels.map(channel => ({ id: channel.channelId, title: acousticChannelDisplayName(selected.raw, channel), channel }))" :default-span="embedded ? 4 : 2" :default-height="500">
+                <template #card="{ item }"><SpectrumPage show-address :key="selected.key + item.channel.channelId" embedded compact :accent-color="pointColor(JSON.stringify([selected.id, item.channel.channelId]))" :device="selected.raw" :channel-id="item.channel.channelId" display-mode="live" /></template>
+              </ConfigurableDashboard>
               <SpectrumPage show-address v-else-if="chartMode === 'spectrum'" :key="selected.key" embedded :device="selected.raw" :channel-id="selectedChannel.channelId" :display-mode="chartMode" />
               <div v-else class="capability-empty"><Database :size="32" /><h3>当前声纹点位暂无历史采样列表</h3></div>
             </template>
@@ -356,7 +371,7 @@ onBeforeUnmount(() => {
 .device-profile dl { grid-template-columns: 1fr; font-size: 14px; }
 .back-link { color: var(--accent); text-decoration: none; }
 .equipment-illustration { height: 180px; display: grid; place-items: center; color: var(--accent); background: radial-gradient(ellipse, #50d8cb18, transparent 70%); margin-bottom: 22px; }
-.live-point-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+:deep(.live-point-grid) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .live-point-card { min-width: 0; border: 1px solid var(--glass-border); border-radius: 10px; background: var(--glass-card); padding: 18px 16px 12px; }
 .live-point-card header { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
 .live-point-card h3 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
@@ -368,9 +383,9 @@ onBeforeUnmount(() => {
 .point-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
 .point-tabs button { padding: 9px 14px; border: 1px solid var(--glass-border); border-radius: 6px; color: var(--text-muted); background: var(--glass-card); }
 .point-tabs button.active { border-color: var(--accent); color: var(--accent); }
-@media (max-width: 1500px) { .live-point-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1500px) { :deep(.live-point-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .device-workspace { grid-template-columns: minmax(0, 1fr); } .device-profile { position: static; } .device-profile dl { grid-template-columns: repeat(2, minmax(0, 1fr)); } .equipment-illustration { display: none; } .device-detail-tabs { overflow-x: auto; } }
-@media (max-width: 600px) { .live-point-grid { grid-template-columns: minmax(0, 1fr); } .source-summary { flex-wrap: wrap; gap: 8px; } }
+@media (max-width: 600px) { :deep(.live-point-grid) { grid-template-columns: minmax(0, 1fr); } .source-summary { flex-wrap: wrap; gap: 8px; } }
 
 /* Equipment directory */
 .equipment-directory-page { --directory-accent: #6cb6dc; }
@@ -412,6 +427,7 @@ onBeforeUnmount(() => {
 .fleet-empty { display: grid; justify-items: center; padding: 50px 20px; color: var(--text-muted); }.fleet-empty h3 { font-size: 18px; }.fleet-empty p { font-size: 14px; }.fleet-empty button { background: transparent; color: var(--directory-accent); border: 1px solid var(--glass-border); border-radius: 5px; padding: 8px 18px; }
 .fleet-footnote { color: var(--text-muted); font-size: 12px; margin: 20px 0 5px; }
 .profile-equipment-visual { margin: 12px -12px 24px; height: 210px; }
+.profile-equipment-visual :deep(img) { position: absolute; inset: 5%; width: 90%; height: 90%; object-fit: contain; }
 @media (max-width: 1550px) { .fleet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }.fleet-overview { gap: 20px; padding: 24px; }.fleet-stats button { padding: 12px; } }
 @media (max-width: 1150px) { .fleet-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.fleet-overview { flex-direction: column; align-items: stretch; }.fleet-stats { min-width: 0; }.fleet-controls { flex-wrap: wrap; }.fleet-search { width: 100%; } }
 @media (max-width: 600px) { .fleet-grid { grid-template-columns: minmax(0, 1fr); }.fleet-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }.fleet-result { flex-wrap: wrap; }.fleet-source-tabs button { padding: 8px; }.fleet-intro h2 { font-size: 23px; } }

@@ -6,11 +6,11 @@ import SiteProductionLinePlan from '../components/SiteProductionLinePlan.vue'
 import ProductionSummary from '../components/ProductionSummary.vue'
 import AlarmColorSettings from '../components/AlarmColorSettings.vue'
 import { useAlarmColorsStore } from '../stores/alarmColors.js'
-import { readingState } from '../charts/productionLine.js'
 import { useProductionLine } from '../composables/useProductionLine.js'
 import { alarmTime } from '../charts/alarms.js'
-import { alarmMachineId, isActiveAlarm, acquisitionConnectionStatus, groupedMonitoringPoints } from '../charts/productionLineStatus.js'
+import { alarmMachineId, isActiveAlarm, acquisitionConnectionStatus, groupedMonitoringPoints, configuredHomeReadings } from '../charts/productionLineStatus.js'
 import { monitoringLocationOf } from '../charts/monitoringLocations.js'
+import { presentMonitoringPoint } from '../charts/equipmentCatalog.js'
 import '../styles/production-line.css'
 
 const router = useRouter()
@@ -18,12 +18,14 @@ const alarmColors = useAlarmColorsStore()
 alarmColors.ensureUser()
 const controls = inject('homeControlsExpanded', ref(false))
 const lightTheme = inject('isLightTheme', ref(false))
-const { telemetry, acoustic, selectedId, selected, machines, readings, events, alarmError, now, live, refreshing, refresh } = useProductionLine()
+const { telemetry, acoustic, selectedId, selected, machines, readings: allReadings, events, alarmError, now, live, refreshing, refresh } = useProductionLine()
+const configuredReadings = computed(() => configuredHomeReadings(allReadings.value))
+const readings = computed(() => configuredReadings.value.filter(row => row.member.source === 'legacy'))
 const alarmScope = ref('')
 const alarmFilter = ref('active')
 const alarmPage = ref(1)
 const pageSize = 2
-const filteredEvents = computed(() => (events.value || []).filter(event => (!alarmScope.value || alarmMachineId(event) === alarmScope.value) && (alarmFilter.value === 'all' || isActiveAlarm(event))).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt)))
+const filteredEvents = computed(() => (events.value || []).map(presentMonitoringPoint).filter(event => (!alarmScope.value || alarmMachineId(event) === alarmScope.value) && (alarmFilter.value === 'all' || isActiveAlarm(event))).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt)))
 const pageCount = computed(() => Math.max(1, Math.ceil(filteredEvents.value.length / pageSize)))
 const visibleEvents = computed(() => filteredEvents.value.slice((alarmPage.value - 1) * pageSize, alarmPage.value * pageSize))
 watch([alarmScope, alarmFilter], () => { alarmPage.value = 1 })
@@ -32,18 +34,19 @@ const connectionStatus = computed(() => acquisitionConnectionStatus(telemetry.mo
 const systemStatus = computed(() => connectionStatus.value.label)
 const systemClass = computed(() => connectionStatus.value.state)
 const dateTime = computed(() => new Date(now.value).toLocaleString('zh-CN', { hour12: false }))
-const monitoringPoints = computed(() => groupedMonitoringPoints(readings.value))
+const monitoringPoints = computed(() => groupedMonitoringPoints(configuredReadings.value))
 const valuesPanel = ref(null)
 const valuesHeight = ref(500)
+const valuesWidth = ref(400)
 let valuesObserver
 onMounted(() => {
-  valuesObserver = new ResizeObserver(([entry]) => { valuesHeight.value = entry.contentRect.height })
+  valuesObserver = new ResizeObserver(([entry]) => { valuesHeight.value = entry.contentRect.height; valuesWidth.value = entry.contentRect.width })
   if (valuesPanel.value) valuesObserver.observe(valuesPanel.value)
 })
 onBeforeUnmount(() => valuesObserver?.disconnect())
-const rightColumns = computed(() => Math.max(1, Math.ceil(readings.value.length / Math.max(1, Math.floor((valuesHeight.value - 40) / 43)))))
+const rightColumns = computed(() => Math.max(1, Math.min(Math.floor(valuesWidth.value / 280), Math.ceil(readings.value.length / Math.max(1, Math.floor((valuesHeight.value - 40) / 48))))))
 function gridStyle(columns) {
-  return { '--columns': columns, '--rows': Math.max(1, Math.ceil(readings.value.length / columns)), '--number-size': `${Math.max(12, 22 - columns * 2)}px` }
+  return { '--columns': columns, '--rows': Math.max(1, Math.ceil(readings.value.length / columns)), '--number-size': `${Math.max(22, 30 - columns * 2)}px` }
 }
 function selectMachine(id) { selectedId.value = id; alarmScope.value = '' }
 function showMachineAlarms(id) { selectedId.value = id; alarmScope.value = id; alarmFilter.value = 'active'; alarmPage.value = 1 }
@@ -58,29 +61,29 @@ function openMonitoringPoint(group) {
   if (group.location) router.push({ path: '/device', query: { location: group.location } })
   else openPoint(group.rows[0])
 }
-const rowValue = row => !row.usable ? '—' : row.member.source === 'monitor' ? '在线' : row.value.toFixed(2)
-const rejectionState = computed(() => {
-  const point = { moduleId:'PRESS01', channelId:'PRESS01-DI02', pointCode:'PRESS01_DI02' }
-  const module = telemetry.modules?.find(module => module.moduleId === point.moduleId)
-  const reading = readingState(point, telemetry.latest, now.value, Boolean(telemetry.errors.latest), module?.runtimeStatus?.isOnline)
-  return !reading.usable || ![0, 1].includes(reading.value) ? '—' : reading.value === 1 ? '按钮已触发' : '按钮未触发'
-})
+const rowValue = row => !row.usable ? '—' : row.value.toFixed(2)
 </script>
 
 <template>
   <section class="production-home">
     <header class="production-heading">
-      <div class="system-title"><span class="system-indicator" :class="systemClass"></span><h1 :class="systemClass">{{ systemStatus }}</h1><span>采集设备连接状态</span></div>
+      <div class="system-title"><span class="system-indicator" :class="systemClass"></span><h1 :class="systemClass">{{ systemStatus }}</h1><span>各项设备均运转正常</span></div>
       <div class="production-tools"><time>{{ dateTime }}</time><button :aria-label="live ? '暂停自动刷新' : '恢复自动刷新'" @click="live = !live"><component :is="live ? Pause : Play" :size="14" />{{ live ? '实时' : '已暂停' }}</button><button aria-label="刷新数据" :disabled="refreshing" @click="refresh({ configuration: true })"><RefreshCw :size="16" :class="{ spinning: refreshing }" /></button><button aria-label="显示主题与账户设置" :aria-expanded="controls" @click="controls = !controls"><Settings2 :size="17" /></button></div>
     </header>
     <div class="line-workspace">
-      <aside class="line-panel point-list-panel"><header><div><h2>{{ selected.id }} 测点列表</h2><span>{{ monitoringPoints.length }} 个</span></div></header>
-        <div v-if="monitoringPoints.length" class="grouped-point-list"><button v-for="(group, index) in monitoringPoints" :key="group.key" :title="group.name" :aria-label="'查看测点详情：' + group.name" @click="openMonitoringPoint(group)"><span class="point-index">{{ String(index + 1).padStart(2, '0') }}</span><span class="group-name">{{ group.name }}</span><strong class="group-state" :class="group.state">{{ group.label }}</strong></button></div>
-        <div v-else class="point-empty">{{ refreshing && selected.sourceId ? '正在加载测点' : '暂无配置测点' }}</div>
-      </aside>
-      <section class="line-panel plan-panel"><ProductionSummary :rejection-state="rejectionState" /><SiteProductionLinePlan :variant="lightTheme ? 'light' : 'dark'" :navigate="false" :selected="selectedId" :machines="machines" @select="selectMachine" @alarm="showMachineAlarms" /></section>
+      <div class="line-left-column">
+        <aside class="line-panel point-list-panel"><header><div><h2>{{ selected.id }} 测点列表</h2><span>{{ monitoringPoints.length }} 个</span></div></header>
+          <div v-if="monitoringPoints.length" class="grouped-point-list"><button v-for="(group, index) in monitoringPoints" :key="group.key" :title="group.name" :aria-label="'查看测点详情：' + group.name" @click="openMonitoringPoint(group)"><span class="point-index">{{ String(index + 1).padStart(2, '0') }}</span><span class="group-name">{{ group.name }}</span><strong class="group-state" :class="group.state">{{ group.label }}</strong></button></div>
+          <div v-else class="point-empty">{{ refreshing && selected.sourceId ? '正在加载测点' : '暂无配置测点' }}</div>
+        </aside>
+        <section class="line-panel rejection-status-panel" aria-label="剔除状态">
+          <header><div><h2>剔除状态</h2></div></header>
+          <dl><div><dt>CH双包剔除状态</dt><dd class="normal">正常</dd></div><div><dt>小包外观剔除状态</dt><dd class="normal">开启</dd></div></dl>
+        </section>
+      </div>
+      <section class="line-panel plan-panel"><ProductionSummary /><SiteProductionLinePlan :variant="lightTheme ? 'light' : 'dark'" :navigate="false" :selected="selectedId" :machines="machines" @select="selectMachine" @alarm="showMachineAlarms" /></section>
       <aside ref="valuesPanel" class="line-panel current-values-panel"><header><div><h2>{{ selected.id }} 当前值</h2><span :class="selected.health">{{ selected.healthLabel }}</span></div></header>
-        <div v-if="readings.length" class="current-values-grid" :class="{ 'multiple-columns': rightColumns > 1 }" :style="gridStyle(rightColumns)"><div v-for="row in readings" :key="row.key" class="current-value" :class="row.alarm ? 'alarm' : row.normal ? 'normal' : 'unknown'" :title="`${row.name} · ${row.label}${row.sample ? ' · ' + alarmTime(row.sample.collectedAt) : ''}`"><span class="value-name">{{ row.name }}</span><div><strong>{{ rowValue(row) }}</strong><small>{{ row.member.source === 'legacy' ? row.point.unit : '' }}</small><span class="value-state">{{ live ? row.label : '已暂停' }}</span></div></div></div>
+        <div v-if="readings.length" class="current-values-grid" :class="{ 'multiple-columns': rightColumns > 1 }" :style="gridStyle(rightColumns)"><div v-for="row in readings" :key="row.key" class="current-value" :class="row.alarm ? 'alarm' : row.normal ? 'normal' : 'unknown'" :title="`${row.name} · ${live ? row.label : '已暂停'}${row.sample ? ' · ' + alarmTime(row.sample.collectedAt) : ''}`"><span class="value-name">{{ row.name }}</span><div class="value-reading"><strong>{{ rowValue(row) }}</strong><small>{{ row.member.source === 'legacy' ? row.point.unit : '' }}</small></div></div></div>
         <div v-else class="point-empty">暂无配置测点</div>
       </aside>
     </div>

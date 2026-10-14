@@ -1,20 +1,17 @@
 import { isMeasurementPoint } from './equipmentCatalog.js'
 import { acousticPointIp } from './pointAddress.js'
+import { configuredParameter, pointConfiguration, presentPoint } from '../stores/pointConfiguration.js'
 
 // Physical monitoring locations, distinct from individual sensor measurements.
-export const monitoringLocations = [
-  { id: 've', name: 'VE 风机', machine: 'ZJ117', modules: ['VSE03', 'TEMP02'] },
-  { id: 'max', name: 'MAX 风机', machine: 'ZJ117', modules: ['VSE03', 'TEMP02'] },
-  { id: 'spider-pressure', name: '蜘蛛手负压', machine: 'ZJ117', modules: ['PRESS02'] },
-  { id: 'main-motor', name: '主电机', machine: 'ZB25', modules: ['VSE04', 'VSE05', 'TEMP03', 'SC01'] },
-  { id: 'cutter', name: '铝纸切刀', machine: 'ZB25', modules: ['VSE04'] },
-  { id: 'seal', name: '封签', machine: 'ZB25', modules: ['VSE05'] },
-  { id: 'paper-wheel', name: '齿轮箱', machine: 'ZB25', modules: [] },
-  { id: 'aux-motor', name: '辅机电机', machine: 'YB55', modules: ['VSE08', 'TEMP01', 'SC02'] },
-  { id: 'pressure', name: '负压', machine: 'ZB25 / YB55', modules: ['PRESS01', 'PRESS03'] },
-]
+export const monitoringLocations = pointConfiguration.locations
 
 export function monitoringLocationOf(member, point) {
+  const configured = configuredParameter(point, member.source, member.id)
+  if (configured) return configured.locationId
+  return suggestedMonitoringLocationOf(member, point)
+}
+
+export function suggestedMonitoringLocationOf(member, point) {
   if (member.source === 'monitor') {
     const ip = acousticPointIp(member.raw, point)
     // Collector assignments follow the latest installation IP table.
@@ -34,8 +31,8 @@ export function monitoringLocationOf(member, point) {
       if (['03', '04', '10', '11'].includes(suffix)) return 'max'
       return null
     case 'TEMP02':
-      if (['BEARING_TEMP_09', 'BEARING_TEMP_10'].includes(code)) return 've'
-      if (['BEARING_TEMP_07', 'BEARING_TEMP_08'].includes(code)) return 'max'
+      if (['BEARING_TEMP_07', 'BEARING_TEMP_08'].includes(code)) return 've'
+      if (['BEARING_TEMP_09', 'BEARING_TEMP_10'].includes(code)) return 'max'
       return null
     case 'PRESS02': return 'spider-pressure'
     case 'VSE04':
@@ -55,8 +52,10 @@ export function monitoringLocationOf(member, point) {
 }
 
 export function locationPoint(point) {
+  const configured = presentPoint(point)
+  if (configured.configurationState === 'configured') return configured
   // Distinguish the two pressure sources without changing their actual identities.
-  if (point.moduleId === 'PRESS01') return { ...point, name: 'ZB25 负压' }
-  if (point.moduleId === 'PRESS03') return { ...point, name: 'YB55 负压' }
-  return point
+  if (point.moduleId === 'PRESS01') return { ...configured, name: 'ZB25 负压' }
+  if (point.moduleId === 'PRESS03') return { ...configured, name: 'YB55 负压' }
+  return configured
 }

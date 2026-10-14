@@ -24,7 +24,12 @@
 .system-title > span:last-child { font-size:16px; }
 .system-indicator { width:13px; height:13px; }
 .line-workspace { grid-template-columns:minmax(195px,16%) minmax(0,1fr) minmax(290px,26%); gap:5px; }
-.grouped-point-list { min-height:0; display:grid; align-content:start; gap:5px; padding:8px; overflow:hidden; }
+.line-left-column { min-width:0; min-height:0; display:grid; grid-template-rows:minmax(0,1fr) auto; gap:5px; }
+.rejection-status-panel dl { display:grid; gap:12px; margin:0; padding:14px 11px; }
+.rejection-status-panel dl > div { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:5px 8px; }
+.rejection-status-panel dt { color:var(--line-soft); font-size:13px; line-height:1.5; }
+.rejection-status-panel dd { margin:0; font-size:17px; font-weight:550; }
+.grouped-point-list { min-height:0; display:grid; align-content:start; gap:5px; padding:8px; overflow:auto; }
 .grouped-point-list button { display:flex; align-items:center; gap:8px; min-height:60px; padding:10px 7px; border:0; border-bottom:1px solid var(--line-border); text-align:left; }
 .grouped-point-list .point-index { font-size:11px; }
 .group-name { min-width:0; font-size:18px; font-weight:500; overflow-wrap:anywhere; }
@@ -60,3 +65,11 @@
 .plan-panel > .site-production-plan { width:94%; justify-self:center; }
 .line-alarm-table tbody tr[style] td,.line-alarm-table tbody tr[style] td small { color:var(--row-alarm-color); }
 @media(max-height:800px) { .plan-panel { grid-template-rows:98px minmax(0,1fr); } }
+
+/* Keep configured current readings readable on one line, even for large catalogs. */
+.current-values-grid { grid-template-rows:repeat(var(--rows),minmax(44px,1fr)); overflow:auto; scrollbar-width:thin; }
+.current-value { flex-direction:row; align-items:center; justify-content:space-between; gap:10px; padding:6px 3px; }
+.current-value .value-name { flex:1; min-width:0; font-size:16px; line-height:1.3; }
+.current-value .value-reading { flex:none; margin-left:auto; align-items:baseline; gap:5px; }
+.current-value strong { font-size:var(--number-size,28px); font-weight:600; }
+.current-value small { font-size:12px; white-space:nowrap; }

@@ -62,7 +62,9 @@ test(`${page} defaults to the first machine and packs pressure and sound into on
       assert.deepEqual(Array.from(state.machineData.groups, machine => machine.id), ['ZJ117', 'ZB25', 'YB55'])
     }
     assert.ok(state.allRows.every(row => row.member.id === 'VSE03'))
-    assert.equal(state.allRows.length, 1)
+    assert.equal(state.allRows.length, 3)
+    assert.ok(state.allRows.some(row => row.point.metricType === 'AlarmStatus'))
+    assert.ok(state.allRows.every(row => row.point.configurationState === 'unconfigured'))
     assert.ok(calls.some(call => call.history === 'VSE03'))
     assert.equal(state.historyFailed, false)
     await state.selectMachine('ZB25')
@@ -76,9 +78,9 @@ test(`${page} defaults to the first machine and packs pressure and sound into on
     assert.deepEqual(Array.from(state.soundTargets[0].channelIds), ['ch1'])
     await state.selectMachine('YB55')
     assert.equal(state.activeMachineId, 'YB55')
-    assert.equal(state.allRows.length, 1)
+    assert.equal(state.allRows.length, 3)
     assert.equal(state.allRows[0].member.id, 'PRESS03')
-    assert.equal(state.sections.length, 1)
+    assert.equal(state.sections.length, 2)
     assert.equal(state.switchingAcoustic, false)
     if (page === 'MachineMonitorPage') {
       await state.selectMachine('YB95')

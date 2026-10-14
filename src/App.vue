@@ -6,21 +6,20 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useDashboardStore } from './stores/dashboard'
 import { auth } from './services/auth'
 import { useDigitalAlarmStore } from './stores/digitalAlarms.js'
-import DigitalAlarmDialog from './components/DigitalAlarmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const dashboard = useDashboardStore()
 const digitalAlarms = useDigitalAlarmStore()
-const diDialogReady = ref(false)
 const sidebarCollapsed = ref(localStorage.getItem('dashboard-sidebar') === 'collapsed')
 const homeControlsExpanded = ref(false)
+const compactHeader = computed(() => ['/', '/device', '/machine/overview'].includes(route.path))
 provide('homeControlsExpanded', homeControlsExpanded)
 watch(() => route.path, path => {
   if (path === '/') {
     sidebarCollapsed.value = true
-    homeControlsExpanded.value = false
   }
+  if (['/', '/device', '/machine/overview'].includes(path)) homeControlsExpanded.value = false
 }, { immediate: true })
 const isLightTheme = ref(localStorage.getItem('dashboard-theme') === 'light')
 provide('isLightTheme', isLightTheme)
@@ -68,7 +67,6 @@ const syncFullscreen = () => {
 }
 
 onMounted(() => {
-  diDialogReady.value = true
   syncFullscreen()
   document.documentElement.classList.toggle('light-theme', isLightTheme.value)
   document.addEventListener('fullscreenchange', syncFullscreen)
@@ -94,7 +92,6 @@ onBeforeUnmount(() => {
     <router-view v-if="isLoginPage" />
 
     <main v-else class="dashboard-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed, 'light-theme': isLightTheme }">
-    <DigitalAlarmDialog v-if="diDialogReady" />
     <aside class="side-nav">
       <div class="brand">
         <span class="brand-mark"><Fan :size="23" /></span>
@@ -119,13 +116,12 @@ onBeforeUnmount(() => {
       </button>
     </aside>
 
-    <section class="screen" :class="{ 'device-monitor-screen': route.name === 'device-detail' }">
-      <header v-show="route.path !== '/' || homeControlsExpanded" class="topbar">
+    <section class="screen" :class="{ 'device-monitor-screen': route.name === 'device-detail', 'parameter-settings-screen': route.name === 'parameter-settings' }">
+      <header v-show="!compactHeader || homeControlsExpanded" class="topbar">
         <div class="top-title">
           <span class="title-glow"></span>
           <strong>{{ pageTitle }}</strong>
         </div>
-        <div v-if="route.name === 'device-list'" id="monitor-location-tabs" style="flex:1; min-width:0; margin:0 18px;"></div>
         <div class="top-actions">
           <button class="top-icon-btn" type="button" :title="isLightTheme ? '切换当前主题色' : '切换亮色主题'" @click="toggleTheme">
             <component :is="isLightTheme ? Moon : Sun" :size="17" />
@@ -145,7 +141,7 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <section class="page-stage" :style="route.path === '/' ? { paddingTop: '0', ...(!homeControlsExpanded ? { height: '100vh' } : {}) } : undefined">
+      <section class="page-stage" :style="compactHeader ? { paddingTop: '0', ...(!homeControlsExpanded ? { height: '100vh' } : {}) } : undefined">
         <router-view />
       </section>
     </section>

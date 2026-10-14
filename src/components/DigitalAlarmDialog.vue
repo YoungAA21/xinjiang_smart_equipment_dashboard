@@ -1,9 +1,12 @@
 <script setup>
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElDialog, ElButton } from 'element-plus'
 import { useDigitalAlarmStore } from '../stores/digitalAlarms.js'
 import { alarmTime } from '../charts/alarms.js'
+import { presentMonitoringPoint } from '../charts/equipmentCatalog.js'
 const alarms = useDigitalAlarmStore()
+const notifications = computed(() => alarms.notifications.map(presentMonitoringPoint))
 const router = useRouter()
 function openAlarm(row) {
   alarms.dismiss()
@@ -12,10 +15,10 @@ function openAlarm(row) {
 </script>
 <template>
   <ElDialog :model-value="alarms.notifications.length > 0" title="DI 信号告警" class="di-alarm-dialog" width="min(680px, 94vw)" append-to=".dashboard-shell" :close-on-click-modal="false" @close="alarms.dismiss()">
-    <article v-for="row in alarms.notifications" :key="row.alarmId" class="di-incident">
+    <article v-for="row in notifications" :key="row.alarmId" class="di-incident">
       <strong>{{ row.name }}</strong>
       <p>{{ row.moduleId }} · {{ row.channelId }} · {{ row.host }}</p>
-      <p>触发时间：{{ alarmTime(row.startedAt) }} · 信号值：1 · {{ row.isActive ? '当前告警' : '已恢复' }}</p>
+      <p>触发时间：{{ alarmTime(row.startedAt) }} · 信号值：{{ row.alarmValue }} {{ row.unit }} · {{ row.isActive ? '当前告警' : '已恢复' }}</p>
       <ElButton type="primary" @click="openAlarm(row)">查看该点位告警</ElButton>
     </article>
     <p v-if="alarms.cacheError" role="alert">{{ alarms.cacheError }}</p>

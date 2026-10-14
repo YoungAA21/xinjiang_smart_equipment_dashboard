@@ -10,6 +10,7 @@ import DeviceMonitorPage from '../views/DeviceMonitorPage.vue'
 import AlarmListPage from '../views/AlarmListPage.vue'
 import GatewayCommPage from '../views/GatewayCommPage.vue'
 import RecordingManagementPage from '../views/RecordingManagementPage.vue'
+import PointConfigurationPage from '../views/PointConfigurationPage.vue'
 
 export const routes = [
   { path: '/login', name: 'login', component: LoginPage, meta: { title: '登录', public: true } },
@@ -21,6 +22,7 @@ export const routes = [
   { path: '/device/detail', name: 'device-detail', component: DeviceDetailPage, meta: { title: '测点详情' } },
   { path: '/gateway/communication', name: 'gateway-communication', component: GatewayCommPage, meta: { title: '网关通讯' } },
   { path: '/recordings', name: 'recordings', component: RecordingManagementPage, meta: { title: '录音管理' } },
+  { path: '/settings/parameters', name: 'parameter-settings', component: PointConfigurationPage, meta: { title: '参数配置' } },
   { path: '/analysis/trend', name: 'trend', redirect: (to) => ({ path: '/device/detail', query: { ...to.query, tab: 'trend', source: 'legacy' } }) },
   { path: '/analysis/spectrum', name: 'spectrum', redirect: (to) => ({ path: '/device/detail', query: { ...to.query, tab: 'spectrum', source: 'monitor' } }) },
   { path: '/alarm/list', name: 'alarm-list', component: AlarmListPage, meta: { title: '告警管理' } },

@@ -6,6 +6,7 @@ import { useDataScreenStore, collectionRows } from '../stores/dataScreen.js'
 import { pointKey, telemetryLine } from '../charts/telemetry.js'
 import { dailyLimitTrendOption, riskLabel, valueText, percent } from '../charts/analysis.js'
 import { alarmTime, legacyAlarmStatus } from '../charts/alarms.js'
+import { configuredMonitoringPoints, presentMonitoringPoint } from '../charts/equipmentCatalog.js'
 import '../styles/data-screen.css'
 
 const screen = useDataScreenStore()
@@ -24,7 +25,7 @@ let slowTimer
 let clockTimer
 const data = computed(() => screen.data)
 const modules = computed(() => data.value.modules || [])
-const points = computed(() => modules.value.flatMap((module) => data.value[`points:${module.moduleId}`] || []))
+const points = computed(() => modules.value.flatMap((module) => configuredMonitoringPoints(data.value[`points:${module.moduleId}`] || [], data.value.latest || [], module.moduleId)))
 const selected = computed(() => points.value.find((point) => String(point.pointId) === pointId.value))
 const health = computed(() => data.value.health || {})
 const states = computed(() => collectionRows(health.value.runtimeModules?.statuses || [], modules.value))
@@ -43,7 +44,7 @@ const liveOption = computed(() => {
   return option
 })
 const trendOption = computed(() => dailyLimitTrendOption(data.value.days || [], selected.value || {}))
-const events = computed(() => [...(data.value[alarmTab.value] || [])].sort((a, b) => Date.parse(b.startedAt || b.createdAt) - Date.parse(a.startedAt || a.createdAt)))
+const events = computed(() => [...(data.value[alarmTab.value] || []).map(presentMonitoringPoint)].sort((a, b) => Date.parse(b.startedAt || b.createdAt) - Date.parse(a.startedAt || a.createdAt)))
 const history = computed(() => [...(data.value.history || [])].sort((a, b) => Date.parse(b.collectedAt) - Date.parse(a.collectedAt)))
 const online = computed(() => states.value.filter((module) => module.isOnline === true).length)
 const metrics = computed(() => [

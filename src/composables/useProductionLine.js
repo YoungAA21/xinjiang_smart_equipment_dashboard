@@ -5,7 +5,8 @@ import { telemetryApi } from '../services/telemetry.js'
 import { alarmApi } from '../services/alarms.js'
 import { alarmEvents } from '../stores/alarms.js'
 import { buildLineMachines } from '../charts/productionLine.js'
-import { isMeasurementPoint } from '../charts/equipmentCatalog.js'
+import { presentAcousticChannels } from '../charts/machineGroups.js'
+import { configuredMonitoringPoints, discoveredMonitoringModules } from '../charts/equipmentCatalog.js'
 import { machineReadings, machineHealth } from '../charts/productionLineStatus.js'
 
 export function useProductionLine() {
@@ -23,8 +24,8 @@ export function useProductionLine() {
   const options = { signal: controller.signal }
   let clockTimer, sampleTimer, metadataTimer
   const devices = computed(() => [
-    ...(telemetry.modules || []).map(module => ({ id: module.moduleId, source: 'legacy', name: module.moduleName || module.moduleId, online: module.runtimeStatus?.isOnline, points: points.value[module.moduleId] || [], raw: module })),
-    ...(acoustic.devices || []).map(device => ({ id: device.deviceId, source: 'monitor', name: device.deviceName || device.deviceId, online: device.online, points: device.channels || [], raw: device })),
+    ...discoveredMonitoringModules(telemetry.modules || [], telemetry.latest || []).map(module => ({ id: module.moduleId, source: 'legacy', name: module.moduleName || module.moduleId, online: module.runtimeStatus?.isOnline, points: configuredMonitoringPoints(points.value[module.moduleId] || [], telemetry.latest, module.moduleId), raw: module })),
+    ...(acoustic.devices || []).map(device => ({ id: device.deviceId, source: 'monitor', name: device.deviceName || device.deviceId, online: device.online, points: presentAcousticChannels(device), raw: device })),
   ])
   const alarmsReady = computed(() => events.value !== null && !alarmError.value && events.value.length < 1000)
   const machines = computed(() => buildLineMachines(devices.value, events.value || [], { legacy: Boolean(telemetry.errors.modules), monitor: Boolean(acoustic.error) }).map(machine => {
@@ -56,7 +57,7 @@ export function useProductionLine() {
             const body = await telemetryApi.getModulePoints(module.moduleId, options)
             if (controller.signal.aborted) return
             if (!Array.isArray(body?.points) || body.moduleId !== module.moduleId) throw new Error('点位配置格式不正确')
-            points.value[module.moduleId] = body.points.filter(isMeasurementPoint)
+            points.value[module.moduleId] = body.points.map(point => ({ ...point, moduleId: module.moduleId }))
             delete pointErrors.value[module.moduleId]
           } catch (error) { if (!controller.signal.aborted) pointErrors.value[module.moduleId] = error.message || '点位配置获取失败' }
         }))
