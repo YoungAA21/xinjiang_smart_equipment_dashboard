@@ -1,9 +1,22 @@
-const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null
+const number = (value) => value == null || value === '' ? null : Number.isFinite(Number(value)) ? Number(value) : null
 
 export const riskLabel = (value) => ({ Normal: '正常', Watch: '关注', Warning: '预警', NoData: '无数据' }[value] || value || '未知')
 export const riskTone = (value) => ({ Normal: 'normal', Watch: 'watch', Warning: 'warning', NoData: 'empty' }[value] || 'empty')
 export const percent = (value) => number(value) === null ? '—' : `${(Number(value) * 100).toFixed(1)}%`
 export const valueText = (value, unit = '') => number(value) === null ? '—' : `${Number(value).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}${unit ? ` ${unit}` : ''}`
+
+export function trendAxisRange(minimum, maximum) {
+  const bound = (value, label) => {
+    if (value === '' || value == null) return undefined
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) throw new Error(`纵轴${label}必须是有效数字`)
+    return parsed
+  }
+  const min = bound(minimum, '最小值')
+  const max = bound(maximum, '最大值')
+  if (min !== undefined && max !== undefined && min >= max) throw new Error('纵轴最小值必须小于最大值')
+  return { min, max }
+}
 
 export function dailyLimitTrendOption(days = [], point = {}) {
   const dates = days.map((item) => String(item.date || '').slice(0, 10))
@@ -20,7 +33,7 @@ export function dailyLimitTrendOption(days = [], point = {}) {
     ...extra,
   })
   return {
-    animationDuration: 420,
+    animation: false,
     color: ['#50d8cb', '#ffad66', '#8ee6a8'],
     tooltip: { trigger: 'axis', backgroundColor: '#111312', borderColor: '#46907C', textStyle: { color: '#FFFFFF' } },
     legend: { top: 2, right: 8, textStyle: { color: '#C3E2D9', fontSize: 14 }, itemWidth: 14, itemHeight: 7 },

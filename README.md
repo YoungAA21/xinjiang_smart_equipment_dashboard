@@ -84,7 +84,7 @@ npm run build
 
 告警管理包含“采集报警”“趋势报警”“声纹告警”三个具体列表，不再提供合并总览。采集硬限值报警、趋势报警和声纹告警分别查询、分别分页，避免不同业务口径混合统计。
 
-采集报警通过独立 `src/services/alarms.js` 调用 `GET /api/analysis/alarms`，支持可选 `pointId`、`isActive`、`start`、`end` 和 `limit`（默认 200，范围 1–1000），不发送旧的模块/通道组合参数。模块与点位选择复用已迁移的只读元数据服务。默认不限定时段或状态，支持表格分页、阈值/报警值/恢复值详情；达到上限时提示查询可能截断。`GET /api/analysis/status` 展示独立的 Worker 状态，不用内存分析状态替代报警事件。进入页面自动查询，可手动刷新，不新增后台轮询或写操作。
+采集报警通过独立 `src/services/alarms.js` 调用 `GET /api/analysis/alarms`，支持可选 `pointId`、`isActive`、`start`、`end` 和 `limit`（默认 200，范围 1–1000），不发送旧的模块/通道组合参数。模块与点位选择复用已迁移的只读元数据服务。默认不限定时段或状态，支持表格分页，点击「查看」在适配深色/亮色主题的弹窗中展示阈值、报警值及恢复值等详情；达到上限时提示查询可能截断。告警管理不展示或请求分析 Worker 状态。进入页面自动查询，可手动刷新，不新增后台轮询或写操作。
 
 “趋势报警”通过 `GET /api/analysis/trend-alarms` 查询趋势报警事件。页面支持模块、点位、时间、活动状态和返回条数筛选，列表带分页；趋势变化折线图随查询结果同步更新，事件详情点击表格行后以浮层查看。
 
@@ -213,3 +213,7 @@ latest 返回业务 404 时请检查采集服务地址：`VITE_API_BASE_URL` 留
 图纸按 `1.pdf` 第一页的原始矢量路径顺时针旋转为横向，保留实际设备轮廓、偏置滚筒、折弯及回送线。设备对应经确认：右端 ZJ117、主电柜右侧整段 YB25；左下横向设备左部 YB95、右端双辊区域 YB65、下方竖向设备 YB55；细长设备为主电柜（以用户补充标注图为准）。原有监测映射、四台设备跳转、首页选择及报警联动继续使用。
 
 运行 `node artifacts/production-line-real-layout/draw-pdf-layout.mjs` 同步生成制图目录和 `public/production-line/` 下三种 SVG；旧命令 `draw-real-layout.mjs` 也可使用。脚本只依赖 Node 内置模块，按脚本位置解析路径，可在任意工作目录运行，不需要原 PDF 或本机绝对路径。`pdf-layout-paths.json` 保存提取后的矢量源数据，`src/charts/productionLineLayout.js` 统一管理设备选区、标题和状态位置。可选 `--png` 使用已安装的 `sharp` 生成 PNG 预览；也可通过 `PRODUCTION_LINE_SHARP` 指定其模块 URL。
+
+测点详情的趋势分析在同一测点刷新期间保留已有趋势和洞察，请求失败时显示错误并保留已成功的数据。父级刷新同一测点元数据不会重新发起分析，切换点位会清空旧结果。
+
+趋势分析的上下限设置从当前模块点位配置读取 `minimumValue` / `maximumValue`，通过 `PATCH /_telemetry-api/api/configuration/points/{pointId}/limits` 保存到 5158 采集服务。清空输入会传 `null` 取消该方向阈值；保存后重新查询趋势。部署时同步更新上级目录 `nginx.conf` 的代理路径。纵轴范围使用图表自动计算。

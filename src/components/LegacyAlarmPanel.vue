@@ -1,6 +1,7 @@
 <script setup>
 import { presentMonitoringPoint } from '../charts/equipmentCatalog.js'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { ElDialog } from 'element-plus'
 import { Eye, RefreshCcw, RotateCcw, Search } from 'lucide-vue-next'
 import { useAlarmStore } from '../stores/alarms.js'
 import { telemetryApi } from '../services/telemetry.js'
@@ -10,7 +11,14 @@ import { filterDigitalAlarms } from '../charts/digitalAlarms.js'
 
 const props = defineProps({ initialModuleId: { type: String, default: '' }, initialPointCode: { type: String, default: '' }, rowColor: { type: Function, default: () => 'var(--alarm-color-yellow, #f3c45c)' } })
 const alarms = useAlarmStore()
-const selectedAlarm = computed(() => alarms.selected ? presentMonitoringPoint(alarms.selected) : null)
+const detailOpen = ref(false)
+const detailRecord = ref(null)
+const selectedAlarm = computed(() => detailRecord.value ? presentMonitoringPoint(detailRecord.value) : null)
+function showDetail(row) {
+  alarms.selected = row
+  detailRecord.value = row
+  detailOpen.value = true
+}
 const digitalAlarms = useDigitalAlarmStore()
 const filters = reactive({ moduleId: props.initialModuleId, pointId: '', isActive: 'all', start: '', end: '', limit: 200 })
 const modules = ref([])
@@ -87,7 +95,7 @@ watch(() => [props.initialModuleId, props.initialPointCode], async () => {
   await loadModules()
   await query()
 })
-onMounted(async () => { await loadModules(); await query(); alarms.loadStatus({ signal: controller.signal }) })
+onMounted(async () => { await loadModules(); await query(); })
 onBeforeUnmount(() => { controller.abort(); queryController?.abort(); pointController?.abort(); pointVersion++; alarms.clear() })
 </script>
 
@@ -112,17 +120,28 @@ onBeforeUnmount(() => { controller.abort(); queryController?.abort(); pointContr
     <div v-if="alarms.loading" role="status" class="alarm-muted">正在读取报警事件…</div>
     <div class="alarm-table-scroll">
       <table class="alarm-data-table"><thead><tr><th>开始时间</th><th>模块 / 点位</th><th>状态</th><th>报警值</th><th>原因</th><th>详情</th></tr></thead><tbody>
-        <tr v-for="(row, index) in rows" :key="String(row.alarmId ?? index)" :class="{ 'selected-alarm': alarms.selected === row }" :style="{ '--row-alarm-color': props.rowColor(row) }" data-colored-alarm><td>{{ alarmTime(row.startedAt) }}</td><td>{{ row.moduleId }}<small>{{ row.name || row.pointCode }}</small><small>{{ row.channelId }} / {{ row.pointCode }}</small><small v-if="row.source === 'digital-local'">{{ row.name }} · 本地 DI 告警</small></td><td>{{ legacyAlarmStatus(row.status) }}</td><td>{{ alarmValue(row.alarmValue, row.unit) }}</td><td class="alarm-reason">{{ row.reason || '—' }}</td><td><el-button text :icon="Eye" @click="alarms.selected = row">查看</el-button></td></tr>
+        <tr v-for="(row, index) in rows" :key="String(row.alarmId ?? index)" :class="{ 'selected-alarm': alarms.selected === row }" :style="{ '--row-alarm-color': props.rowColor(row) }" data-colored-alarm><td>{{ alarmTime(row.startedAt) }}</td><td>{{ row.moduleId }}<small>{{ row.name || row.pointCode }}</small><small>{{ row.channelId }} / {{ row.pointCode }}</small><small v-if="row.source === 'digital-local'">{{ row.name }} · 本地 DI 告警</small></td><td>{{ legacyAlarmStatus(row.status) }}</td><td>{{ alarmValue(row.alarmValue, row.unit) }}</td><td class="alarm-reason">{{ row.reason || '—' }}</td><td><el-button text :icon="Eye" @click="showDetail(row)">查看</el-button></td></tr>
         <tr v-if="!rows.length"><td colspan="6" class="alarm-empty">{{ alarms.loading ? '正在加载…' : alarms.rows === null ? '报警事件暂不可用，请重试查询' : '本次查询没有匹配的报警事件' }}</td></tr>
       </tbody></table>
     </div>
     <footer class="alarm-pagination"><span>已获取 {{ mergedRows.length }} 条 · 每页 {{ pageSize }} 条</span><el-button :disabled="page <= 1" @click="page--">上一页</el-button><span>{{ page }} / {{ pageCount }}</span><el-button :disabled="page >= pageCount" @click="page++">下一页</el-button></footer>
-    <section v-if="alarms.selected" class="alarm-detail-card">
-      <h3>报警详情 · {{ selectedAlarm.alarmId }}</h3>
-      <dl><div><dt>状态（原始值）</dt><dd>{{ selectedAlarm.status ?? '—' }}</dd></div><div><dt>报警值 / 恢复值</dt><dd>{{ alarmValue(selectedAlarm.alarmValue, selectedAlarm.unit) }} / {{ alarmValue(selectedAlarm.recoveryValue, selectedAlarm.unit) }}</dd></div><div><dt>阈值下限 / 上限</dt><dd>{{ alarmValue(selectedAlarm.thresholdMin, selectedAlarm.unit) }} / {{ alarmValue(selectedAlarm.thresholdMax, selectedAlarm.unit) }}</dd></div><div><dt>恢复时间</dt><dd>{{ alarmTime(selectedAlarm.endedAt) }}</dd></div><div><dt>持续秒数 / 质量</dt><dd>{{ selectedAlarm.durationSeconds ?? '—' }} / {{ selectedAlarm.quality ?? '—' }}</dd></div><div><dt>指标类型</dt><dd>{{ selectedAlarm.metricType ?? '—' }}</dd></div><div><dt>创建 / 更新时间</dt><dd>{{ alarmTime(selectedAlarm.createdAt) }} / {{ alarmTime(selectedAlarm.updatedAt) }}</dd></div></dl>
-      <p>{{ selectedAlarm.reason || '—' }}</p><p class="alarm-muted">当前接口仅提供查询能力，不提供确认、消警或处理操作。</p>
-    </section>
-    <details class="alarm-worker"><summary>分析 Worker 状态（独立于报警事件查询）</summary><el-button :icon="RefreshCcw" :loading="alarms.statusLoading" @click="alarms.loadStatus({ signal: controller.signal })">刷新分析状态</el-button><p v-if="alarms.statusError" class="alarm-error">{{ alarms.statusError }}</p><template v-if="alarms.status"><p>更新时间 {{ alarmTime(alarms.status.generatedAt) }} · 队列 {{ alarms.status.analysisPending ?? '—' }} · 累计分析 {{ alarms.status.runtimeStatus.totalAnalyzedCount ?? '—' }} · 累计报警 {{ alarms.status.runtimeStatus.totalAlarmCount ?? '—' }} · 累计恢复 {{ alarms.status.runtimeStatus.totalRecoveryCount ?? '—' }}</p><p v-for="item in alarms.status.runtimeStatus.activeAlarms || []" :key="[item.moduleId,item.channelId,item.pointCode].join('/')">{{ item.moduleId }} / {{ item.pointCode }} · {{ alarmValue(item.value, item.unit) }} · {{ item.reason }}</p></template></details>
+    <ElDialog v-model="detailOpen" title="报警详情" width="min(840px, 94vw)" append-to=".dashboard-shell" class="alarm-detail-dialog" :close-on-click-modal="false" @closed="detailRecord = null">
+      <dl v-if="selectedAlarm" class="alarm-detail-fields">
+        <div><dt>报警 ID</dt><dd>{{ selectedAlarm.alarmId ?? '—' }}</dd></div>
+        <div><dt>监测点位</dt><dd>{{ selectedAlarm.name || selectedAlarm.pointCode || '—' }}</dd></div>
+        <div><dt>模块 / 通道 / 点位编码</dt><dd>{{ selectedAlarm.moduleId || '—' }} / {{ selectedAlarm.channelId || '—' }} / {{ selectedAlarm.pointCode || '—' }}</dd></div>
+        <div><dt>开始时间</dt><dd>{{ alarmTime(selectedAlarm.startedAt) }}</dd></div>
+        <div><dt>状态（原始值）</dt><dd>{{ selectedAlarm.status ?? '—' }}</dd></div>
+        <div><dt>报警值 / 恢复值</dt><dd>{{ alarmValue(selectedAlarm.alarmValue, selectedAlarm.unit) }} / {{ alarmValue(selectedAlarm.recoveryValue, selectedAlarm.unit) }}</dd></div>
+        <div><dt>阈值下限 / 上限</dt><dd>{{ alarmValue(selectedAlarm.thresholdMin, selectedAlarm.unit) }} / {{ alarmValue(selectedAlarm.thresholdMax, selectedAlarm.unit) }}</dd></div>
+        <div><dt>恢复时间</dt><dd>{{ alarmTime(selectedAlarm.endedAt) }}</dd></div>
+        <div><dt>持续秒数 / 质量</dt><dd>{{ selectedAlarm.durationSeconds ?? '—' }} / {{ selectedAlarm.quality ?? '—' }}</dd></div>
+        <div><dt>指标类型</dt><dd>{{ selectedAlarm.metricType ?? '—' }}</dd></div>
+        <div><dt>创建 / 更新时间</dt><dd>{{ alarmTime(selectedAlarm.createdAt) }} / {{ alarmTime(selectedAlarm.updatedAt) }}</dd></div>
+        <div class="alarm-detail-wide"><dt>原因</dt><dd>{{ selectedAlarm.reason || '—' }}</dd></div>
+      </dl>
+      <template #footer><el-button @click="detailOpen = false">关闭</el-button></template>
+    </ElDialog>
   </section>
 </template>
 

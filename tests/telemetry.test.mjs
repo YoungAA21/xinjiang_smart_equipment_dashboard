@@ -115,6 +115,27 @@ test('point changes ignore late responses from previous module', async () => {
   assert.equal(store.pointModuleId,'B');assert.equal(store.points[0].moduleId,'B')
 })
 
+test('metadata refresh retains same-module points while loading and clears them for a different module', async () => {
+  setActivePinia(createPinia())
+  const store = useTelemetryStore()
+  globalThis.fetch = async () => reply({ moduleId: 'A', points: [{ ...point, moduleId: 'A' }] })
+  await store.loadPoints('A')
+  let release
+  globalThis.fetch = async () => { await new Promise(resolve => { release = resolve }); return reply({ moduleId: 'A', points: [{ ...point, moduleId: 'A', name: '新名称' }] }) }
+  const refreshing = store.loadPoints('A')
+  assert.equal(store.loadingPoints, true)
+  assert.equal(store.points.length, 1)
+  release()
+  await refreshing
+  assert.equal(store.points[0].name, '新名称')
+  globalThis.fetch = async () => { await new Promise(resolve => { release = resolve }); return reply({ moduleId: 'B', points: [] }) }
+  const switching = store.loadPoints('B')
+  assert.equal(store.points.length, 0)
+  release()
+  await switching
+  assert.equal(store.pointModuleId, 'B')
+})
+
 test('failed latest refresh keeps the real previous samples and marks error', async () => {
   setActivePinia(createPinia());const store=useTelemetryStore()
   globalThis.fetch=async()=>reply([sample(1)])

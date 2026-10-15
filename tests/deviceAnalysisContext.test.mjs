@@ -10,7 +10,7 @@ import * as addresses from '../src/charts/pointAddress.js'
 import * as analysisCharts from '../src/charts/analysis.js'
 
 const flush = async () => { for (let i = 0; i < 12; i++) await vue.nextTick() }
-const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done }); return { promise, resolve } }
+const deferred = () => { let resolve, reject; const promise = new Promise((done, fail) => { resolve = done; reject = fail }); return { promise, resolve, reject } }
 
 async function mountView(name, props, dependencies) {
   const source = await readFile(new URL(`../src/views/${name}.vue`, import.meta.url), 'utf8')
@@ -44,6 +44,67 @@ async function mountView(name, props, dependencies) {
 }
 
 const icons = Object.fromEntries(['Activity', 'CalendarRange', 'Gauge', 'RefreshCcw', 'TrendingUp', 'AudioLines', 'CircleStop', 'Headphones'].map((key) => [key, {}]))
+
+test('trend keeps its data and axis range during refresh and ignores same-point metadata replacements', async (t) => {
+  const calls = []
+  const request = params => {
+    const pending = deferred()
+    calls.push({ params, pending })
+    return pending.promise
+  }
+  const { app, props, state } = await mountView('TrendPage', { embedded: true, moduleId: 'TEMP02', point: { pointId: 22, name: '温度', unit: '℃' } }, {
+    'lucide-vue-next': icons,
+    '../services/telemetry.js': { telemetryApi: {} },
+    '../services/analysis.js': { analysisApi: { getDailyLimitTrends: request, getTrendInsights: request } },
+    '../charts/analysis.js': analysisCharts,
+    '../charts/equipmentCatalog.js': catalog,
+  })
+  t.after(() => app.unmount())
+  calls[0].pending.resolve({ days: [{ date: '2026-10-10', averageValue: 15, sampleCount: 10 }] })
+  calls[1].pending.resolve({ insight: { recentAverageValue: 15 } })
+  await flush()
+  state.axisMin = -10
+  state.axisMax = 100
+  await flush()
+  props.point = { pointId: 22, name: '更新后的温度名称', unit: '℃' }
+  await flush()
+  assert.equal(calls.length, 2)
+  assert.equal(state.days.length, 1)
+  assert.equal(state.selectedPoint.name, '更新后的温度名称')
+  const refresh = state.loadAnalysis()
+  assert.equal(state.analysisLoading, true)
+  assert.equal(state.days[0].sampleCount, 10)
+  assert.equal(state.insight.recentAverageValue, 15)
+  calls[2].pending.resolve({ days: [{ date: '2026-10-11', averageValue: 16, sampleCount: 20 }] })
+  calls[3].pending.resolve({ insight: { recentAverageValue: 16 } })
+  await refresh
+  assert.equal(state.days[0].sampleCount, 20)
+  assert.equal(state.chartOption.yAxis.min, -10)
+  assert.equal(state.chartOption.yAxis.max, 100)
+  const failedRefresh = state.loadAnalysis()
+  calls[4].pending.reject(new Error('连接失败'))
+  calls[5].pending.reject(new Error('连接失败'))
+  await failedRefresh
+  assert.equal(state.days[0].sampleCount, 20)
+  assert.equal(state.insight.recentAverageValue, 16)
+  assert.match(state.analysisError, /连接失败/)
+  state.axisMin = 110
+  await flush()
+  assert.match(state.axisError, /小于/)
+  assert.equal(state.chartOption.yAxis.min, -10)
+  props.point = { pointId: 23, name: '另一点位', unit: 'MPa' }
+  await flush()
+  assert.equal(state.days.length, 0)
+  assert.equal(state.insight, null)
+  assert.equal(state.axisMin, null)
+  assert.equal(state.axisMax, null)
+  assert.equal(state.chartOption.yAxis.min, undefined)
+  assert.equal(state.chartOption.yAxis.max, undefined)
+  calls[6].pending.resolve({ days: [] })
+  calls[7].pending.resolve({ insight: null })
+  await flush()
+  assert.equal(state.analysisLoading, false)
+})
 
 test('embedded trend queries the parent point and ignores a late response after point selection changes', async (t) => {
   const calls = []

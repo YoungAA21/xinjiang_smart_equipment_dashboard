@@ -4,6 +4,7 @@ import * as echarts from 'echarts'
 
 const props = defineProps({
   preserveZoom: Boolean,
+  mergeUpdates: Boolean,
   option: {
     type: Object,
     required: true,
@@ -59,7 +60,7 @@ const render = () => {
       ? { ...zoom, start: previous[index].start, end: previous[index].end }
       : zoom)
   }
-  chart.setOption(option, true)
+  chart.setOption(option, !props.mergeUpdates)
 }
 
 watch(() => props.option, render, { deep: true })

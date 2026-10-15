@@ -148,7 +148,7 @@ async function loadPoints(preferredPointId = Number(route.query.pointId) || null
   pointController?.abort()
   historyController?.abort()
   telemetry.clearHistory()
-  selectedPointId.value = null
+  if (!isLegacy.value || telemetry.pointModuleId !== selected.value?.id) selectedPointId.value = null
   if (!isLegacy.value) return
   pointController = new AbortController()
   const controller = pointController
@@ -283,7 +283,7 @@ onBeforeUnmount(() => {
             <template v-else-if="isLegacy">
               <div v-if="selected.raw.runtimeStatus?.offlineReason" class="monitor-error">{{ selected.raw.runtimeStatus.offlineReason }}</div>
               <div v-if="telemetry.errors.points" class="monitor-error" role="alert">点位获取失败：{{ telemetry.errors.points }} <button @click="loadPoints">重试点位</button></div>
-              <p v-if="telemetry.loadingPoints" class="empty-copy">正在获取监测点位…</p>
+              <p v-if="telemetry.loadingPoints && !points.length" class="empty-copy">正在获取监测点位…</p>
               <p v-else-if="!points.length" class="empty-copy">该设备暂无可查询点位</p>
               <template v-else>
                 <template v-if="chartMode === 'live'">

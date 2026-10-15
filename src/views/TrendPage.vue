@@ -30,6 +30,64 @@ const pageController = new AbortController()
 let pointController
 let analysisController
 let analysisVersion = 0
+let analysisPointKey = ''
+const limitMin = ref(null)
+const limitMax = ref(null)
+const limitsLoading = ref(false)
+const limitsReady = ref(false)
+const limitsSaving = ref(false)
+const limitsError = ref('')
+const limitsMessage = ref('')
+let limitsVersion = 0
+
+async function loadLimits() {
+  const version = ++limitsVersion
+  const pointId = selectedPoint.value?.pointId
+  const moduleId = selectedModuleId.value
+  limitMin.value = null
+  limitMax.value = null
+  limitsReady.value = false
+  limitsError.value = ''
+  limitsMessage.value = ''
+  limitsLoading.value = false
+  if (!pointId || !moduleId) return
+  limitsLoading.value = true
+  try {
+    const result = await telemetryApi.getModulePoints(moduleId, { signal: pageController.signal })
+    if (version !== limitsVersion || pageController.signal.aborted) return
+    if (!Array.isArray(result?.points)) throw new Error('点位接口返回格式不正确')
+    const point = result.points.find(item => Number(item.pointId) === Number(pointId))
+    if (!point) throw new Error('未找到当前测点的上下限配置')
+    limitMin.value = point.minimumValue ?? null
+    limitMax.value = point.maximumValue ?? null
+    limitsReady.value = true
+  } catch (error) {
+    if (version === limitsVersion && !pageController.signal.aborted) limitsError.value = error.message || '上下限读取失败'
+  } finally {
+    if (version === limitsVersion) limitsLoading.value = false
+  }
+}
+
+async function saveLimits() {
+  if (!limitsReady.value || limitsSaving.value) return
+  const version = limitsVersion
+  const pointId = selectedPoint.value?.pointId
+  limitsSaving.value = true
+  limitsError.value = ''
+  limitsMessage.value = ''
+  try {
+    const result = await telemetryApi.updatePointLimits(pointId, { minimumValue: limitMin.value, maximumValue: limitMax.value }, { signal: pageController.signal })
+    if (version !== limitsVersion || pageController.signal.aborted) return
+    limitMin.value = result.minimumValue ?? null
+    limitMax.value = result.maximumValue ?? null
+    limitsMessage.value = result.restartRequired ? '已保存，需重启采集服务生效' : result.realtimeEffective ? '已保存并实时生效' : '已保存'
+    await loadAnalysis()
+  } catch (error) {
+    if (version === limitsVersion && !pageController.signal.aborted) limitsError.value = error.message || '上下限保存失败'
+  } finally {
+    limitsSaving.value = false
+  }
+}
 
 const localTime = (value) => {
   const date = new Date(value)
@@ -42,7 +100,7 @@ const resetRange = () => {
 }
 resetRange()
 
-const selectedPoint = computed(() => points.value.find((point) => Number(point.pointId) === Number(selectedPointId.value)) || null)
+const selectedPoint = computed(() => props.embedded ? props.point : points.value.find((point) => Number(point.pointId) === Number(selectedPointId.value)) || null)
 const chartOption = computed(() => dailyLimitTrendOption(days.value, selectedPoint.value || {}))
 const exceededDays = computed(() => days.value.filter((day) => Number(day.belowLimitBucketCount || 0) + Number(day.aboveLimitBucketCount || 0) > 0).length)
 const exceededMinutes = computed(() => days.value.reduce((sum, day) => sum + Number(day.belowLimitMinutes || 0) + Number(day.aboveLimitMinutes || 0), 0))
@@ -55,7 +113,7 @@ async function loadModules() {
     const result = await telemetryApi.getModules({ signal: pageController.signal })
     if (!Array.isArray(result?.modules)) throw new Error('模块接口返回格式不正确')
     modules.value = result.modules.filter((module) => String(module.protocol || '').toLowerCase().includes('modbus'))
-    selectedModuleId.value = modules.value[0]?.moduleId || ''
+    selectedModuleId.value = modules.value.find(module => module.moduleId === selectedModuleId.value)?.moduleId || modules.value[0]?.moduleId || ''
     if (selectedModuleId.value) await loadPoints()
   } catch (error) {
     if (!pageController.signal.aborted) metadataError.value = error.message || '模块加载失败'
@@ -67,24 +125,29 @@ async function loadModules() {
 async function loadPoints() {
   pointController?.abort()
   analysisController?.abort()
-  points.value = []
-  selectedPointId.value = null
-  days.value = []
-  insight.value = null
+  if (rawPoints.value[0]?.moduleId !== selectedModuleId.value) {
+    rawPoints.value = []
+    selectedPointId.value = null
+    days.value = []
+    insight.value = null
+  }
   if (!selectedModuleId.value) return
   pointController = new AbortController()
+  const controller = pointController
+  const moduleId = selectedModuleId.value
   metadataLoading.value = true
   metadataError.value = ''
   try {
-    const result = await telemetryApi.getModulePoints(selectedModuleId.value, { signal: AbortSignal.any([pageController.signal, pointController.signal]) })
+    const result = await telemetryApi.getModulePoints(moduleId, { signal: AbortSignal.any([pageController.signal, controller.signal]) })
+    if (pageController.signal.aborted || controller.signal.aborted || selectedModuleId.value !== moduleId) return
     if (!Array.isArray(result?.points)) throw new Error('点位接口返回格式不正确')
-    rawPoints.value = result.points.map(point => ({ ...point, moduleId: selectedModuleId.value }))
-    selectedPointId.value = points.value[0]?.pointId ?? null
+    rawPoints.value = result.points.map(point => ({ ...point, moduleId }))
+    selectedPointId.value = points.value.find(point => Number(point.pointId) === Number(selectedPointId.value))?.pointId ?? points.value[0]?.pointId ?? null
     if (selectedPointId.value) await loadAnalysis()
   } catch (error) {
-    if (!pageController.signal.aborted && error.name !== 'AbortError') metadataError.value = error.message || '点位加载失败'
+    if (!pageController.signal.aborted && !controller.signal.aborted && error.name !== 'AbortError') metadataError.value = error.message || '点位加载失败'
   } finally {
-    metadataLoading.value = false
+    if (pointController === controller) metadataLoading.value = false
   }
 }
 
@@ -100,8 +163,12 @@ async function loadAnalysis() {
   const version = ++analysisVersion
   analysisLoading.value = true
   analysisError.value = ''
-  days.value = []
-  insight.value = null
+  const pointKey = JSON.stringify([selectedModuleId.value, selectedPoint.value.pointId])
+  if (analysisPointKey !== pointKey) {
+    days.value = []
+    insight.value = null
+    analysisPointKey = pointKey
+  }
   const query = { pointId: selectedPoint.value.pointId, start: dateRange.value[0], end: dateRange.value[1], bucketMinutes }
   try {
     const [dailyResult, insightResult] = await Promise.allSettled([
@@ -134,9 +201,11 @@ function syncSelection() {
   selectedPointId.value = props.point?.pointId ?? null
   if (props.point) loadAnalysis()
 }
-watch(() => [props.moduleId, props.point?.pointId], () => { if (props.embedded) syncSelection() })
+watch([selectedModuleId, () => selectedPoint.value?.pointId], loadLimits)
+watch([() => props.moduleId, () => props.point?.pointId], () => { if (props.embedded) syncSelection() })
 onMounted(() => props.embedded ? syncSelection() : loadModules())
 onBeforeUnmount(() => {
+  limitsVersion += 1
   pageController.abort()
   pointController?.abort()
   analysisController?.abort()
@@ -171,9 +240,17 @@ onBeforeUnmount(() => {
     <section class="trend-workspace">
       <article class="trend-chart-panel">
         <header><div><TrendingUp :size="16" /><h2>每日限值趋势</h2></div><span>{{ selectedPoint ? `${selectedPoint.name} · ${selectedPoint.unit || '无单位'}` : '等待点位' }}</span></header>
+        <form class="trend-limit-controls" @submit.prevent="saveLimits">
+          <label>下限<input v-model.number="limitMin" type="number" step="any" placeholder="未设置" aria-label="下限" :disabled="!limitsReady || limitsSaving" /></label>
+          <label>上限<input v-model.number="limitMax" type="number" step="any" placeholder="未设置" aria-label="上限" :disabled="!limitsReady || limitsSaving" /></label>
+          <el-button type="primary" native-type="submit" :loading="limitsSaving" :disabled="!limitsReady || limitsLoading">保存上下限</el-button>
+          <el-button v-if="limitsError && !limitsReady" :loading="limitsLoading" @click="loadLimits">重新读取</el-button>
+          <span v-if="limitsMessage" class="trend-limit-message" role="status">{{ limitsMessage }}</span>
+        </form>
+        <p v-if="limitsError" class="trend-error" role="alert">{{ limitsError }}</p>
         <div v-if="analysisLoading && !days.length" class="trend-empty">正在计算趋势…</div>
         <div v-else-if="!days.length" class="trend-empty">当前时段暂无聚合趋势数据</div>
-        <EChart v-else class="trend-chart" :option="chartOption" />
+        <EChart v-else class="trend-chart" :option="chartOption" merge-updates :aria-busy="analysisLoading" />
       </article>
 
       <aside class="trend-side">
@@ -217,5 +294,11 @@ onBeforeUnmount(() => {
 .embedded-analysis .trend-workspace { grid-template-columns: minmax(0, 1fr); }
 .embedded-analysis .trend-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .embedded-analysis .insight-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.trend-limit-controls { display:flex; flex-shrink:0; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:12px; padding:10px 14px; }
+.trend-limit-controls label { display:flex; align-items:center; gap:8px; color:var(--control-text); font-size:16px; }
+.trend-limit-controls input { width:120px; min-height:36px; padding:6px 9px; border:1px solid var(--control-border); border-radius:6px; background:var(--control-bg); color:var(--control-text); font-size:16px; }
+.trend-limit-controls input::placeholder { color:var(--control-muted); }
+.trend-limit-controls input:focus-visible { outline:2px solid var(--control-border-active); outline-offset:1px; }
+.trend-limit-message { color:var(--control-text); font-size:16px; }
 @media (min-width: 1700px) { .embedded-analysis .trend-workspace { grid-template-columns: minmax(0, 1.8fr) minmax(280px, .8fr); } .embedded-analysis .insight-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

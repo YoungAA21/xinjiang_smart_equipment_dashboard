@@ -3,7 +3,23 @@ import { afterEach, test } from 'node:test'
 import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import { analysisApi, validateAnalysisQuery } from '../src/services/analysis.js'
-import { dailyLimitTrendOption, percent, riskLabel, riskTone, trendAlarmChangeOption, valueText } from '../src/charts/analysis.js'
+import { dailyLimitTrendOption, percent, riskLabel, riskTone, trendAlarmChangeOption, trendAxisRange, valueText } from '../src/charts/analysis.js'
+
+test('editable trend axis bounds support zero, negatives and automatic range without altering readings or limits', () => {
+  assert.deepEqual(trendAxisRange('', null), { min: undefined, max: undefined })
+  assert.deepEqual(trendAxisRange(-10.5, 0), { min: -10.5, max: 0 })
+  assert.deepEqual(trendAxisRange(null, 100), { min: undefined, max: 100 })
+  for (const bounds of [[5, 5], [6, 5], [NaN, 10], [0, Infinity]]) assert.throws(() => trendAxisRange(...bounds))
+  const day = Object.freeze({ date: '2026-10-15', minValue: 12, maxValue: 20, minimumValue: 5, maximumValue: 25 })
+  const option = dailyLimitTrendOption([day], { unit: '℃' }, { min: 0, max: 50 })
+  assert.equal(option.yAxis.min, 0)
+  assert.equal(option.yAxis.max, 50)
+  assert.equal(option.series[1].data[0], 20)
+  assert.equal(option.series[2].data[0], 12)
+  assert.equal(option.series[3].data[0], 25)
+  assert.equal(option.series[4].data[0], 5)
+  assert.equal(option.animation, false)
+})
 
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })

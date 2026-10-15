@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
       rewrite: (path) => path.replace(/^\/_health-api/, ''),
     },
-    '^/_telemetry-api/api/(?:configuration/modules(?:/[^/?]+/points)?|realtime/latest|telemetry/history)(?:\\?.*)?$': {
+    '^/_telemetry-api/api/(?:configuration/modules(?:/[^/?]+/points)?|configuration/points/[0-9]+/limits|realtime/latest|telemetry/history)(?:\\?.*)?$': {
       target: api5158Target,
       changeOrigin: true,
       rewrite: (path) => path.replace(/^\/_telemetry-api/, ''),

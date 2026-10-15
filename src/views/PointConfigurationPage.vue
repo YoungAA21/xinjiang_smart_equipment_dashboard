@@ -61,7 +61,12 @@ const targetName = id => pointConfiguration.targets.find(target => target.id ===
 const sampleValue = row => {
   if (row.source === 'monitor') return '声纹通道'
   const sample = latest.value.find(item => parameterKey(item) === row.key)
-  return sample?.value == null ? '—' : String(sample.value)
+  if (sample?.value == null) return '—'
+  if ((sample.metricType || row.point.metricType) === 'NegativePressure') {
+    const value = Number(sample.value)
+    return Number.isFinite(value) ? value.toFixed(2) : '—'
+  }
+  return String(sample.value)
 }
 watch([search, source, status], () => { page.value = 1 })
 watch(pageCount, value => { page.value = Math.min(page.value, value) })

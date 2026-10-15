@@ -55,7 +55,7 @@ export const useTelemetryStore = defineStore('telemetryMonitor', {
     },
     async loadPoints(moduleId, { signal } = {}) {
       const version = ++this.pointVersion
-      this.points = []
+      if (this.pointModuleId !== moduleId) this.points = []
       this.pointModuleId = moduleId
       this.loadingPoints = true
       delete this.errors.points

@@ -33,6 +33,27 @@ export function validateHistoryQuery({ pointId, start, end, limit = 5000 }) {
 }
 
 export const telemetryApi = {
+  async updatePointLimits(pointId, limits, { signal } = {}) {
+    if (!Number.isSafeInteger(Number(pointId)) || Number(pointId) <= 0) throw new Error('请选择有效测点')
+    const parse = (value) => {
+      if (value === '' || value == null) return null
+      const result = Number(value)
+      if (!Number.isFinite(result)) throw new Error('上下限必须为有效数字')
+      return result
+    }
+    const body = { minimumValue: parse(limits.minimumValue), maximumValue: parse(limits.maximumValue) }
+    if (body.minimumValue != null && body.maximumValue != null && body.minimumValue >= body.maximumValue) throw new Error('下限必须小于上限')
+    const response = await fetch(`${BASE}/api/configuration/points/${encodeURIComponent(pointId)}/limits`, {
+      method: 'PATCH',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000),
+    })
+    const result = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(result?.detail || result?.message || `上下限保存失败（HTTP ${response.status}）`)
+    if (result?.saved !== true || Number(result.pointId) !== Number(pointId)) throw new Error('上下限保存结果不正确，请重新读取配置确认')
+    return result
+  },
   getModules: (options) => get('/api/configuration/modules', {}, options),
   getModulePoints,
   getLatest: (options) => get('/api/realtime/latest', {}, options),
