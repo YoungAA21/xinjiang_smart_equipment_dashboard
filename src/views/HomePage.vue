@@ -5,6 +5,7 @@ import { Bell, ChevronLeft, ChevronRight, Pause, Play, RefreshCw, Settings2 } fr
 import SiteProductionLinePlan from '../components/SiteProductionLinePlan.vue'
 import ProductionSummary from '../components/ProductionSummary.vue'
 import AlarmColorSettings from '../components/AlarmColorSettings.vue'
+import HomePointExplorer from '../components/HomePointExplorer.vue'
 import { useAlarmColorsStore } from '../stores/alarmColors.js'
 import { useProductionLine } from '../composables/useProductionLine.js'
 import { alarmTime } from '../charts/alarms.js'
@@ -21,6 +22,8 @@ const lightTheme = inject('isLightTheme', ref(false))
 const { telemetry, acoustic, selectedId, selected, machines, readings: allReadings, events, alarmError, now, live, refreshing, refresh } = useProductionLine()
 const configuredReadings = computed(() => configuredHomeReadings(allReadings.value))
 const readings = computed(() => configuredReadings.value.filter(row => row.member.source === 'legacy'))
+const selectedHistoryRow = ref(null)
+function openValueHistory(row) { selectedHistoryRow.value = { ...row, color: row.color || '#39a9ff' } }
 const alarmScope = ref('')
 const alarmFilter = ref('active')
 const alarmPage = ref(1)
@@ -49,7 +52,7 @@ const rightColumns = computed(() => Math.max(1, Math.min(Math.floor(valuesWidth.
 function gridStyle(columns) {
   return { '--columns': columns, '--rows': Math.max(1, Math.ceil(readings.value.length / columns)), '--number-size': `${Math.max(22, 30 - columns * 2)}px` }
 }
-function selectMachine(id) { selectedId.value = id; alarmScope.value = '' }
+function selectMachine(id) { selectedHistoryRow.value = null; selectedId.value = id; alarmScope.value = '' }
 function showMachineAlarms(id) { selectedId.value = id; alarmScope.value = id; alarmFilter.value = 'active'; alarmPage.value = 1 }
 function openMonitoringPoint(group) {
   router.push(homePointTarget(group))
@@ -76,13 +79,14 @@ const rowValue = row => row.value == null ? '—' : row.value.toFixed(2)
       </div>
       <section class="line-panel plan-panel"><ProductionSummary /><SiteProductionLinePlan :variant="lightTheme ? 'light' : 'dark'" :navigate="false" :selected="selectedId" :machines="displayedMachines" @select="selectMachine" @alarm="showMachineAlarms" /></section>
       <aside ref="valuesPanel" class="line-panel current-values-panel"><header><div><h2>{{ selected.id }} 当前值</h2><span :class="selected.health">{{ homeStatusLabel(selected.healthLabel) }}</span></div></header>
-        <div v-if="readings.length" class="current-values-grid" :class="{ 'multiple-columns': rightColumns > 1 }" :style="gridStyle(rightColumns)"><div v-for="row in readings" :key="row.key" class="current-value" :class="row.alarm ? 'alarm' : row.normal ? 'normal' : 'unknown'" :title="`${row.name} · ${live ? homeStatusLabel(row.label) : '已暂停'}${row.sample ? ' · ' + alarmTime(row.sample.collectedAt) : ''}`"><span class="value-name">{{ row.name }}</span><div class="value-reading"><strong>{{ rowValue(row) }}</strong><small>{{ row.member.source === 'legacy' ? row.point.unit : '' }}</small></div></div></div>
+        <div v-if="readings.length" class="current-values-grid" :class="{ 'multiple-columns': rightColumns > 1 }" :style="gridStyle(rightColumns)"><button v-for="row in readings" :key="row.key" type="button" class="current-value" :aria-label="'查看' + row.name + '历史数据'" aria-haspopup="dialog" @click="openValueHistory(row)" :class="row.alarm ? 'alarm' : row.normal ? 'normal' : 'unknown'" :title="`${row.name} · ${live ? homeStatusLabel(row.label) : '已暂停'}${row.sample ? ' · ' + alarmTime(row.sample.collectedAt) : ''}`"><span class="value-name">{{ row.name }}</span><div class="value-reading"><strong>{{ rowValue(row) }}</strong><small>{{ row.member.source === 'legacy' ? row.point.unit : '' }}</small></div></button></div>
         <div v-else class="point-empty">暂无配置测点</div>
       </aside>
     </div>
     <section class="line-panel line-alarm-panel"><header><div><h2>{{ alarmScope ? alarmScope + ' 报警详情' : '告警列表' }}</h2><span v-if="alarmError">来源异常</span><span v-else>{{ filteredEvents.length }} 条</span></div><div class="alarm-actions"><AlarmColorSettings :events="events || []" /><button v-if="alarmScope" @click="alarmScope = ''">全部机组</button><button :class="{ active: alarmFilter === 'active' }" @click="alarmFilter = 'active'">活动告警</button><button :class="{ active: alarmFilter === 'all' }" @click="alarmFilter = 'all'">全部记录</button><button aria-label="上一页告警" :disabled="alarmPage === 1" @click="alarmPage--"><ChevronLeft :size="13" /></button><span>{{ alarmPage }} / {{ pageCount }}</span><button aria-label="下一页告警" :disabled="alarmPage === pageCount" @click="alarmPage++"><ChevronRight :size="13" /></button></div></header>
       <div class="line-alarm-table"><table><thead><tr><th>级别</th><th>设备 / 测点</th><th>报警详情</th><th>当前 / 阈值</th><th>发生时间</th><th>状态</th></tr></thead><tbody><tr v-for="(event, index) in visibleEvents" :key="event.alarmId || index" :style="{ '--row-alarm-color': alarmColors.color(event) }"><td class="alarm-level">{{ event.severity || event.level || '告警' }}</td><td>{{ alarmMachineId(event) || event.moduleId || '—' }}<small>{{ event.name || event.pointCode || '—' }}</small></td><td>{{ event.reason || event.name || '—' }}</td><td>{{ event.alarmValue ?? '—' }} {{ event.unit }} / {{ event.threshold ?? event.thresholdValue ?? '—' }}</td><td>{{ alarmTime(event.startedAt) }}</td><td>{{ isActiveAlarm(event) ? '活动告警' : event.status === 'Recovered' ? '已恢复' : '' }}</td></tr></tbody></table><div v-if="!visibleEvents.length" class="alarm-empty"><Bell :size="17" />{{ alarmError ? '告警来源暂不可用' : events === null ? '等待告警数据' : '暂无告警' }}</div></div>
     </section>
+    <HomePointExplorer v-if="selectedHistoryRow" :key="selectedHistoryRow.key" :row="selectedHistoryRow" :buffers="telemetry.buffers" :paused="!live" @close="selectedHistoryRow = null" />
   </section>
 </template>
 

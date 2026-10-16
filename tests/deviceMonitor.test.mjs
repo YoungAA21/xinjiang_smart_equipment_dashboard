@@ -14,6 +14,16 @@ import * as charts from '../src/charts/telemetry.js'
 import * as homeNavigation from '../src/charts/homePointNavigation.js'
 import * as recentHistory from '../src/composables/useRecentHistory.js'
 
+test('measurement layout omits the three status tabs without changing saved locations', () => {
+  const items = [
+    { id: 'ch', name: 'CH 剔除状态' }, { id: 'speed', name: '高低速指示' },
+    { id: 'appearance', name: '小包外观' }, { id: 've', name: 'VE 风机' },
+    { id: 'motor', name: '主电机' }, { id: 'extra', name: '自定义点位' },
+  ]
+  assert.deepEqual(locations.pointLayoutLocations(items).map(item => item.id), ['ve', 'motor', 'extra'])
+  assert.equal(items.length, 6)
+})
+
 test('point monitoring caches metadata and freely arranges cards across secondary targets', async () => {
   const original = configuration.configurationSnapshot()
   const calls = []

@@ -73,4 +73,6 @@
 .current-value .value-reading { flex:none; margin-left:auto; align-items:baseline; gap:5px; }
 .current-value strong { font-size:var(--number-size,28px); font-weight:600; }
 .current-value small { font-size:12px; white-space:nowrap; }
-.current-value .value-stale { color:var(--line-muted); font-size:11px; }
+.production-home button.current-value { width:100%; text-align:left; font:inherit; border:0; border-bottom:1px solid var(--line-border); border-radius:0; background:transparent; }
+.production-home button.current-value:hover { background:var(--control-bg-active); }
+.production-home button.current-value:focus-visible { outline:2px solid #78c9a6; outline-offset:-2px; }

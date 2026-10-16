@@ -5,6 +5,10 @@ import { configuredParameter, pointConfiguration, presentPoint } from '../stores
 // Physical monitoring locations, distinct from individual sensor measurements.
 export const monitoringLocations = pointConfiguration.locations
 
+// These status groups are not measurement-layout tabs. Keep their saved data intact.
+export const pointLayoutLocations = locations => locations.filter(location =>
+  !/^(CH(?:双包)?剔除状态|高低速指示|小包外观(?:剔除状态)?)$/i.test(String(location.name || '').replace(/\s/g, '')))
+
 export function monitoringLocationOf(member, point) {
   const configured = configuredParameter(point, member.source, member.id)
   if (configured) return configured.locationId

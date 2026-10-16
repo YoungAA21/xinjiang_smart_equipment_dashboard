@@ -1,6 +1,7 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import EChart from './EChart.vue'
+import { ElDrawer } from 'element-plus'
 import { telemetryApi } from '../services/telemetry'
 import { api } from '../services/api'
 import { localInputTime, numericValue, pointKey, telemetryLine } from '../charts/telemetry'
@@ -39,11 +40,45 @@ const samples = computed(() => live.value ? props.buffers[pointKey(point.value)]
 const last = computed(() => samples.value.at(-1))
 const lastValue = computed(() => numericValue(last.value?.value) === null ? '—' : last.value.value.toFixed(3))
 const dateText = value => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
+const limits = ref(null)
+const limitsLoading = ref(false)
+const limitsError = ref('')
+let limitsVersion = 0, limitsController
+const limitText = value => value === null ? '未设置' : `${value}${point.value.unit ? ' ' + point.value.unit : ''}`
+async function loadLimits() {
+  const version = ++limitsVersion
+  limitsController?.abort()
+  limits.value = null
+  limitsError.value = ''
+  limitsLoading.value = false
+  if (acoustic.value) return
+  const selected = point.value
+  limitsController = new AbortController()
+  limitsLoading.value = true
+  try {
+    const result = await telemetryApi.getModulePoints(props.row.member.id, { signal: limitsController.signal })
+    if (version !== limitsVersion) return
+    if (result?.moduleId !== props.row.member.id || !Array.isArray(result?.points)) throw new Error('点位配置返回格式不正确')
+    const current = result.points.find(item => selected.pointId != null
+      ? item.pointId != null && String(item.pointId) === String(selected.pointId)
+      : item.channelId === selected.channelId && item.pointCode === selected.pointCode)
+    if (!current) throw new Error('未找到当前测点的阈值配置')
+    for (const key of ['minimumValue', 'maximumValue']) {
+      if (current[key] != null && numericValue(current[key]) === null) throw new Error('阈值配置不是有效数值')
+    }
+    limits.value = { minimumValue: current.minimumValue ?? null, maximumValue: current.maximumValue ?? null }
+  } catch (error) {
+    if (version === limitsVersion) limitsError.value = error.message || '读取失败'
+  } finally {
+    if (version === limitsVersion) limitsLoading.value = false
+  }
+}
 
 function invalidate() { requestVersion++; requestController?.abort(); loading.value = false }
 function showLive() {
   if (props.historicalOnly) return
   invalidate()
+  loadLimits()
   live.value = true
   error.value = ''
   capped.value = false
@@ -84,6 +119,7 @@ async function query(page = 1) {
   const range = queryRange.value
   const from = Date.parse(range.start), to = Date.parse(range.end)
   if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) { error.value = '请选择有效的起止日期'; return }
+  loadLimits()
   invalidate()
   const version = requestVersion
   requestController = new AbortController()
@@ -125,7 +161,7 @@ async function query(page = 1) {
 
 const option = computed(() => {
   if (!acoustic.value) {
-    const value = telemetryLine(samples.value, { ...point.value, name: title.value }, { history: !live.value, color: props.row.color })
+    const value = telemetryLine(samples.value, { ...point.value, minimumValue: limits.value?.minimumValue, maximumValue: limits.value?.maximumValue, name: title.value }, { history: !live.value, color: props.row.color, showLimits: true })
     value.graphic = samples.value.length ? [] : [{ type: 'text', left: 'center', top: 'middle', style: { text: loading.value ? '加载中' : '暂无数据', fill: '#C3E2D9', fontSize: 16 } }]
     value.dataZoom[0] = { ...value.dataZoom[0], moveOnMouseMove: true, zoomOnMouseWheel: true }
     return value
@@ -155,50 +191,20 @@ const option = computed(() => {
   }
 })
 
-const panel = ref(null)
-const position = reactive({ x: 0, y: 0 })
-let drag, previousFocus
-function clampPosition() {
-  if (!panel.value) return
-  position.x = Math.max(0, Math.min(position.x, window.innerWidth - panel.value.offsetWidth))
-  position.y = Math.max(0, Math.min(position.y, window.innerHeight - panel.value.offsetHeight))
-}
-function dragStart(event) {
-  if (props.embedded) return
-  if (event.button !== 0 || event.target.closest('button,select,input')) return
-  drag = { x: event.clientX - position.x, y: event.clientY - position.y }
-  event.currentTarget.setPointerCapture(event.pointerId)
-}
-function dragMove(event) {
-  if (!drag) return
-  position.x = event.clientX - drag.x
-  position.y = event.clientY - drag.y
-  clampPosition()
-}
-onMounted(async () => {
+const open = ref(true)
+onMounted(() => {
   emit('live-change', false)
   query()
-  if (props.embedded) return
-  previousFocus = document.activeElement
-  await nextTick()
-  position.x = (window.innerWidth - panel.value.offsetWidth) / 2
-  position.y = (window.innerHeight - panel.value.offsetHeight) / 2
-  panel.value.focus()
-  window.addEventListener('resize', clampPosition)
 })
-onBeforeUnmount(() => {
-  invalidate()
-  window.removeEventListener('resize', clampPosition)
-  previousFocus?.focus?.()
-})
+onBeforeUnmount(() => { invalidate(); limitsVersion++; limitsController?.abort() })
 </script>
 
 <template>
-  <Teleport to=".dashboard-shell" :disabled="embedded">
-    <section ref="panel" class="point-explorer" :class="{ 'embedded-explorer': embedded }" :role="embedded ? 'region' : 'dialog'" :aria-modal="embedded ? undefined : false" :aria-label="title" tabindex="-1" :style="embedded ? undefined : { left: position.x + 'px', top: position.y + 'px' }" @keydown.esc.stop="emit('close')">
-      <header class="explorer-heading" @pointerdown="dragStart" @pointermove="dragMove" @pointerup="drag = null" @pointercancel="drag = null" @lostpointercapture="drag = null">
+  <component :is="embedded ? 'div' : ElDrawer" v-model="open" :title="title" :with-header="false" direction="rtl" size="100%" append-to=".dashboard-shell" modal-class="point-explorer-overlay" class="point-explorer-drawer" :class="{ 'embedded-explorer': embedded }" destroy-on-close :close-on-click-modal="false" @closed="emit('close')">
+    <section class="point-explorer">
+      <header class="explorer-heading">
         <h2>{{ title }}</h2>
-        <button v-if="!embedded" type="button" aria-label="关闭大图" @click="emit('close')">×</button>
+        <button v-if="!embedded" type="button" aria-label="关闭大图" @click="open = false">×</button>
       </header>
       <form class="explorer-controls" @submit.prevent="query()">
         <select v-if="points.length > 1" v-model="pointIndex" aria-label="选择参数"><option v-for="(item, index) in points" :key="item.pointId" :value="index">{{ item.name }}</option></select>
@@ -210,6 +216,12 @@ onBeforeUnmount(() => {
         <button type="button" @click="chartVersion++">重置视图</button>
       </form>
       <div v-if="!acoustic" class="explorer-value"><strong>{{ lastValue }}</strong><span>{{ point.unit }}</span><time>{{ dateText(last?.collectedAt) }}</time><span>{{ live ? paused ? '已暂停' : '实时' : loading ? '加载班次数据' : '历史 · ' + history.length + ' 条' }}</span></div>
+      <div v-if="!acoustic" class="explorer-limits" aria-live="polite">
+        <strong>当前阈值</strong><span v-if="limitsLoading">读取中…</span>
+        <span v-else-if="limitsError" class="explorer-error" role="alert">阈值读取失败：{{ limitsError }}</span>
+        <template v-else-if="limits"><span class="limit-min">下限：{{ limitText(limits.minimumValue) }}</span><span class="limit-max">上限：{{ limitText(limits.maximumValue) }}</span><small>历史基线使用当前配置</small></template>
+        <button type="button" :disabled="limitsLoading" @click="loadLimits">刷新阈值</button>
+      </div>
       <div v-if="acoustic && !live && recordings.length" class="explorer-recordings">
         <select v-model="recordingId" aria-label="选择录音" :disabled="loading" @change="selectRecording"><option v-for="recording in recordings" :key="recording.id" :value="recording.id">{{ recording.fileName || recording.id }}</option></select>
         <button :disabled="loading || recordingPage <= 1" @click="query(recordingPage - 1)">上一页</button><span>{{ recordingPage }} / {{ Math.ceil(recordingTotal / 20) }}</span><button :disabled="loading || recordingPage * 20 >= recordingTotal" @click="query(recordingPage + 1)">下一页</button>
@@ -218,18 +230,16 @@ onBeforeUnmount(() => {
       <p v-if="capped" class="explorer-error">已达 100000 条上限，请缩短日期范围</p>
       <div class="explorer-chart" role="img" :aria-label="title + '数据图表'"><EChart :key="chartVersion" :option="option" preserve-zoom /></div>
     </section>
-  </Teleport>
+  </component>
 </template>
 
 <style scoped>
-.point-explorer { position:fixed; z-index:2000; width:min(1240px,94vw); height:min(780px,88vh); display:flex; flex-direction:column; min-width:0; padding:0 20px 16px; border:1px solid var(--control-border-active); border-radius:10px; background:var(--page-bg); color:var(--text-main); box-shadow:0 18px 70px #0008; outline:none; }
-.point-explorer.embedded-explorer { position:relative; z-index:auto; width:100%; height:560px; min-height:480px; box-sizing:border-box; box-shadow:none; border-color:var(--glass-border); }
-.embedded-explorer .explorer-heading { cursor:default; }
-.embedded-explorer .explorer-controls { gap:8px; padding:10px 0; }
-.embedded-explorer input { min-width:0; max-width:100%; }
+.point-explorer { height:100%; display:flex; flex-direction:column; min-width:0; min-height:0; color:var(--text-main); }
+.embedded-explorer { height:560px; min-height:480px; min-width:0; box-sizing:border-box; padding:0 20px 16px; border:1px solid var(--glass-border); border-radius:10px; background:var(--page-bg); }
 .embedded-explorer .explorer-value { flex-wrap:wrap; gap:8px; font-size:13px; }
 .embedded-explorer .explorer-chart { min-height:180px; }
-.explorer-heading { display:flex; align-items:center; justify-content:space-between; min-height:56px; cursor:move; touch-action:none; user-select:none; border-bottom:1px solid var(--glass-border); }
+.explorer-heading { display:flex; align-items:center; justify-content:space-between; min-height:48px; border-bottom:1px solid var(--glass-border); }
+
 h2 { margin:0; font-size:19px; font-weight:600; }
 button,input,select { color:var(--text-main); background:var(--glass-card); border:1px solid var(--glass-border); border-radius:5px; padding:8px 12px; font:inherit; }
 button { cursor:pointer; } button:disabled { opacity:.5; cursor:default; } button:hover,button.active { border-color:#368ce8; } button:focus-visible,input:focus-visible,select:focus-visible { outline:2px solid #368ce8; outline-offset:2px; }
@@ -238,7 +248,15 @@ button { cursor:pointer; } button:disabled { opacity:.5; cursor:default; } butto
 .shift-buttons { display:flex; gap:5px; }.shift-buttons button.active { background:color-mix(in srgb,#368ce8 15%,var(--glass-card)); }
 label { display:flex; align-items:center; gap:8px; } input { color-scheme:dark; } :global(.light-theme) input { color-scheme:light; }
 .explorer-value { display:flex; align-items:baseline; gap:12px; } .explorer-value strong { color:#368ce8; font-size:30px; } .explorer-value time { margin-left:auto; }
+.explorer-limits { display:flex; align-items:center; flex-wrap:wrap; gap:10px 20px; padding:12px 0; margin-top:8px; border-bottom:1px solid var(--glass-border); font-size:14px; }
+.explorer-limits .limit-min { color:#9471de; }.explorer-limits .limit-max { color:#d88b2b; }.explorer-limits small { color:var(--text-muted); }.explorer-limits button { margin-left:auto; padding:5px 10px; }
 .explorer-chart { flex:1; min-height:0; margin-top:12px; } .explorer-chart :deep(.echart) { height:100%; width:100%; }
 .explorer-error { color:#e29a3f; margin:8px 0 0; } .explorer-recordings select { max-width:60%; }
-@media(max-width:700px) { .point-explorer { padding:0 10px 10px; height:94vh; } h2 { font-size:16px; } .explorer-controls { gap:6px; padding:8px 0; } .explorer-value { flex-wrap:wrap; } }
+@media(max-width:700px) { .point-explorer { overflow-y:auto; } .explorer-chart { min-height:320px; } h2 { font-size:16px; } .explorer-controls { gap:6px; padding:8px 0; } .explorer-value { flex-wrap:wrap; } }
+</style>
+
+<style>
+.point-explorer-overlay { left:var(--dashboard-sidebar-width,260px); }
+.point-explorer-drawer.el-drawer { --el-drawer-bg-color:var(--page-bg); color:var(--text-main); border-left:1px solid var(--glass-border); }
+.point-explorer-drawer .el-drawer__body { padding:16px 22px 20px; overflow:hidden; }
 </style>

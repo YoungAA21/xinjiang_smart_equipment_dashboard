@@ -222,3 +222,22 @@ test('home history does not fabricate samples or restore data after leaving the 
   store.clear(); release(); await loading
   assert.deepEqual(store.buffers, {})
 })
+
+test('current thresholds preserve zero, support one-sided limits and stay visible outside sample range', () => {
+  const samples = [{ collectedAt: '2026-10-16T10:00:00Z', value: 5 }]
+  const point = { name: '振动', unit: 'mm/s', minimumValue: 0, maximumValue: 10 }
+  const option = telemetryLine(samples, point, { history: true, showLimits: true })
+  assert.deepEqual(option.series[0].markLine.data.map(line => line.yAxis), [0, 10])
+  assert.equal(option.yAxis.min({ min: 4 }), 0)
+  assert.equal(option.yAxis.max({ max: 6 }), 10)
+  assert.match(option.series[0].markLine.data[0].label.formatter, /下限 0 mm\/s/)
+  assert.deepEqual(option.series[0].data, [[Date.parse(samples[0].collectedAt), 5]])
+  const upper = telemetryLine(samples, { ...point, minimumValue: null }, { showLimits: true })
+  assert.deepEqual(upper.series[0].markLine.data.map(line => line.yAxis), [10])
+  const empty = telemetryLine([], { minimumValue: null, maximumValue: null }, { showLimits: true })
+  assert.equal(empty.series[0].markLine.data.length, 0)
+  assert.equal(empty.yAxis.min, undefined)
+  const equal = telemetryLine(samples, { minimumValue: 0, maximumValue: 0 }, { showLimits: true })
+  assert.equal(equal.series[0].markLine.data.length, 2)
+  assert.equal(telemetryLine(samples, point).series[0].markLine, undefined)
+})
