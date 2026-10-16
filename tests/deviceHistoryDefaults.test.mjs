@@ -8,7 +8,7 @@ import * as charts from '../src/charts/telemetry.js'
 import * as equipmentCatalog from '../src/charts/equipmentCatalog.js'
 import * as machineGroups from '../src/charts/machineGroups.js'
 import * as monitoringLocationCatalog from '../src/charts/monitoringLocations.js'
-import * as recentHistory from '../src/composables/useRecentHistory.js'
+import { shiftRange } from '../src/charts/shiftRange.js'
 
 const source = await readFile(new URL('../src/views/DeviceDetailPage.vue', import.meta.url), 'utf8')
 const { descriptor } = parse(source)
@@ -44,7 +44,7 @@ async function mountMonitor(query = { source: 'legacy', device: 'PRESS02' }) {
     '../charts/equipmentCatalog.js': equipmentCatalog,
     '../charts/machineGroups.js': machineGroups,
     '../charts/monitoringLocations.js': monitoringLocationCatalog,
-    '../composables/useRecentHistory.js': recentHistory,
+    '../charts/shiftRange.js': { shiftRange: mode => shiftRange(mode, new Date(now)) },
   }
   const moduleCode = new vm.SourceTextModule(compiled.content, { context })
   await moduleCode.link((specifier) => {
@@ -66,7 +66,7 @@ async function mountMonitor(query = { source: 'legacy', device: 'PRESS02' }) {
   return { app, state: instance.$.setupState, calls, advance: (ms) => { now += ms } }
 }
 
-test('history entry and point changes automatically query the preceding ten minutes', async (t) => {
+test('history table entry and point changes automatically query the current shift', async (t) => {
   const { app, state, calls } = await mountMonitor()
   t.after(() => app.unmount())
   assert.equal(calls.length, 0)
@@ -74,8 +74,8 @@ test('history entry and point changes automatically query the preceding ten minu
   await flush()
   assert.equal(calls.length, 1)
   assert.equal(calls[0].query.pointId, 37)
-  assert.equal(calls[0].query.start, '2026-08-28T11:50:00')
-  assert.equal(calls[0].query.end, '2026-08-28T12:00:00')
+  assert.equal(calls[0].query.start, '2026-08-28T09:30:00')
+  assert.equal(calls[0].query.end, '2026-08-28T18:00:00')
   state.selectedPointId = 38
   await flush()
   assert.equal(calls.length, 2)
@@ -83,14 +83,15 @@ test('history entry and point changes automatically query the preceding ten minu
   assert.equal(calls[0].signal.aborted, true)
 })
 
-test('opening point details immediately seeds real recent history for every visible point', async (t) => {
+test('opening point details defaults to historical charts without requesting live samples', async (t) => {
   const { app, state } = await mountMonitor()
   t.after(() => app.unmount())
-  assert.equal(state.pointCards.length, 2)
-  assert.ok(state.pointCards.every(card => card.count === 2))
-  assert.deepEqual(Array.from(state.pointCards[0].option.series[0].data, row => row[1]), [1, 2])
+  assert.equal(state.chartMode, 'live')
+  assert.equal(state.detailTabs[0].label, '历史曲线')
+  assert.equal(Object.keys(state.telemetry.buffers).length, 0)
+  assert.doesNotMatch(source, /telemetry\.refreshLatest|setInterval|useRecentHistory/)
+  assert.match(descriptor.template.content, /<HomePointExplorer embedded historical-only/)
 })
-
 test('reentering history uses current time while manual queries preserve the chosen range', async (t) => {
   const { app, state, calls, advance } = await mountMonitor()
   t.after(() => app.unmount())
@@ -105,8 +106,8 @@ test('reentering history uses current time while manual queries preserve the cho
   advance(5 * 60 * 1000)
   state.chartMode = 'history'
   await flush()
-  assert.equal(calls.at(-1).query.start, '2026-08-28T11:55:00')
-  assert.equal(calls.at(-1).query.end, '2026-08-28T12:05:00')
+  assert.equal(calls.at(-1).query.start, '2026-08-28T09:30:00')
+  assert.equal(calls.at(-1).query.end, '2026-08-28T18:00:00')
 })
 
 test('whole-machine history link selects the requested point rather than the first point', async (t) => {
@@ -116,8 +117,8 @@ test('whole-machine history link selects the requested point rather than the fir
   assert.equal(calls.at(-1).query.pointId, 38)
 })
 
-test('only the live chart remains in the device view, with a history table and loading state', () => {
-  assert.equal((descriptor.template.content.match(/<EChart\b/g) || []).length, 1)
+test('historical charts are embedded alongside a separate history table and loading state', () => {
+  assert.equal((descriptor.template.content.match(/<HomePointExplorer\b/g) || []).length, 2)
   assert.doesNotMatch(source, /historyOption|历史原始数据折线/)
   assert.match(descriptor.template.content, /<TelemetryHistoryList/)
   assert.match(descriptor.template.content, /正在查询历史数据/)
@@ -160,24 +161,6 @@ test('device directory waits for an explicit device choice and missing devices d
     app.unmount()
   }
 })
-
-test('every point card uses only its own sample buffer and marks stale data', async (t) => {
-  const { app, state } = await mountMonitor()
-  t.after(() => app.unmount())
-  const collectedAt = new Date(Date.now() - 60000).toISOString()
-  const samples = state.points.map((point, index) => ({ ...point, value: index + 10, collectedAt }))
-  state.telemetry.latest = samples
-  state.telemetry.buffers = charts.appendSamples({}, samples)
-  state.clock = Date.now()
-  await flush()
-  assert.equal(state.pointCards.length, 2)
-  assert.deepEqual(Array.from(state.pointCards, card => card.option.series[0].data[0][1]), [10, 11])
-  assert.ok(state.pointCards.every(card => card.stale))
-  state.selectedPointId = 38
-  await flush()
-  assert.equal(state.pointCards.length, 2)
-})
-
 
 test('device tabs exclude unsupported analysis and old URLs fall back to live', async () => {
   for (const [source, unsupported, supported] of [['legacy', 'spectrum', 'trend'], ['monitor', 'trend', 'spectrum']]) {

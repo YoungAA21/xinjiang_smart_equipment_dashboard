@@ -54,7 +54,7 @@ function showMachineAlarms(id) { selectedId.value = id; alarmScope.value = id; a
 function openMonitoringPoint(group) {
   router.push(homePointTarget(group))
 }
-const rowValue = row => !row.usable ? '—' : row.value.toFixed(2)
+const rowValue = row => row.value == null ? '—' : row.value.toFixed(2)
 </script>
 
 <template>

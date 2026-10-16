@@ -3,15 +3,38 @@ import { test, afterEach } from 'node:test'
 import { createPinia, setActivePinia } from 'pinia'
 import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
-import { telemetryApi, validateHistoryQuery } from '../src/services/telemetry.js'
+import { telemetryApi, validateHistoryQuery, configureHistoryReader } from '../src/services/telemetry.js'
 import { useTelemetryStore } from '../src/stores/telemetry.js'
 import { appendSamples, localInputTime, numericValue, pointKey, seriesData, telemetryLine } from '../src/charts/telemetry.js'
 const originalFetch = globalThis.fetch
-afterEach(() => { globalThis.fetch = originalFetch })
+afterEach(() => { globalThis.fetch = originalFetch; configureHistoryReader(null) })
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 const point = { pointId: 35, moduleId: 'PRESS01', channelId: 'AI01', pointCode: 'PRESS', name: '负压', unit: 'kPa' }
 const sample = (second, value = 0) => ({ ...point, collectedAt: `2026-08-28T10:00:${String(second).padStart(2,'0')}+08:00`, value })
 const query = { pointId: 35, start: '2026-08-28T10:00:00', end: '2026-08-28T10:10:00', limit: 5000 }
+
+test('direct and cached history transport allow 120 seconds while metadata keeps 10 seconds', async t => {
+  const timeouts = [], originalTimeout = AbortSignal.timeout
+  t.mock.method(AbortSignal, 'timeout', ms => { timeouts.push(ms); return originalTimeout(ms) })
+  globalThis.fetch = async () => reply({ pointId: 35, points: [] })
+  await telemetryApi.getHistory(query)
+  configureHistoryReader(load => load)
+  await telemetryApi.getHistory(query)
+  await telemetryApi.getModules()
+  assert.deepEqual(timeouts, [120000, 120000, 10000])
+})
+
+test('slow history remains cancellable and reports the history timeout during body reading', async () => {
+  const controller = new AbortController()
+  globalThis.fetch = async (url, { signal }) => new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+  })
+  const pending = telemetryApi.getHistory(query, { signal: controller.signal })
+  controller.abort()
+  await assert.rejects(pending, { name: 'AbortError' })
+  globalThis.fetch = async () => ({ ok: true, async json() { throw new DOMException('Timed out', 'TimeoutError') } })
+  await assert.rejects(telemetryApi.getHistory(query), /历史查询超时（120 秒）/)
+})
 
 test('four telemetry routes use the same-origin 5158 proxy without credentials; history only uses pointId', async () => {
   const calls = []

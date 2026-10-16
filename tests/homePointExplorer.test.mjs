@@ -10,6 +10,7 @@ import * as machines from '../src/charts/machineGroups.js'
 import * as shifts from '../src/charts/shiftRange.js'
 
 test('explorer immediately loads current shift, switches ranges and ignores cancelled late results', async()=>{
+ for (const embedded of [false, true]) {
  const hooks=[],calls=[],pending=[]
  const dependencies={vue:{...vue,onMounted:callback=>hooks.push(callback)},'../services/telemetry':{telemetryApi:{getHistory(query,options){calls.push({query,signal:options.signal});return new Promise(resolve=>pending.push(resolve))}}},'../services/api':{api:{}},'../charts/telemetry':telemetry,'../charts/equipmentCatalog.js':catalog,'../charts/machineGroups.js':machines,'../charts/shiftRange.js':shifts}
  const context=vm.createContext({Date,AbortController,window:{innerWidth:1400,innerHeight:900,addEventListener(){},removeEventListener(){}},document:{activeElement:null}})
@@ -19,7 +20,7 @@ test('explorer immediately loads current shift, switches ranges and ignores canc
  const renderer=vue.createRenderer({createElement:()=>({}),createText:()=>({}),createComment:()=>({}),setText(){},setElementText(){},patchProp(){},insert(){},remove(){},parentNode:()=>null,nextSibling:()=>null})
  const component=module.namespace.default;component.render=()=>vue.h('div')
  const point={moduleId:'VSE03',channelId:'ch1',pointCode:'v',pointId:42,metricType:'VibrationRms'}
- const app=renderer.createApp(component,{row:{member:{source:'legacy',id:'VSE03'},point},buffers:{},paused:false})
+ const app=renderer.createApp(component,{row:{member:{source:'legacy',id:'VSE03'},point},buffers:{},paused:false,embedded,historicalOnly:embedded})
  const state=app.mount({}).$.setupState
  state.panel={offsetWidth:1000,offsetHeight:700,focus(){}}
  try{
@@ -29,8 +30,9 @@ test('explorer immediately loads current shift, switches ranges and ignores canc
   const sample=start=>({...point,value:7,collectedAt:new Date(Date.parse(start)+60000).toISOString()})
   pending[0]({pointId:42,points:[sample(calls[0].query.start)]});for(let i=0;i<5;i++)await vue.nextTick();assert.equal(state.history.length,0)
   pending[1]({pointId:42,points:[sample(calls[1].query.start)]});for(let i=0;i<5;i++)await vue.nextTick();assert.equal(state.history.length,1)
-  state.selectRange('custom');state.start='2026-10-01T10:00:00';state.end='2026-10-01T11:00:00';state.query();assert.equal(calls[2].query.start,'2026-10-01T10:00:00')
+  state.selectRange('custom');state.start='2026-10-01T10:00:00';state.end='2026-10-01T11:00:00';state.query();assert.equal(calls[2].query.start,'2026-10-01T10:00:00'); if(embedded){state.showLive();assert.equal(state.live,false)}
  }finally{app.unmount()}
  assert.equal(calls.at(-1).signal.aborted,true)
  pending.at(-1)({pointId:42,points:[]});for(let i=0;i<5;i++)await vue.nextTick()
+ }
 })

@@ -5,17 +5,17 @@ import { useRoute } from 'vue-router'
 import TrendPage from './TrendPage.vue'
 import SpectrumPage from './SpectrumPage.vue'
 import { Database, Fan, RefreshCcw, Search, Server } from 'lucide-vue-next'
-import EChart from '../components/EChart.vue'
+import HomePointExplorer from '../components/HomePointExplorer.vue'
 import EquipmentVisual from '../components/EquipmentVisual.vue'
 import MonitorDeviceDetails from '../components/MonitorDeviceDetails.vue'
 import TelemetryHistoryList from '../components/TelemetryHistoryList.vue'
 import { api } from '../services/api'
 import { useTelemetryStore } from '../stores/telemetry'
-import { localInputTime, numericValue, pointKey, telemetryLine } from '../charts/telemetry'
-import { isVibrationPoint, configuredMonitoringPoints, discoveredMonitoringModules, moduleDisplayName, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
+import { localInputTime, numericValue, pointKey } from '../charts/telemetry'
+import { configuredMonitoringPoints, discoveredMonitoringModules, moduleDisplayName, monitoringPointName, sortMonitoringModules } from '../charts/equipmentCatalog.js'
 import { acousticChannelDisplayName, presentAcousticChannels } from '../charts/machineGroups.js'
 import { monitoringLocations } from '../charts/monitoringLocations.js'
-import { useRecentHistory } from '../composables/useRecentHistory.js'
+import { shiftRange } from '../charts/shiftRange.js'
 import HistoryCacheStatus from '../components/HistoryCacheStatus.vue'
 
 const props = defineProps({ embedded: Boolean, detailContext: Object })
@@ -31,11 +31,10 @@ const source = ref(['legacy', 'monitor'].includes(route.query.source) ? route.qu
 const selectedKey = ref(route.query.device ? JSON.stringify([route.query.source, route.query.device]) : '')
 const showingDetail = computed(() => Boolean(route.query.device))
 const selectedPointId = ref(null)
-const autoLive = ref(true)
 const chartMode = ref(['live', 'trend', 'spectrum', 'history', 'info'].includes(route.query.tab) ? route.query.tab : 'live')
 const selectedChannelId = ref(route.query.channelId || '')
 const allDetailTabs = [
-  { id: 'live', label: '实时监测' },
+  { id: 'live', label: '历史曲线' },
   { id: 'trend', label: '趋势分析' },
   { id: 'spectrum', label: '频谱分析' },
   { id: 'history', label: '数据列表' },
@@ -43,12 +42,12 @@ const allDetailTabs = [
 ]
 const channels = computed(() => !isLegacy.value ? (selected.value ? presentAcousticChannels(selected.value.raw) : []).filter(channel => !props.embedded || !route.query.channelId || channel.channelId === route.query.channelId) : [])
 const selectedChannel = computed(() => channels.value.find((channel) => channel.channelId === selectedChannelId.value) || channels.value.find((channel) => channel.online) || channels.value[0] || null)
-const clock = ref(Date.now())
-const historyStart = ref(localInputTime(Date.now() - 10 * 60 * 1000))
-const historyEnd = ref(localInputTime(Date.now()))
-const historyLimit = ref(5000)
+const initialHistoryRange = shiftRange()
+const historyStart = ref(initialHistoryRange.start)
+const historyEnd = ref(initialHistoryRange.end)
+const historyLimit = ref(100000)
 const pageController = new AbortController()
-let pointController, historyController, pollTimer, metadataTimer
+let pointController, historyController
 const entries = computed(() => [
   ...sortMonitoringModules(discoveredMonitoringModules(telemetry.modules || [], telemetry.latest || [])).map((module) => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', name: moduleDisplayName(module), id: module.moduleId, online: module.runtimeStatus?.isOnline, raw: module })),
   ...(monitorDevices.value || []).map((device) => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', name: device.deviceName || device.deviceId, id: device.deviceId, online: device.online, raw: device })),
@@ -73,6 +72,7 @@ const selected = computed(() => entries.value.find((entry) => entry.key === sele
 const profileLocation = computed(() => monitoringLocations.find(item => item.id === route.query.location))
 const profileName = computed(() => profileLocation.value ? `${profileLocation.value.machine} · ${profileLocation.value.name}` : selected.value?.name || '')
 const profileImage = computed(() => {
+  if (profileLocation.value?.name.replace(/\s/g, '').includes('小包外观')) return '/equipment/small-pack-appearance.png'
   if (selected.value?.source === 'legacy' && selected.value.id === 'PRESS01') return '/equipment/zb25-pressure.png'
   if (selected.value?.source === 'legacy' && selected.value.id === 'PRESS02') return '/equipment/spider-pressure.png'
   if (selected.value?.source === 'legacy' && selected.value.id === 'PRESS03') return '/equipment/yb55-pressure.png'
@@ -108,26 +108,6 @@ const points = computed(() => isLegacy.value && telemetry.pointModuleId === sele
     return true
   }).map(point => ({ ...point, name: monitoringPointName(point) })) : [])
 const selectedPoint = computed(() => points.value.find((point) => point.pointId === selectedPointId.value) || points.value[0] || null)
-const recentHistory = useRecentHistory(points, telemetry, pageController.signal)
-const pointPalette = ['#39a9ff', '#ff9800', '#00c875']
-const pointColors = new Map()
-function pointColor(key) {
-  if (!pointColors.has(key)) pointColors.set(key, pointPalette[pointColors.size % pointPalette.length])
-  return pointColors.get(key)
-}
-const pointCards = computed(() => points.value.map((point) => {
-  const samples = telemetry.buffers[pointKey(point)] || []
-  const latest = pointLatest(point)
-  const color = pointColor(pointKey(point))
-  const option = telemetryLine(samples, point, { color })
-  option.grid = { left: 52, right: 12, top: 24, bottom: 28 }
-  option.dataZoom = []
-  option.series[0].lineStyle.width = 1.5
-  option.series[0].areaStyle.opacity = 0.45
-  option.xAxis.splitNumber = 3
-  option.yAxis.splitNumber = 3
-  return { point, latest, option, color, count: samples.length, stale: latest && clock.value - Date.parse(latest.collectedAt) > 10000 }
-}))
 const historyValues = computed(() => (telemetry.history?.points || []).map((sample) => numericValue(sample.value)).filter((value) => value !== null))
 const historyMin = computed(() => historyValues.value.length ? historyValues.value.reduce((a, b) => Math.min(a, b)) : null)
 const historyMax = computed(() => historyValues.value.length ? historyValues.value.reduce((a, b) => Math.max(a, b)) : null)
@@ -136,7 +116,6 @@ const status = (online) => online === true ? '在线' : online === false ? '离�
 const tone = (online) => online === true ? 'good' : online === false ? 'warn' : 'muted'
 const dateTime = (value) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
 const numberText = (value) => numericValue(value) === null ? '—' : value.toFixed(3)
-const pointLatest = (point) => telemetry.latest.find((sample) => pointKey(sample) === pointKey(point))
 
 async function loadMonitorDevices() {
   if (loadingMonitor.value || pageController.signal.aborted) return
@@ -168,7 +147,6 @@ async function refreshAll() {
   await Promise.all([telemetry.refreshModules({ signal: pageController.signal }), loadMonitorDevices()])
   if (pageController.signal.aborted) return
   if (selected.value?.key === previousKey && isLegacy.value) await loadPoints(selectedPoint.value?.pointId)
-  if (isLegacy.value) await telemetry.refreshLatest({ signal: pageController.signal })
 }
 function queryHistory() {
   if (!isLegacy.value || !selectedPoint.value || pageController.signal.aborted) return
@@ -187,13 +165,14 @@ watch(() => selected.value?.key, async (key, previousKey) => {
   if (previousKey && key && !props.embedded) chartMode.value = 'live'
   selectedChannelId.value = channels.value.find(channel => channel.channelId === route.query.channelId)?.channelId || channels.value.find((channel) => channel.online)?.channelId || channels.value[0]?.channelId || ''
   await loadPoints()
-  if (isLegacy.value && !pageController.signal.aborted) await telemetry.refreshLatest({ signal: pageController.signal })
 })
 watch([chartMode, () => selectedPoint.value?.pointId], ([mode, pointId]) => {
   historyController?.abort()
   telemetry.clearHistory()
   if (mode === 'history' && pointId != null) {
-    recentRange(10)
+    const range = shiftRange()
+    historyStart.value = range.start
+    historyEnd.value = range.end
     queryHistory()
   }
 })
@@ -212,21 +191,11 @@ watch(() => props.embedded ? null : routerRoute.query, async (query) => {
   if (requestedChannel) selectedChannelId.value = requestedChannel.channelId
   chartMode.value = availableTab(query.tab, selected.value?.source || query.source)
 })
-watch(autoLive, (enabled) => { if (enabled && isLegacy.value) telemetry.refreshLatest({ signal: pageController.signal }) })
-onMounted(() => {
-  refreshAll()
-  pollTimer = window.setInterval(() => {
-    clock.value = Date.now()
-    if (autoLive.value && isLegacy.value && chartMode.value === 'live') telemetry.refreshLatest({ signal: pageController.signal })
-  }, 2000)
-  metadataTimer = window.setInterval(() => { telemetry.refreshModules({ signal: pageController.signal }); loadMonitorDevices() }, 15000)
-})
+onMounted(refreshAll)
 onBeforeUnmount(() => {
   pageController.abort()
   pointController?.abort()
   historyController?.abort()
-  window.clearInterval(pollTimer)
-  window.clearInterval(metadataTimer)
   if (!props.embedded) telemetry.clear()
   else telemetry.clearHistory()
 })
@@ -269,7 +238,7 @@ onBeforeUnmount(() => {
       </section>
       <aside v-if="showingDetail && selected" class="device-profile device-info-card">
         <RouterLink v-if="!embedded" class="back-link" :to="{ path: '/device', query: route.query.machine ? { machine: route.query.machine } : {} }">‹ {{ route.query.machine ? '返回整机监测' : '返回设备列表' }}</RouterLink>
-        <h2>{{ profileName }}</h2><EquipmentVisual class="profile-equipment-visual" :name="profileName" :image-src="profileImage" :source="selected.source" :device-id="selected.id" :online="(isLegacy ? telemetry.errors.modules : monitorError) ? undefined : selected.online" :paused="!autoLive" />
+        <h2>{{ profileName }}</h2><EquipmentVisual class="profile-equipment-visual" :name="profileName" :image-src="profileImage" :source="selected.source" :device-id="selected.id" :online="(isLegacy ? telemetry.errors.modules : monitorError) ? undefined : selected.online" :paused="true" />
         <dl><div><dt>设备编号</dt><dd>{{ selected.id }}</dd></div><div><dt>设备来源</dt><dd>{{ isLegacy ? '采集模块' : '声纹设备' }}</dd></div><div><dt>设备状态</dt><dd :class="tone(selected.online)">{{ status(selected.online) }}</dd></div><div><dt>监测点位</dt><dd>{{ isLegacy ? points.length : channels.length }} 个</dd></div><div v-if="isLegacy"><dt>通讯协议</dt><dd>{{ selected.raw.protocol || '—' }}</dd></div></dl>
       </aside>
       <main v-if="showingDetail" class="device-detail">
@@ -294,23 +263,11 @@ onBeforeUnmount(() => {
               <p v-else-if="!points.length" class="empty-copy">该设备暂无可查询点位</p>
               <template v-else>
                 <template v-if="chartMode === 'live'">
-                  <header class="chart-toolbar"><strong>全部监测点位 · {{ points.length }} 个<span v-if="points.some(isVibrationPoint)"> · 振动 {{ points.filter(isVibrationPoint).length }} 项</span></strong><label><el-switch v-model="autoLive" aria-label="实时自动刷新" /><span>{{ autoLive ? '每 2 秒刷新' : '刷新已暂停' }}</span></label></header>
-                  <div v-if="telemetry.errors.latest" class="monitor-error" role="alert">实时更新失败：{{ telemetry.errors.latest }}</div>
+                  <header class="chart-toolbar"><strong>历史曲线 · {{ points.length }} 个测点</strong></header>
                   <HistoryCacheStatus />
-                  <p v-if="recentHistory.loading.value" class="point-meta" role="status">正在补齐近期历史采样…</p>
-                  <p v-if="recentHistory.failed.value" class="monitor-error" role="alert">近期历史加载失败。<button type="button" @click="recentHistory.retry()">重试历史</button></p>
-                  <ConfigurableDashboard :hide-toolbar="embedded" default-grid-class="live-point-grid" :scope="'point-device:' + selected.key" :items="pointCards.map(card => ({ id: pointKey(card.point), title: card.point.name || card.point.pointCode, card }))" :default-span="embedded ? 4 : 2" :default-height="embedded ? 500 : 330">
-                    <template #card="{ item }">                    <article class="live-point-card" :style="{ '--point-color': item.card.color }">
-                      <header><h3>{{ item.card.point.name || item.card.point.pointCode }}</h3><span :class="item.card.stale ? 'warn' : 'muted'">{{ item.card.stale ? '数据未更新' : item.card.latest ? '实时采样' : '等待采样' }}</span></header>
-                      <div class="point-value">{{ numberText(item.card.latest?.value) }} <small>{{ item.card.point.unit }}</small></div>
-                      <p class="point-meta">采集 IP：{{ selected.raw.host || '未提供' }}</p>
-                      <p class="point-meta">{{ item.card.point.channelId }} · {{ item.card.point.pointCode }}</p>
-                      <div class="point-chart" role="img" :aria-label="(item.card.point.name || item.card.point.pointCode)+'实时折线，'+item.card.count+'个已采集样本'"><EChart :option="item.card.option" /></div>
-                      <footer>{{ dateTime(item.card.latest?.collectedAt) }} · 质量 {{ item.card.latest?.quality ?? '—' }}</footer>
-                    </article></template>
-
+                  <ConfigurableDashboard :hide-toolbar="embedded" default-grid-class="history-point-grid" :scope="'point-history:' + selected.key" :items="points.map(point => ({ id: pointKey(point), title: point.name || point.pointCode, point }))" :default-span="4" :default-height="560">
+                    <template #card="{ item }"><HomePointExplorer embedded historical-only :row="{ point: item.point, member: { source: 'legacy', id: selected.id, raw: selected.raw } }" :buffers="{}" /></template>
                   </ConfigurableDashboard>
-
                 </template>
                 <TrendPage v-else-if="chartMode === 'trend'" embedded :module-id="selected.id" :point="selectedPoint" />
                 <article v-else-if="chartMode === 'history'" class="telemetry-panel history-panel"><form class="history-form" @submit.prevent="queryHistory"><label>开始时间<input v-model="historyStart" type="datetime-local" step="1" aria-label="开始时间" required /></label><label>结束时间<input v-model="historyEnd" type="datetime-local" step="1" aria-label="结束时间" required /></label><label>最多条数<input v-model.number="historyLimit" type="number" min="1" max="100000" step="1" aria-label="最多条数" required /></label><el-button native-type="submit" :icon="Search" :loading="telemetry.loadingHistory">查询历史</el-button></form>
@@ -326,8 +283,8 @@ onBeforeUnmount(() => {
             </template>
             <template v-else>
               <p v-if="!channels.length" class="empty-copy">该设备暂无声纹点位</p>
-              <ConfigurableDashboard :hide-toolbar="embedded" default-grid-class="live-point-grid" v-else-if="chartMode === 'live'" :scope="'point-device:' + selected.key" :items="channels.map(channel => ({ id: channel.channelId, title: acousticChannelDisplayName(selected.raw, channel), channel }))" :default-span="embedded ? 4 : 2" :default-height="500">
-                <template #card="{ item }"><SpectrumPage show-address :key="selected.key + item.channel.channelId" embedded compact :accent-color="pointColor(JSON.stringify([selected.id, item.channel.channelId]))" :device="selected.raw" :channel-id="item.channel.channelId" display-mode="live" /></template>
+              <ConfigurableDashboard :hide-toolbar="embedded" default-grid-class="history-point-grid" v-else-if="chartMode === 'live'" :scope="'point-history:' + selected.key" :items="channels.map(channel => ({ id: channel.channelId, title: acousticChannelDisplayName(selected.raw, channel), channel }))" :default-span="4" :default-height="500">
+                <template #card="{ item }"><HomePointExplorer embedded historical-only :row="{ point: item.channel, member: { source: 'monitor', id: selected.id, raw: selected.raw } }" :buffers="{}" /></template>
               </ConfigurableDashboard>
               <SpectrumPage show-address v-else-if="chartMode === 'spectrum'" :key="selected.key" embedded :device="selected.raw" :channel-id="selectedChannel.channelId" :display-mode="chartMode" />
               <div v-else class="capability-empty"><Database :size="32" /><h3>当前声纹点位暂无历史采样列表</h3></div>
@@ -381,6 +338,7 @@ onBeforeUnmount(() => {
 .device-profile dl { grid-template-columns: 1fr; font-size: 14px; }
 .back-link { color: var(--accent); text-decoration: none; }
 .equipment-illustration { height: 180px; display: grid; place-items: center; color: var(--accent); background: radial-gradient(ellipse, #50d8cb18, transparent 70%); margin-bottom: 22px; }
+:deep(.history-point-grid) { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,600px),1fr)); gap:14px; }
 :deep(.live-point-grid) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .live-point-card { min-width: 0; border: 1px solid var(--glass-border); border-radius: 10px; background: var(--glass-card); padding: 18px 16px 12px; }
 .live-point-card header { display: flex; align-items: start; justify-content: space-between; gap: 10px; }

@@ -18,7 +18,7 @@
 .alarm-table-scroll::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
 .alarm-data-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
 .alarm-data-table th, .alarm-data-table td { text-align: left; padding: 11px; border-bottom: 1px solid var(--glass-border); white-space: nowrap; }
-.alarm-data-table th { position: sticky; top: 0; z-index: 1; background: var(--surface); color: var(--text-muted); font-weight: 500; }
+.alarm-data-table th { position: sticky; top: 0; z-index: 1; background: linear-gradient(var(--surface), var(--surface)), var(--page-bg); color: var(--text-muted); font-weight: 500; }
 .alarm-data-table small { display: block; color: var(--text-muted); font-size: 14px; margin-top: 6px; }
 .alarm-data-table .alarm-reason { white-space: normal; min-width: 180px; max-width: 330px; overflow-wrap: anywhere; line-height: 1.6; }
 .alarm-data-table .alarm-empty { text-align: center; color: var(--text-muted); padding: 32px; }

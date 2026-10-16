@@ -7,7 +7,6 @@ import AnalysisAlarmPanel from '../components/AnalysisAlarmPanel.vue'
 import AlarmColorSettings from '../components/AlarmColorSettings.vue'
 import { useAlarmColorsStore } from '../stores/alarmColors.js'
 import { useAlarmStore } from '../stores/alarms.js'
-import { useDigitalAlarmStore } from '../stores/digitalAlarms.js'
 import '../styles/alarms.css'
 import '../styles/analysis-alarms.css'
 import { api } from '../services/api'
@@ -17,9 +16,8 @@ const route = useRoute()
 const alarmColors = useAlarmColorsStore()
 alarmColors.ensureUser()
 const collectionAlarms = useAlarmStore()
-const digitalAlarms = useDigitalAlarmStore()
 const trendColorEvents = ref([])
-const colorEvents = computed(() => [...(collectionAlarms.rows || []), ...digitalAlarms.events, ...externalAlarms.rows, ...trendColorEvents.value])
+const colorEvents = computed(() => [...(collectionAlarms.rows || []), ...externalAlarms.rows, ...trendColorEvents.value])
 
 const activePane = ref('legacy')
 const externalSnapshot = reactive({ updatedAt: null, error: '', queryLabel: '尚未获取声纹告警' })

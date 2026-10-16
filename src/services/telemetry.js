@@ -10,13 +10,20 @@ export function configureHistoryReader(createReader) {
 }
 
 async function get(path, params = {}, { signal } = {}) {
+  const history = path === '/api/telemetry/history'
+  const timeout = AbortSignal.timeout(history ? 120000 : 10000)
   const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))
-  const response = await fetch(`${BASE}${path}${query.size ? `?${query}` : ''}`, {
-    headers: { Accept: 'application/json' },
-    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000),
-  })
-  if (!response.ok) throw new Error(`采集接口请求失败（HTTP ${response.status}）`)
-  return response.json()
+  try {
+    const response = await fetch(`${BASE}${path}${query.size ? `?${query}` : ''}`, {
+      headers: { Accept: 'application/json' },
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    })
+    if (!response.ok) throw new Error(`采集接口请求失败（HTTP ${response.status}）`)
+    return await response.json()
+  } catch (error) {
+    if (history && error.name === 'TimeoutError') throw new Error('历史查询超时（120 秒），请缩短时间范围后重试', { cause: error })
+    throw error
+  }
 }
 
 async function getModulePoints(moduleId, options = {}) {

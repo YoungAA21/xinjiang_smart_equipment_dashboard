@@ -8,7 +8,7 @@ import { monitoringPointName } from '../charts/equipmentCatalog.js'
 import { acousticChannelDisplayName } from '../charts/machineGroups.js'
 import { shiftRange } from '../charts/shiftRange.js'
 
-const props = defineProps({ row: Object, buffers: Object, paused: Boolean })
+const props = defineProps({ row: Object, buffers: Object, paused: Boolean, embedded: Boolean, historicalOnly: Boolean })
 const emit = defineEmits(['close', 'live-change'])
 const acoustic = computed(() => props.row.member.source === 'monitor')
 const pointIndex = ref(0)
@@ -42,6 +42,7 @@ const dateText = value => value ? new Date(value).toLocaleString('zh-CN', { hour
 
 function invalidate() { requestVersion++; requestController?.abort(); loading.value = false }
 function showLive() {
+  if (props.historicalOnly) return
   invalidate()
   live.value = true
   error.value = ''
@@ -163,6 +164,7 @@ function clampPosition() {
   position.y = Math.max(0, Math.min(position.y, window.innerHeight - panel.value.offsetHeight))
 }
 function dragStart(event) {
+  if (props.embedded) return
   if (event.button !== 0 || event.target.closest('button,select,input')) return
   drag = { x: event.clientX - position.x, y: event.clientY - position.y }
   event.currentTarget.setPointerCapture(event.pointerId)
@@ -176,6 +178,7 @@ function dragMove(event) {
 onMounted(async () => {
   emit('live-change', false)
   query()
+  if (props.embedded) return
   previousFocus = document.activeElement
   await nextTick()
   position.x = (window.innerWidth - panel.value.offsetWidth) / 2
@@ -191,11 +194,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Teleport to=".dashboard-shell">
-    <section ref="panel" class="point-explorer" role="dialog" aria-modal="false" :aria-label="title" tabindex="-1" :style="{ left: position.x + 'px', top: position.y + 'px' }" @keydown.esc.stop="emit('close')">
+  <Teleport to=".dashboard-shell" :disabled="embedded">
+    <section ref="panel" class="point-explorer" :class="{ 'embedded-explorer': embedded }" :role="embedded ? 'region' : 'dialog'" :aria-modal="embedded ? undefined : false" :aria-label="title" tabindex="-1" :style="embedded ? undefined : { left: position.x + 'px', top: position.y + 'px' }" @keydown.esc.stop="emit('close')">
       <header class="explorer-heading" @pointerdown="dragStart" @pointermove="dragMove" @pointerup="drag = null" @pointercancel="drag = null" @lostpointercapture="drag = null">
         <h2>{{ title }}</h2>
-        <button type="button" aria-label="关闭大图" @click="emit('close')">×</button>
+        <button v-if="!embedded" type="button" aria-label="关闭大图" @click="emit('close')">×</button>
       </header>
       <form class="explorer-controls" @submit.prevent="query()">
         <select v-if="points.length > 1" v-model="pointIndex" aria-label="选择参数"><option v-for="(item, index) in points" :key="item.pointId" :value="index">{{ item.name }}</option></select>
@@ -203,7 +206,7 @@ onBeforeUnmount(() => {
         <label>开始<input v-model="start" type="datetime-local" step="1" aria-label="开始日期" required @input="queryMode = 'custom'" /></label>
         <label>结束<input v-model="end" type="datetime-local" step="1" aria-label="结束日期" required @input="queryMode = 'custom'" /></label>
         <button type="submit" :disabled="loading">{{ loading ? '查询中' : '查询' }}</button>
-        <button type="button" :class="{ active: live }" @click="showLive">实时</button>
+        <button v-if="!historicalOnly" type="button" :class="{ active: live }" @click="showLive">实时</button>
         <button type="button" @click="chartVersion++">重置视图</button>
       </form>
       <div v-if="!acoustic" class="explorer-value"><strong>{{ lastValue }}</strong><span>{{ point.unit }}</span><time>{{ dateText(last?.collectedAt) }}</time><span>{{ live ? paused ? '已暂停' : '实时' : loading ? '加载班次数据' : '历史 · ' + history.length + ' 条' }}</span></div>
@@ -220,6 +223,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .point-explorer { position:fixed; z-index:2000; width:min(1240px,94vw); height:min(780px,88vh); display:flex; flex-direction:column; min-width:0; padding:0 20px 16px; border:1px solid var(--control-border-active); border-radius:10px; background:var(--page-bg); color:var(--text-main); box-shadow:0 18px 70px #0008; outline:none; }
+.point-explorer.embedded-explorer { position:relative; z-index:auto; width:100%; height:560px; min-height:480px; box-sizing:border-box; box-shadow:none; border-color:var(--glass-border); }
+.embedded-explorer .explorer-heading { cursor:default; }
+.embedded-explorer .explorer-controls { gap:8px; padding:10px 0; }
+.embedded-explorer input { min-width:0; max-width:100%; }
+.embedded-explorer .explorer-value { flex-wrap:wrap; gap:8px; font-size:13px; }
+.embedded-explorer .explorer-chart { min-height:180px; }
 .explorer-heading { display:flex; align-items:center; justify-content:space-between; min-height:56px; cursor:move; touch-action:none; user-select:none; border-bottom:1px solid var(--glass-border); }
 h2 { margin:0; font-size:19px; font-weight:600; }
 button,input,select { color:var(--text-main); background:var(--glass-card); border:1px solid var(--glass-border); border-radius:5px; padding:8px 12px; font:inherit; }

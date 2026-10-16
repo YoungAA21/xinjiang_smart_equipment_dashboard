@@ -6,8 +6,6 @@ import { Eye, RefreshCcw, RotateCcw, Search } from 'lucide-vue-next'
 import { useAlarmStore } from '../stores/alarms.js'
 import { telemetryApi } from '../services/telemetry.js'
 import { alarmTime, alarmValue, legacyAlarmStatus } from '../charts/alarms.js'
-import { useDigitalAlarmStore } from '../stores/digitalAlarms.js'
-import { filterDigitalAlarms } from '../charts/digitalAlarms.js'
 
 const props = defineProps({ initialModuleId: { type: String, default: '' }, initialPointCode: { type: String, default: '' }, rowColor: { type: Function, default: () => 'var(--alarm-color-yellow, #f3c45c)' } })
 const alarms = useAlarmStore()
@@ -19,7 +17,6 @@ function showDetail(row) {
   detailRecord.value = row
   detailOpen.value = true
 }
-const digitalAlarms = useDigitalAlarmStore()
 const filters = reactive({ moduleId: props.initialModuleId, pointId: '', isActive: 'all', start: '', end: '', limit: 200 })
 const modules = ref([])
 const rawPoints = ref([])
@@ -28,11 +25,7 @@ const metadataError = ref('')
 const pointsLoading = ref(false)
 const page = ref(1)
 const pageSize = 20
-const mergedRows = computed(() => {
-  const pointCode = points.value.find(point => String(point.pointId) === String(filters.pointId))?.pointCode
-  const local = filterDigitalAlarms(digitalAlarms.events, { ...filters, pointCode })
-  return [...(alarms.rows || []).map(presentMonitoringPoint), ...local.map(presentMonitoringPoint)].sort((a, b) => (Date.parse(b.startedAt) || 0) - (Date.parse(a.startedAt) || 0))
-})
+const mergedRows = computed(() => (alarms.rows || []).map(presentMonitoringPoint).sort((a, b) => (Date.parse(b.startedAt) || 0) - (Date.parse(a.startedAt) || 0)))
 const pageCount = computed(() => Math.max(1, Math.ceil(mergedRows.value.length / pageSize)))
 const rows = computed(() => mergedRows.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 const controller = new AbortController()
@@ -113,14 +106,13 @@ onBeforeUnmount(() => { controller.abort(); queryController?.abort(); pointContr
     </form>
     <p class="alarm-muted">不填时间查全部时段，最多返回指定条数；模块用于选择点位，查询只发送 pointId。</p>
     <p v-if="metadataError" class="alarm-error" role="alert">模块/点位加载失败：{{ metadataError }} <el-button size="small" :icon="RefreshCcw" @click="filters.moduleId ? changeModule() : loadModules()">重试</el-button></p>
-    <p v-if="alarms.error" class="alarm-error" role="alert">{{ alarms.error }}。{{ alarms.rows ? '以下保留上次成功查询的数据。' : '服务端报警事件暂不可用。' }} 本地 DI 告警仍会显示。</p>
-    <p v-if="digitalAlarms.error || digitalAlarms.cacheError" class="alarm-error" role="alert">{{ digitalAlarms.error || digitalAlarms.cacheError }}；已缓存的 DI 告警保留。</p>
+    <p v-if="alarms.error" class="alarm-error" role="alert">{{ alarms.error }}。{{ alarms.rows ? '以下保留上次成功查询的数据。' : '服务端报警事件暂不可用。' }}</p>
     <p class="alarm-muted">上次成功查询：{{ queryLabel }} · 更新 {{ alarmTime(alarms.updatedAt) }}</p>
     <p v-if="alarms.rows && alarms.rows.length >= alarms.requested.limit" class="alarm-error">结果达到 {{ alarms.requested.limit }} 条上限，可能并非全部报警。请缩小时间范围或选择点位。</p>
     <div v-if="alarms.loading" role="status" class="alarm-muted">正在读取报警事件…</div>
     <div class="alarm-table-scroll">
       <table class="alarm-data-table"><thead><tr><th>开始时间</th><th>模块 / 点位</th><th>状态</th><th>报警值</th><th>原因</th><th>详情</th></tr></thead><tbody>
-        <tr v-for="(row, index) in rows" :key="String(row.alarmId ?? index)" :class="{ 'selected-alarm': alarms.selected === row }" :style="{ '--row-alarm-color': props.rowColor(row) }" data-colored-alarm><td>{{ alarmTime(row.startedAt) }}</td><td>{{ row.moduleId }}<small>{{ row.name || row.pointCode }}</small><small>{{ row.channelId }} / {{ row.pointCode }}</small><small v-if="row.source === 'digital-local'">{{ row.name }} · 本地 DI 告警</small></td><td>{{ legacyAlarmStatus(row.status) }}</td><td>{{ alarmValue(row.alarmValue, row.unit) }}</td><td class="alarm-reason">{{ row.reason || '—' }}</td><td><el-button text :icon="Eye" @click="showDetail(row)">查看</el-button></td></tr>
+        <tr v-for="(row, index) in rows" :key="String(row.alarmId ?? index)" :class="{ 'selected-alarm': alarms.selected === row }" :style="{ '--row-alarm-color': props.rowColor(row) }" data-colored-alarm><td>{{ alarmTime(row.startedAt) }}</td><td>{{ row.moduleId }}<small>{{ row.name || row.pointCode }}</small><small>{{ row.channelId }} / {{ row.pointCode }}</small></td><td>{{ legacyAlarmStatus(row.status) }}</td><td>{{ alarmValue(row.alarmValue, row.unit) }}</td><td class="alarm-reason">{{ row.reason || '—' }}</td><td><el-button text :icon="Eye" @click="showDetail(row)">查看</el-button></td></tr>
         <tr v-if="!rows.length"><td colspan="6" class="alarm-empty">{{ alarms.loading ? '正在加载…' : alarms.rows === null ? '报警事件暂不可用，请重试查询' : '本次查询没有匹配的报警事件' }}</td></tr>
       </tbody></table>
     </div>
