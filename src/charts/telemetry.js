@@ -36,16 +36,36 @@ export function seriesData(samples = [], gapMs = Infinity) {
   return data
 }
 
-export function telemetryLine(samples, point, { history = false, color = history ? '#68afff' : '#50d8cb' } = {}) {
+export function telemetryLimits(point) {
+  return [
+    { name: '下限', value: numericValue(point?.minimumValue), color: '#9471de', position: 'insideStartTop' },
+    { name: '上限', value: numericValue(point?.maximumValue), color: '#d88b2b', position: 'insideEndTop' },
+  ].filter(limit => limit.value !== null)
+}
+
+export function telemetryLine(samples, point, { history = false, color = history ? '#68afff' : '#50d8cb', showLimits = false } = {}) {
   const data = seriesData(samples, history ? Infinity : 15000)
+  const limits = showLimits ? telemetryLimits(point) : []
+  const limitExtent = limits.length ? {
+    min: ({ min }) => Math.min(...limits.map(limit => limit.value), Number.isFinite(min) ? min : Infinity),
+    max: ({ max }) => Math.max(...limits.map(limit => limit.value), Number.isFinite(max) ? max : -Infinity),
+  } : {}
+  const markLine = {
+    silent: true, symbol: ['none', 'none'], animation: false,
+    data: limits.map(limit => ({ name: limit.name, yAxis: limit.value,
+      lineStyle: { color: limit.color, type: 'dashed', width: 2 },
+      label: { show: true, position: limit.position, color: limit.color, fontSize: 13,
+        formatter: `${limit.name} ${limit.value}${point?.unit ? ' ' + point.unit : ''}` },
+    })),
+  }
   return {
     animation: false,
     tooltip: { trigger: 'axis', renderMode: 'richText', confine: true, backgroundColor: '#111312', borderColor: '#46907C', textStyle: { color: '#FFFFFF' }, valueFormatter: (value) => typeof value === 'number' ? `${value.toFixed(3)} ${point?.unit || ''}` : '无效值' },
     grid: { left: 65, right: 28, top: 40, bottom: 65 },
     xAxis: { type: 'time', axisLabel: { color: '#C3E2D9', fontSize: 14, hideOverlap: true }, axisLine: { lineStyle: { color: '#46907C' } }, splitLine: { show: false } },
-    yAxis: { type: 'value', scale: true, name: point?.unit || '', nameTextStyle: { color: '#C3E2D9' }, axisLabel: { color: '#C3E2D9', fontSize: 14 }, splitLine: { lineStyle: { color: 'rgba(195,226,217,.12)', type: 'dashed' } } },
+    yAxis: { type: 'value', scale: true, ...limitExtent, name: point?.unit || '', nameTextStyle: { color: '#C3E2D9' }, axisLabel: { color: '#C3E2D9', fontSize: 14 }, splitLine: { lineStyle: { color: 'rgba(195,226,217,.12)', type: 'dashed' } } },
     dataZoom: [{ type: 'inside', filterMode: 'none' }, { type: 'slider', bottom: 8, height: 20, borderColor: 'rgba(195,226,217,.12)', textStyle: { color: '#C3E2D9' } }],
     graphic: data.length ? [] : [{ type: 'text', left: 'center', top: 'middle', style: { text: history ? '请选择时间范围并查询历史数据' : '等待该点位的真实采样', fill: '#C3E2D9', fontSize: 15 } }],
-    series: [{ id: history ? 'history' : 'live', name: point?.name || point?.pointCode || '采样值', type: 'line', smooth: false, connectNulls: false, showSymbol: data.length < 20, symbolSize: 5, sampling: 'lttb', lineStyle: { color, width: 2 }, itemStyle: { color }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${color}30` }, { offset: 1, color: `${color}00` }] } }, data }],
+    series: [{ id: history ? 'history' : 'live', name: point?.name || point?.pointCode || '采样值', type: 'line', smooth: false, connectNulls: false, showSymbol: data.length < 20, symbolSize: 5, sampling: 'lttb', lineStyle: { color, width: 2 }, itemStyle: { color }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${color}30` }, { offset: 1, color: `${color}00` }] } }, ...(showLimits ? { markLine } : {}), data }],
   }
 }

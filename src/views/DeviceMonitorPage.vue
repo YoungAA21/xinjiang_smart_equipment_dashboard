@@ -13,7 +13,7 @@ import { auth } from '../services/auth.js'
 import { createSoundPreview } from '../services/soundPreview.js'
 import { acousticChannelDisplayName, presentAcousticChannels } from '../charts/machineGroups.js'
 import { configuredMonitoringPoints, discoveredMonitoringModules, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
-import { monitoringLocations, monitoringLocationOf, locationPoint } from '../charts/monitoringLocations.js'
+import { monitoringLocations, monitoringLocationOf, locationPoint, pointLayoutLocations } from '../charts/monitoringLocations.js'
 import { pointKey } from '../charts/telemetry.js'
 import { requestedPointRow } from '../charts/homePointNavigation.js'
 import { useRecentHistory } from '../composables/useRecentHistory.js'
@@ -32,8 +32,8 @@ const headerControlsExpanded = inject('homeControlsExpanded', ref(false))
 const now = ref(Date.now())
 const controller = new AbortController()
 let sampleTimer, configTimer
-const locationOptions = computed(() => monitoringLocations)
-const selected = computed(() => locationOptions.value.find(item => item.id === route.query.location) || monitoringLocations[0])
+const locationOptions = computed(() => pointLayoutLocations(monitoringLocations))
+const selected = computed(() => locationOptions.value.find(item => item.id === route.query.location) || locationOptions.value[0])
 const selectedKey = ref('')
 const colors = { VibrationRms: '#508cef', VibrationUnbalance: '#508cef', Temperature: '#d99b3b', NegativePressure: '#18a99a', Speed: '#39a9ff', Current: '#a8cf71' }
 const sources = computed(() => [
