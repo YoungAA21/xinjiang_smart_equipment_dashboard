@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { layoutStorageKey, normalizeLayout, reconcileLayout, updateLayout, moveLayout } from '../charts/dashboardLayout.js'
 
-const props = defineProps({ scope: { type: String, required: true }, items: { type: Array, required: true }, uniform: Boolean, defaultGridClass: String, defaultSpan: { type: Number, default: 1 }, defaultHeight: { type: Number, default: 260 } })
+const props = defineProps({ scope: { type: String, required: true }, items: { type: Array, required: true }, uniform: Boolean, hideToolbar: Boolean, defaultGridClass: String, defaultSpan: { type: Number, default: 1 }, defaultHeight: { type: Number, default: 260 } })
 const saved = ref(null)
 const editing = ref(false)
 const storageError = ref('')
@@ -94,7 +94,7 @@ onBeforeUnmount(() => cleanupGesture?.())
 
 <template>
   <section class="configurable-dashboard">
-    <slot name="toolbar" :editing="editing" :toggle-editing="toggleEditing" :reset="reset">
+    <slot v-if="!hideToolbar" name="toolbar" :editing="editing" :toggle-editing="toggleEditing" :reset="reset">
     <div class="layout-toolbar">
       <button type="button" :aria-pressed="editing" @click="toggleEditing">{{ editing ? '完成布局' : '编辑布局' }}</button>
       <button v-if="editing" type="button" @click="reset">恢复默认布局</button>

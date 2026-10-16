@@ -6,6 +6,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useDashboardStore } from './stores/dashboard'
 import { auth } from './services/auth'
 import { useDigitalAlarmStore } from './stores/digitalAlarms.js'
+import { historyWarmup } from './services/historyWarmup.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,10 +30,11 @@ const activePath = computed(() => route.path)
 const pageTitle = computed(() => route.meta.title || '设备监控')
 const isLoginPage = computed(() => route.name === 'login')
 watch(isLoginPage, login => {
-  if (login || !auth.isAuthenticated()) digitalAlarms.stop()
+  if (login || !auth.isAuthenticated()) { digitalAlarms.stop(); historyWarmup.stop() }
   else {
     const user = auth.getUser()
     digitalAlarms.start(user?.id || user?.username || user?.name || 'default')
+    historyWarmup.start(user?.id || user?.username || user?.name || 'default')
   }
 }, { immediate: true })
 const currentUser = computed(() => auth.getUser()?.username || auth.getUser()?.name || 'admin')
@@ -44,6 +46,7 @@ const isMenuActive = (item) => {
 }
 
 const logout = () => {
+  historyWarmup.stop()
   auth.clearSession()
   dashboard.stopRealtimePolling()
   router.replace('/login')
@@ -82,6 +85,7 @@ watch(sidebarCollapsed, (value) => {
 
 onBeforeUnmount(() => {
   digitalAlarms.stop()
+  historyWarmup.stop()
   document.removeEventListener('fullscreenchange', syncFullscreen)
   dashboard.stopRealtimePolling()
 })

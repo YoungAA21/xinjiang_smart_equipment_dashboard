@@ -81,7 +81,8 @@ body {
   background: #111312;
 }
 .dashboard-shell.sidebar-collapsed {
-  grid-template-columns: 68px 1fr;
+  --dashboard-sidebar-width: 68px;
+  grid-template-columns: var(--dashboard-sidebar-width) 1fr;
 }
 button, select, input, textarea { font: inherit; }
 button { cursor: pointer; }
@@ -388,8 +389,9 @@ button { cursor: pointer; }
 }
 
 .dashboard-shell {
+  --dashboard-sidebar-width: 260px;
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: var(--dashboard-sidebar-width) 1fr;
   width: 100vw;
   height: 100vh;
   overflow: hidden;

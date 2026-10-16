@@ -11,6 +11,8 @@ import * as locations from '../src/charts/monitoringLocations.js'
 import * as configuration from '../src/stores/pointConfiguration.js'
 import { parameterKey } from '../src/charts/pointConfiguration.js'
 import * as charts from '../src/charts/telemetry.js'
+import * as homeNavigation from '../src/charts/homePointNavigation.js'
+import * as recentHistory from '../src/composables/useRecentHistory.js'
 
 test('point monitoring caches metadata and freely arranges cards across secondary targets', async () => {
   const original = configuration.configurationSnapshot()
@@ -19,6 +21,7 @@ test('point monitoring caches metadata and freely arranges cards across secondar
   const telemetry = vue.reactive({ modules: null, errors: {}, buffers: {}, latest: [],
     async refreshModules() { this.modules = ['PRESS01','PRESS03','VSE04'].map(moduleId => ({ moduleId, host: moduleId === 'PRESS01' ? '192.168.3.104' : '192.168.3.103', runtimeStatus: { isOnline: true } })) },
     async refreshLatest() {}, clear() {},
+    async seedRecentPoints(point) { this.buffers[charts.pointKey(point)] = [1, 2].map(value => ({ ...point, value, collectedAt: new Date(2026, 9, 16, 10, 0, value).toISOString() })) },
   })
   const monitor = vue.reactive({ devices: null, error: '', async refresh() { this.devices = [{ deviceId: 'sound', deviceName: '声音', online: true, collectors: [{ collectorId: 'gateway', ip: '192.168.3.53' }], channels: [{ channelId: 'ch1', collectorId: 'gateway', online: true }] }] }, clear() {} })
   const transport = { async getModulePoints(id, options) {
@@ -39,6 +42,8 @@ test('point monitoring caches metadata and freely arranges cards across secondar
     '../charts/monitoringLocations.js': locations, '../stores/pointConfiguration.js': configuration,
     '../charts/machineGroups.js': groups, '../charts/pointAddress.js': addresses,
     '../charts/equipmentCatalog.js': catalog, '../charts/telemetry.js': charts,
+    '../charts/homePointNavigation.js': homeNavigation,
+    '../composables/useRecentHistory.js': recentHistory,
   }
   const source = await readFile(new URL('../src/views/DeviceMonitorPage.vue', import.meta.url), 'utf8')
   const compiled = compileScript(parse(source).descriptor, { id: 'machine-monitor-test' })
@@ -84,6 +89,8 @@ test('point monitoring caches metadata and freely arranges cards across secondar
     assert.equal(state.layoutItems.length, 2)
     assert.deepEqual(new Set(state.layoutItems.map(item => item.title)), new Set(['自定义压力', '另一压力']))
     const pressureRow = state.rows.find(row => row.member.id === 'PRESS03')
+    for (let i = 0; i < 10; i++) await vue.nextTick()
+    assert.equal(state.telemetry.buffers[charts.pointKey(pressureRow.point)].length, 2)
     assert.equal(pressureRow.point.unit, 'Pa')
     assert.equal(state.rowName(pressureRow), '自定义压力')
     assert.match(source, /<ConfigurableDashboard uniform/)
@@ -91,6 +98,23 @@ test('point monitoring caches metadata and freely arranges cards across secondar
     state.openPoint(pressureRow)
     assert.equal(state.selectedRow.point.pointId, 1)
     assert.equal(state.selectedRow.member.id, 'PRESS03')
+    state.selectedKey = ''
+    // A home deep link can arrive before its parameter metadata is present.
+    route.query = { location: 'max', source: 'legacy', device: 'PRESS03', pointId: '99', openPoint: '1' }
+    await vue.nextTick()
+    assert.equal(state.selectedRow, null)
+    state.pointMap.PRESS03.push({ ...point, pointId: 99, pointCode: 'late-pressure', channelId: 'late' })
+    const lateConfig = configuration.configurationSnapshot()
+    lateConfig.parameters[parameterKey(state.pointMap.PRESS03.at(-1))] = { displayName: '迟到的报警参数', unit: 'Pa', locationId: 'max', targetId: 'test-bearing' }
+    configuration.savePointConfiguration(lateConfig, { setItem() {} })
+    await vue.nextTick()
+    assert.equal(state.selectedRow.point.pointId, 99)
+    assert.equal(state.selectedRow.member.id, 'PRESS03')
+    assert.equal(route.query.openPoint, undefined)
+    state.selectedKey = ''
+    state.pointMap.PRESS03 = [...state.pointMap.PRESS03]
+    await vue.nextTick()
+    assert.equal(state.selectedRow, null, 'metadata refresh must not reopen a drawer after closing')
     state.selectLocation('unconfigured')
     await vue.nextTick()
     assert.equal(state.selectedRow, null)

@@ -8,6 +8,7 @@ import * as charts from '../src/charts/telemetry.js'
 import * as equipmentCatalog from '../src/charts/equipmentCatalog.js'
 import * as machineGroups from '../src/charts/machineGroups.js'
 import * as monitoringLocationCatalog from '../src/charts/monitoringLocations.js'
+import * as recentHistory from '../src/composables/useRecentHistory.js'
 
 const source = await readFile(new URL('../src/views/DeviceDetailPage.vue', import.meta.url), 'utf8')
 const { descriptor } = parse(source)
@@ -25,6 +26,9 @@ async function mountMonitor(query = { source: 'legacy', device: 'PRESS02' }) {
     async refreshModules() { this.modules = [record, { ...record, moduleId: 'PRESS03', moduleName: '新设备' }] },
     async loadPoints(moduleId) { this.pointModuleId = moduleId; this.points = points },
     async refreshLatest() {},
+    async seedRecentPoints(point) {
+      this.buffers[charts.pointKey(point)] = [1, 2].map(value => ({ ...point, value, collectedAt: new Date(now - (3 - value) * 2000).toISOString() }))
+    },
     clearHistory() { this.history = null },
     async loadHistory(query, options) { calls.push({ query, signal: options.signal }); this.history = { requested: query, points: [] } },
     clear() {},
@@ -40,6 +44,7 @@ async function mountMonitor(query = { source: 'legacy', device: 'PRESS02' }) {
     '../charts/equipmentCatalog.js': equipmentCatalog,
     '../charts/machineGroups.js': machineGroups,
     '../charts/monitoringLocations.js': monitoringLocationCatalog,
+    '../composables/useRecentHistory.js': recentHistory,
   }
   const moduleCode = new vm.SourceTextModule(compiled.content, { context })
   await moduleCode.link((specifier) => {
@@ -76,6 +81,14 @@ test('history entry and point changes automatically query the preceding ten minu
   assert.equal(calls.length, 2)
   assert.equal(calls[1].query.pointId, 38)
   assert.equal(calls[0].signal.aborted, true)
+})
+
+test('opening point details immediately seeds real recent history for every visible point', async (t) => {
+  const { app, state } = await mountMonitor()
+  t.after(() => app.unmount())
+  assert.equal(state.pointCards.length, 2)
+  assert.ok(state.pointCards.every(card => card.count === 2))
+  assert.deepEqual(Array.from(state.pointCards[0].option.series[0].data, row => row[1]), [1, 2])
 })
 
 test('reentering history uses current time while manual queries preserve the chosen range', async (t) => {

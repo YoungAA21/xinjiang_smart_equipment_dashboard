@@ -15,6 +15,8 @@ import { localInputTime, numericValue, pointKey, telemetryLine } from '../charts
 import { isVibrationPoint, configuredMonitoringPoints, discoveredMonitoringModules, moduleDisplayName, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 import { acousticChannelDisplayName, presentAcousticChannels } from '../charts/machineGroups.js'
 import { monitoringLocations } from '../charts/monitoringLocations.js'
+import { useRecentHistory } from '../composables/useRecentHistory.js'
+import HistoryCacheStatus from '../components/HistoryCacheStatus.vue'
 
 const props = defineProps({ embedded: Boolean, detailContext: Object })
 const emit = defineEmits(['close'])
@@ -99,8 +101,14 @@ watch([chartMode, detailTabs], () => {
   if (!detailTabs.value.some(tab => tab.id === chartMode.value)) chartMode.value = 'live'
 }, { immediate: true })
 const points = computed(() => isLegacy.value && telemetry.pointModuleId === selected.value.id
-  ? configuredMonitoringPoints(telemetry.points, telemetry.latest, selected.value.id).filter(point => !props.embedded || !route.query.pointId || point.pointId === Number(route.query.pointId)).map(point => ({ ...point, name: monitoringPointName(point) })) : [])
+  ? configuredMonitoringPoints(telemetry.points, telemetry.latest, selected.value.id).filter(point => {
+    if (!props.embedded) return true
+    if (route.query.pointId != null && route.query.pointId !== '') return String(point.pointId) === String(route.query.pointId)
+    if (route.query.channelId && route.query.pointCode) return String(point.channelId) === String(route.query.channelId) && point.pointCode === route.query.pointCode
+    return true
+  }).map(point => ({ ...point, name: monitoringPointName(point) })) : [])
 const selectedPoint = computed(() => points.value.find((point) => point.pointId === selectedPointId.value) || points.value[0] || null)
+const recentHistory = useRecentHistory(points, telemetry, pageController.signal)
 const pointPalette = ['#39a9ff', '#ff9800', '#00c875']
 const pointColors = new Map()
 function pointColor(key) {
@@ -260,15 +268,14 @@ onBeforeUnmount(() => {
 
       </section>
       <aside v-if="showingDetail && selected" class="device-profile device-info-card">
-        <button v-if="embedded" type="button" class="back-link profile-back" @click="emit('close')">‹ 返回点位监测</button>
-        <RouterLink v-else class="back-link" :to="{ path: '/device', query: route.query.machine ? { machine: route.query.machine } : {} }">‹ {{ route.query.machine ? '返回整机监测' : '返回设备列表' }}</RouterLink>
+        <RouterLink v-if="!embedded" class="back-link" :to="{ path: '/device', query: route.query.machine ? { machine: route.query.machine } : {} }">‹ {{ route.query.machine ? '返回整机监测' : '返回设备列表' }}</RouterLink>
         <h2>{{ profileName }}</h2><EquipmentVisual class="profile-equipment-visual" :name="profileName" :image-src="profileImage" :source="selected.source" :device-id="selected.id" :online="(isLegacy ? telemetry.errors.modules : monitorError) ? undefined : selected.online" :paused="!autoLive" />
         <dl><div><dt>设备编号</dt><dd>{{ selected.id }}</dd></div><div><dt>设备来源</dt><dd>{{ isLegacy ? '采集模块' : '声纹设备' }}</dd></div><div><dt>设备状态</dt><dd :class="tone(selected.online)">{{ status(selected.online) }}</dd></div><div><dt>监测点位</dt><dd>{{ isLegacy ? points.length : channels.length }} 个</dd></div><div v-if="isLegacy"><dt>通讯协议</dt><dd>{{ selected.raw.protocol || '—' }}</dd></div></dl>
       </aside>
       <main v-if="showingDetail" class="device-detail">
         <div v-if="!selected" class="device-empty"><Server :size="38" /><p>正在加载设备，或该设备已不可用</p><RouterLink to="/device">返回设备列表</RouterLink></div>
         <template v-else>
-          <header class="selection-summary"><div><h2>{{ profileName }} <span :class="tone(selected.online)">{{ status(selected.online) }}</span></h2><p>{{ selected.id }} · {{ isLegacy ? selected.raw.protocol || '采集模块' : '声纹设备' }}</p></div><span class="source-tag">{{ isLegacy ? '采集模块' : '声纹设备' }}</span></header>
+          <header v-if="!embedded" class="selection-summary"><div><h2>{{ profileName }} <span :class="tone(selected.online)">{{ status(selected.online) }}</span></h2><p>{{ selected.id }} · {{ isLegacy ? selected.raw.protocol || '采集模块' : '声纹设备' }}</p></div><span class="source-tag">{{ isLegacy ? '采集模块' : '声纹设备' }}</span></header>
           <div class="device-detail-tabs" role="tablist" aria-label="设备数据视图"><button v-for="tab in detailTabs" :id="'device-tab-'+tab.id" :key="tab.id" role="tab" :aria-selected="chartMode === tab.id" :aria-controls="'device-panel-'+tab.id" :class="{active: chartMode === tab.id}" @click="chartMode = tab.id">{{ tab.label }}</button></div>
           <div v-if="!embedded && chartMode !== 'info' && chartMode !== 'live'" class="point-tabs" aria-label="分析点位">
             <template v-if="isLegacy"><button v-for="point in points" :key="point.pointId" :class="{active: selectedPoint?.pointId === point.pointId}" :aria-pressed="selectedPoint?.pointId === point.pointId" @click="selectedPointId = point.pointId">{{ point.name || point.pointCode }}</button></template>
@@ -289,7 +296,10 @@ onBeforeUnmount(() => {
                 <template v-if="chartMode === 'live'">
                   <header class="chart-toolbar"><strong>全部监测点位 · {{ points.length }} 个<span v-if="points.some(isVibrationPoint)"> · 振动 {{ points.filter(isVibrationPoint).length }} 项</span></strong><label><el-switch v-model="autoLive" aria-label="实时自动刷新" /><span>{{ autoLive ? '每 2 秒刷新' : '刷新已暂停' }}</span></label></header>
                   <div v-if="telemetry.errors.latest" class="monitor-error" role="alert">实时更新失败：{{ telemetry.errors.latest }}</div>
-                  <ConfigurableDashboard default-grid-class="live-point-grid" :scope="'point-device:' + selected.key" :items="pointCards.map(card => ({ id: pointKey(card.point), title: card.point.name || card.point.pointCode, card }))" :default-span="embedded ? 4 : 2" :default-height="embedded ? 500 : 330">
+                  <HistoryCacheStatus />
+                  <p v-if="recentHistory.loading.value" class="point-meta" role="status">正在补齐近期历史采样…</p>
+                  <p v-if="recentHistory.failed.value" class="monitor-error" role="alert">近期历史加载失败。<button type="button" @click="recentHistory.retry()">重试历史</button></p>
+                  <ConfigurableDashboard :hide-toolbar="embedded" default-grid-class="live-point-grid" :scope="'point-device:' + selected.key" :items="pointCards.map(card => ({ id: pointKey(card.point), title: card.point.name || card.point.pointCode, card }))" :default-span="embedded ? 4 : 2" :default-height="embedded ? 500 : 330">
                     <template #card="{ item }">                    <article class="live-point-card" :style="{ '--point-color': item.card.color }">
                       <header><h3>{{ item.card.point.name || item.card.point.pointCode }}</h3><span :class="item.card.stale ? 'warn' : 'muted'">{{ item.card.stale ? '数据未更新' : item.card.latest ? '实时采样' : '等待采样' }}</span></header>
                       <div class="point-value">{{ numberText(item.card.latest?.value) }} <small>{{ item.card.point.unit }}</small></div>
@@ -316,7 +326,7 @@ onBeforeUnmount(() => {
             </template>
             <template v-else>
               <p v-if="!channels.length" class="empty-copy">该设备暂无声纹点位</p>
-              <ConfigurableDashboard default-grid-class="live-point-grid" v-else-if="chartMode === 'live'" :scope="'point-device:' + selected.key" :items="channels.map(channel => ({ id: channel.channelId, title: acousticChannelDisplayName(selected.raw, channel), channel }))" :default-span="embedded ? 4 : 2" :default-height="500">
+              <ConfigurableDashboard :hide-toolbar="embedded" default-grid-class="live-point-grid" v-else-if="chartMode === 'live'" :scope="'point-device:' + selected.key" :items="channels.map(channel => ({ id: channel.channelId, title: acousticChannelDisplayName(selected.raw, channel), channel }))" :default-span="embedded ? 4 : 2" :default-height="500">
                 <template #card="{ item }"><SpectrumPage show-address :key="selected.key + item.channel.channelId" embedded compact :accent-color="pointColor(JSON.stringify([selected.id, item.channel.channelId]))" :device="selected.raw" :channel-id="item.channel.channelId" display-mode="live" /></template>
               </ConfigurableDashboard>
               <SpectrumPage show-address v-else-if="chartMode === 'spectrum'" :key="selected.key" embedded :device="selected.raw" :channel-id="selectedChannel.channelId" :display-mode="chartMode" />

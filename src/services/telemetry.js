@@ -2,6 +2,12 @@ import { resolveProxiedServiceBase } from './endpoints.js'
 
 // This migration is scoped to monitoring and history. It never uses the 18080 token.
 const BASE = resolveProxiedServiceBase(import.meta.env?.VITE_API_BASE_URL, '/_telemetry-api')
+let historyReader
+
+// Installed by the application lifecycle; the transport stays usable on its own.
+export function configureHistoryReader(createReader) {
+  historyReader = createReader?.((query, options) => get('/api/telemetry/history', query, options))
+}
 
 async function get(path, params = {}, { signal } = {}) {
   const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))
@@ -57,5 +63,8 @@ export const telemetryApi = {
   getModules: (options) => get('/api/configuration/modules', {}, options),
   getModulePoints,
   getLatest: (options) => get('/api/realtime/latest', {}, options),
-  getHistory: (query, options) => get('/api/telemetry/history', validateHistoryQuery(query), options),
+  getHistory: (query, options) => {
+    const validated = validateHistoryQuery(query)
+    return historyReader ? historyReader(validated, options) : get('/api/telemetry/history', validated, options)
+  },
 }

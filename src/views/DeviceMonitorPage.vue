@@ -15,6 +15,9 @@ import { acousticChannelDisplayName, presentAcousticChannels } from '../charts/m
 import { configuredMonitoringPoints, discoveredMonitoringModules, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 import { monitoringLocations, monitoringLocationOf, locationPoint } from '../charts/monitoringLocations.js'
 import { pointKey } from '../charts/telemetry.js'
+import { requestedPointRow } from '../charts/homePointNavigation.js'
+import { useRecentHistory } from '../composables/useRecentHistory.js'
+import HistoryCacheStatus from '../components/HistoryCacheStatus.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -44,6 +47,7 @@ const rows = computed(() => sources.value.flatMap(member => member.points
     member, point: member.source === 'legacy' ? locationPoint(point) : point, color: colors[point.metricType] || '#8089e9',
   }))))
 const layoutItems = computed(() => rows.value.map(row => ({ id: row.key, title: rowName(row), row })))
+const recentHistory = useRecentHistory(computed(() => rows.value.filter(row => row.member.source === 'legacy').map(row => row.point)), telemetry, controller.signal)
 const acousticRows = computed(() => rows.value.filter(row => row.member.source === 'monitor'))
 const selectedErrors = computed(() => selected.value.modules.filter(id => pointErrors.value[id]).map(id => `${id}：${pointErrors.value[id]}`))
 const selectedRow = computed(() => {
@@ -55,6 +59,14 @@ function selectLocation(id) {
 }
 watch(() => selected.value.id, () => { selectedKey.value = '' })
 function openPoint(row) { selectedKey.value = row.key }
+watch([rows, () => route.query], () => {
+  const row = requestedPointRow(rows.value, route.query)
+  if (!row) return
+  selectedKey.value = row.key
+  // Consume the request once so metadata refreshes do not reopen a closed drawer.
+  const { openPoint: _openPoint, ...query } = route.query
+  router.replace({ path: '/device', query })
+}, { immediate: true })
 const rowName = row => row.member.source === 'monitor' ? acousticChannelDisplayName(row.member.raw, row.point) : monitoringPointName(row.point)
 function navigateLocation(event, index) {
   const key = event.key
@@ -165,6 +177,9 @@ onBeforeUnmount(() => {
       </div>
     </header>
     <p v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="monitor-warning" role="alert">{{ [telemetry.errors.modules, telemetry.errors.latest, monitor.error].filter(Boolean).join('；') }}</p>
+    <HistoryCacheStatus />
+    <p v-if="recentHistory.loading.value" class="pending-note" role="status">正在补齐近期历史采样…</p>
+    <p v-if="recentHistory.failed.value" class="monitor-warning" role="alert">部分测点近期历史加载失败。<button type="button" @click="recentHistory.retry()">重试历史</button></p>
     <p v-for="message in selectedErrors" :key="message" class="monitor-warning" role="alert">{{ message }}</p>
     <div :id="'location-panel-'+selected.id" :key="selected.id" role="tabpanel" :aria-labelledby="'location-tab-'+selected.id" class="location-content">
       <ConfigurableDashboard uniform :scope="'point-location:' + selected.id" :items="layoutItems" :default-span="2" :default-height="320">
