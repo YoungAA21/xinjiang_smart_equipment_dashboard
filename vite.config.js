@@ -7,6 +7,11 @@ export default defineConfig(({ mode }) => {
   const api5158Target = env.VITE_DEV_API_BASE_URL || env.VITE_API_BASE_URL || 'http://66.66.66.4:5158'
   const api18080Target = env.VITE_DEV_NEW_API_BASE_URL || env.VITE_NEW_API_BASE_URL || 'http://66.66.66.4:18080'
   const proxy = {
+    '^/_runtime-api/api/runtime-info/latest$': {
+      target: api5158Target,
+      changeOrigin: true,
+      rewrite: (path) => path.replace(/^\/_runtime-api/, ''),
+    },
     '^/(?:api|auth|monitor|alarm|collectorManagement|recordings)(?:/|$)': {
       target: api18080Target,
       changeOrigin: true,

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { layoutStorageKey, normalizeLayout, reconcileLayout, updateLayout, moveLayout } from '../charts/dashboardLayout.js'
+import { layoutStorageKey, readStoredLayout, reconcileLayout, updateLayout, moveLayout } from '../charts/dashboardLayout.js'
 
 const props = defineProps({ scope: { type: String, required: true }, items: { type: Array, required: true }, uniform: Boolean, hideToolbar: Boolean, defaultGridClass: String, defaultSpan: { type: Number, default: 1 }, defaultHeight: { type: Number, default: 260 } })
 const saved = ref(null)
@@ -18,7 +18,7 @@ watch(() => props.scope, () => {
   cleanupGesture?.()
   editing.value = false
   storageError.value = ''
-  try { saved.value = normalizeLayout(JSON.parse(localStorage.getItem(layoutStorageKey(props.scope)) || 'null')) }
+  try { saved.value = readStoredLayout(localStorage, props.scope) }
   catch { saved.value = null; storageError.value = '无法读取布局配置，本次修改仍可在页面使用。' }
 }, { immediate: true })
 

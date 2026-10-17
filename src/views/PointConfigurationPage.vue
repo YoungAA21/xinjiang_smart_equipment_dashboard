@@ -24,7 +24,7 @@ const notice = ref('')
 const saveError = ref('')
 const importInput = ref(null)
 const editor = reactive({ displayName: '', unit: '', locationId: '', targetId: '' })
-const newLocation = reactive({ name: '', machine: 'ZJ117' })
+const newLocation = reactive({ name: '', machine: 'ZJ17' })
 const newTarget = reactive({ name: '', locationId: '' })
 const locationEdit = reactive({ id: '', name: '', machine: '' })
 const deletion = reactive({ id: '', replacementId: '' })
@@ -54,7 +54,7 @@ const visible = computed(() => filtered.value.slice((page.value - 1) * 15, page.
 const unconfigured = computed(() => rows.value.filter(row => !row.config).length)
 const selected = computed(() => rows.value.find(row => row.key === selectedKey.value))
 const targets = computed(() => pointConfiguration.targets.filter(target => target.locationId === editor.locationId))
-const machineOptions = computed(() => [...new Set(['ZJ117', 'ZB25', 'YB55', 'YB65', 'YB95', ...pointConfiguration.locations.map(location => location.machine)])].filter(machine => !machine.includes('/')))
+const machineOptions = computed(() => [...new Set(['ZJ17', 'ZB25', 'YB55', 'YB65', 'YB95', ...pointConfiguration.locations.map(location => location.machine)])].filter(machine => !machine.includes('/')))
 const backendName = row => row.point.name || row.point.channelName || row.point.pointCode || row.point.channelId || '后端未提供名称'
 const locationName = id => pointConfiguration.locations.find(location => location.id === id)?.name || '未配置'
 const targetName = id => pointConfiguration.targets.find(target => target.id === id)?.name || '未配置'

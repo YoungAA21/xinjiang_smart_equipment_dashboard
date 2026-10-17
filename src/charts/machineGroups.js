@@ -2,12 +2,12 @@ import { configuredParameter, pointConfiguration, presentPoint } from '../stores
 import { monitoringLocationOf } from './monitoringLocations.js'
 
 export const machines = [
-  { id: 'ZJ117', name: 'ZJ117 卷接机', modules: ['VSE03', 'TEMP02', 'PRESS02'] },
+  { id: 'ZJ17', name: 'ZJ17 卷接机', modules: ['VSE03', 'TEMP02', 'PRESS02'] },
   { id: 'ZB25', name: 'ZB25 小盒包装机', modules: ['VSE04', 'VSE05', 'TEMP03', 'SC01', 'PRESS01'] },
   { id: 'YB55', name: 'YB55 硬条包装机', modules: ['VSE08', 'TEMP01', 'SC02', 'PRESS03'] },
 ]
 export const acousticHosts = {
-  '192.168.3.51': 'ZJ117', '192.168.3.52': 'ZJ117',
+  '192.168.3.51': 'ZJ17', '192.168.3.52': 'ZJ17',
   '192.168.3.53': 'ZB25', '192.168.3.54': 'ZB25', '192.168.3.55': 'YB55',
 }
 const acousticChannelNames = {

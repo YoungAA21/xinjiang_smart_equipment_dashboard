@@ -1,8 +1,8 @@
 // Display configuration never changes acquisition IDs, samples or engineering values.
 export const defaultLocations = [
-  { id: 've', name: 'VE 风机', machine: 'ZJ117', modules: ['VSE03', 'TEMP02'] },
-  { id: 'max', name: 'MAX 风机', machine: 'ZJ117', modules: ['VSE03', 'TEMP02'] },
-  { id: 'spider-pressure', name: '蜘蛛手负压', machine: 'ZJ117', modules: ['PRESS02'] },
+  { id: 've', name: 'VE 风机', machine: 'ZJ17', modules: ['VSE03', 'TEMP02'] },
+  { id: 'max', name: 'MAX 风机', machine: 'ZJ17', modules: ['VSE03', 'TEMP02'] },
+  { id: 'spider-pressure', name: '蜘蛛手负压', machine: 'ZJ17', modules: ['PRESS02'] },
   { id: 'main-motor', name: '主电机', machine: 'ZB25', modules: ['VSE04', 'VSE05', 'TEMP03', 'SC01'] },
   { id: 'cutter', name: '铝纸切刀', machine: 'ZB25', modules: ['VSE04'] },
   { id: 'seal', name: '封签', machine: 'ZB25', modules: ['VSE05'] },
@@ -81,7 +81,10 @@ export function validateConfiguration(value) {
     if (!parameter || typeof parameter.displayName !== 'string' || !parameter.displayName.trim() || typeof parameter.unit !== 'string') throw new Error('每个参数必须配置前端名称和单位（无单位可留空）')
     if (!locations.has(parameter.locationId) || !value.targets.some(target => target.id === parameter.targetId && target.locationId === parameter.locationId)) throw new Error('参数必须选择对应的大点位和被测点位')
   }
-  return JSON.parse(JSON.stringify(value))
+  const normalized = JSON.parse(JSON.stringify(value))
+  // Migrate previously saved/imported machine assignments to the corrected model ID.
+  for (const location of normalized.locations) if (location.machine === 'ZJ117') location.machine = 'ZJ17'
+  return normalized
 }
 
 export function mergeDiscoveredPoints(points, latest, moduleId) {

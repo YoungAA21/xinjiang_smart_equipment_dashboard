@@ -8,6 +8,59 @@ import * as telemetry from '../src/charts/telemetry.js'
 import * as catalog from '../src/charts/equipmentCatalog.js'
 import * as machines from '../src/charts/machineGroups.js'
 import * as shifts from '../src/charts/shiftRange.js'
+import { telemetryApi, configureHistoryReader } from '../src/services/telemetry.js'
+import { createShiftHistoryCache } from '../src/services/shiftHistoryCache.js'
+
+test('opening the history drawer loads current-shift samples through the installed cache and real transport', async () => {
+ const originalFetch = globalThis.fetch
+ const now = new Date('2026-10-16T10:10:00').getTime()
+ const point = { pointId:42,moduleId:'VSE03',channelId:'ch1',pointCode:'v',metricType:'VibrationRms' }
+ const sample = { ...point,value:7,collectedAt:'2026-10-16T10:00:00' }
+ const calls = [], hooks = []
+ globalThis.fetch = async url => {
+  const request = new URL(url, 'http://localhost')
+  if (request.pathname.endsWith('/history')) {
+   calls.push(request)
+   const localDates = ['start', 'end'].every(key => /^2026-10-16T\d{2}:\d{2}:\d{2}$/.test(request.searchParams.get(key)))
+   return new Response(JSON.stringify({ pointId:42,points:[sample] }), { status:localDates ? 200 : 400 })
+  }
+  return new Response(JSON.stringify({ moduleId:'VSE03',points:[point] }))
+ }
+ configureHistoryReader(load => createShiftHistoryCache({ load,now:()=>now }).read)
+ let app
+ try {
+  const dependencies = { vue:{...vue,onMounted:callback=>hooks.push(callback)},'element-plus':{ElDrawer:{}},
+   '../services/telemetry':{telemetryApi},'../services/api':{api:{}},'../charts/telemetry':telemetry,
+   '../charts/equipmentCatalog.js':catalog,'../charts/machineGroups.js':machines,
+   '../charts/shiftRange.js':{shiftRange:mode=>shifts.shiftRange(mode,new Date(now))} }
+  const compiled = compileScript(parse(await readFile(new URL('../src/components/HomePointExplorer.vue',import.meta.url),'utf8')).descriptor,{id:'cached-explorer-test'})
+  const context = vm.createContext({ Date,AbortController })
+  const module = new vm.SourceTextModule(compiled.content,{context})
+  await module.link(specifier=>{
+   const exports = specifier.endsWith('.vue') ? {default:{}} : dependencies[specifier]
+   return new vm.SyntheticModule(Object.keys(exports),function(){for(const[key,value]of Object.entries(exports))this.setExport(key,value)},{context})
+  })
+  await module.evaluate()
+  const renderer = vue.createRenderer({createElement:()=>({}),createText:()=>({}),createComment:()=>({}),setText(){},setElementText(){},patchProp(){},insert(){},remove(){},parentNode:()=>null,nextSibling:()=>null})
+  const component = module.namespace.default
+  component.render = ()=>vue.h('div')
+  app = renderer.createApp(component,{row:{member:{source:'legacy',id:'VSE03'},point},buffers:{},historicalOnly:true})
+  const state = app.mount({}).$.setupState
+  await hooks[0]()
+  for(let i=0;i<40;i++) await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(state.error,'')
+  assert.equal(state.loading,false)
+  assert.equal(state.history.length,1)
+  assert.equal(state.lastValue,'7.000')
+  assert.equal(calls.length,1)
+  assert.equal(calls[0].searchParams.get('start'),'2026-10-16T09:30:00')
+  assert.equal(calls[0].searchParams.get('end'),'2026-10-16T10:10:00')
+ } finally {
+  app?.unmount()
+  configureHistoryReader(null)
+  globalThis.fetch = originalFetch
+ }
+})
 
 test('explorer immediately loads current shift, switches ranges and ignores cancelled late results', async()=>{
  for (const embedded of [false, true]) {

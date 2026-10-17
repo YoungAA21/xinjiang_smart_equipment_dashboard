@@ -55,7 +55,7 @@ export const telemetryApi = {
       return result
     }
     const body = { minimumValue: parse(limits.minimumValue), maximumValue: parse(limits.maximumValue) }
-    if (body.minimumValue != null && body.maximumValue != null && body.minimumValue >= body.maximumValue) throw new Error('下限必须小于上限')
+    if (body.minimumValue != null && body.maximumValue != null && body.minimumValue > body.maximumValue) throw new Error('下限不能大于上限')
     const response = await fetch(`${BASE}/api/configuration/points/${encodeURIComponent(pointId)}/limits`, {
       method: 'PATCH',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },

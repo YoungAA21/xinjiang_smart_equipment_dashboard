@@ -1,5 +1,12 @@
 export const layoutStorageKey = scope => `equipment_dashboard_layout_v1:${scope}`
 
+export function readStoredLayout(storage, scope) {
+  let text = storage.getItem(layoutStorageKey(scope))
+  // Preserve browser layouts created before the machine ID correction.
+  if (text === null && scope === 'machine-overview:ZJ17') text = storage.getItem(layoutStorageKey('machine-overview:ZJ117'))
+  return normalizeLayout(JSON.parse(text || 'null'))
+}
+
 export function normalizeLayout(value) {
   if (!value || value.version !== 1 || !Array.isArray(value.items)) return null
   const seen = new Set()

@@ -14,7 +14,7 @@ test('gateway inventory uses every home module and acoustic host', () => {
 test('runtime module identity and address override document IP assumptions', () => {
   const rows = mergeGatewayInventory({modules:[{moduleId:'SC02',host:'192.168.3.112',runtimeStatus:{isOnline:true}},{moduleId:'VSE03',host:'192.168.3.122',runtimeStatus:{isOnline:false}}]})
   assert.equal(rows.find(r=>r.key==='legacy:SC02').host,'192.168.3.112')
-  assert.equal(rows.find(r=>r.key==='legacy:VSE03').machine,'ZJ117')
+  assert.equal(rows.find(r=>r.key==='legacy:VSE03').machine,'ZJ17')
   assert.equal(rows.find(r=>r.key==='legacy:VSE04').entry,undefined)
 })
 test('home and gateway use identical fan temperature and sound assignments', () => {

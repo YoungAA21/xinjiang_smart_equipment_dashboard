@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createShiftHistoryCache } from '../src/services/shiftHistoryCache.js'
 import { shiftRange } from '../src/charts/shiftRange.js'
+import { localInputTime } from '../src/charts/telemetry.js'
 
 const at = value => new Date(`2026-10-16T${value}`).getTime()
 const point = (value, pointId = 1) => ({ pointId, value, quality: 'Good', collectedAt: new Date(at('10:00:00') + value * 1000).toISOString() })
@@ -10,6 +11,50 @@ const storage = () => {
   const rows = new Map()
   return { rows, async get(key) { return rows.get(key) }, async put(row) { rows.set(row.key, structuredClone(row)) }, async prune(start) { for (const [key, row] of rows) if (row.shiftStart !== start) rows.delete(key) } }
 }
+
+test('current-shift history preserves the local-time API contract used by uncached queries', async () => {
+  const calls = []
+  const cache = createShiftHistoryCache({ now: () => at('12:00:00'), load: async params => {
+    calls.push(params)
+    // The collection history endpoint accepts local wall-clock dates, as documented.
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(params.start)
+      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(params.end)) throw new Error('历史接口时间必须使用本地时间')
+    return { pointId: 1, points: [point(0)] }
+  } })
+  const result = await cache.read(query)
+  assert.equal(result.points.length, 1)
+  assert.equal(calls[0].start, localInputTime(at('09:30:00')))
+  assert.equal(calls[0].end, query.end)
+})
+
+test('old UTC cache blocks are refetched instead of hiding current-shift samples', async () => {
+  const disk = storage()
+  const shiftStart = at('09:30:00')
+  await disk.put({ key: JSON.stringify(['', shiftStart, 1, shiftStart]), shiftStart,
+    start: shiftStart, end: at('10:10:00'), fetchedAt: at('12:00:00'), points: [] })
+  let calls = 0
+  const cache = createShiftHistoryCache({ storage: disk, now: () => at('12:00:00'),
+    load: async () => { calls++; return { points: [point(0)] } },
+  })
+  assert.equal((await cache.read(query)).points.length, 1)
+  assert.equal(calls, 1)
+})
+
+test('local-time requests retain millisecond boundaries when capped intervals split', async () => {
+  const samples = [0, 1, 2].map(offset => ({ ...point(offset), collectedAt: new Date(at('10:00:00') + offset).toISOString() }))
+  const calls = []
+  const cache = createShiftHistoryCache({ now: () => at('12:00:00'), maxRows: 2,
+    load: async params => {
+      calls.push(params)
+      return { points: samples.filter(row => Date.parse(row.collectedAt) >= Date.parse(params.start)
+        && Date.parse(row.collectedAt) < Date.parse(params.end)).slice(0, 2) }
+    },
+  })
+  const result = await cache.read({ ...query, end: '2026-10-16T10:00:00.003' })
+  assert.equal(result.points.length, 3)
+  assert.ok(calls.some(params => /\.\d{3}$/.test(params.start)))
+  assert.ok(calls.every(params => !/[Z+]/.test(params.start)))
+})
 
 test('raw current-shift samples survive reload; point/account identities and query limits stay isolated', async () => {
   const disk = storage(), calls = []

@@ -13,7 +13,7 @@ test('all confirmed modules join three machines while unknown pressure sources s
 })
 test('acoustic channels split by collector without changing identifiers or dropping unknown channels', () => {
   const points = [{ channelId: 'same', collectorId: 'a' }, { channelId: 'other', collectorId: 'b' }, { channelId: 'unknown', collectorId: 'missing' }]
-  const device = { source: 'monitor', id: 'd', name: 'ZJ117', points, raw: { collectors: [{ collectorId: 'a', ip: '192.168.3.53' }, { collectorId: 'b', ip: '192.168.3.54' }] } }
+  const device = { source: 'monitor', id: 'd', name: 'ZJ17', points, raw: { collectors: [{ collectorId: 'a', ip: '192.168.3.53' }, { collectorId: 'b', ip: '192.168.3.54' }] } }
   const { groups, pending } = groupMachineDevices([device])
   assert.equal(groups[0].pointCount,0)
   assert.equal(groups[1].members[0].points[0],points[0])
@@ -29,8 +29,8 @@ test('partial offline acquisition is never reported as fully online', () => {
 
 test('latest installation addresses partition all five collectors and their channels', () => {
   const assignments = [
-    ['192.168.3.51', 'ZJ117', 've', 'VE 风机采集器'],
-    ['192.168.3.52', 'ZJ117', 'max', 'MAX 风机采集器'],
+    ['192.168.3.51', 'ZJ17', 've', 'VE 风机采集器'],
+    ['192.168.3.52', 'ZJ17', 'max', 'MAX 风机采集器'],
     ['192.168.3.53', 'ZB25', 'main-motor', '主机主电机采集器'],
     ['192.168.3.54', 'ZB25', 'paper-wheel', '齿轮箱采集器'],
     ['192.168.3.55', 'YB55', 'aux-motor', '辅机主电机采集器'],

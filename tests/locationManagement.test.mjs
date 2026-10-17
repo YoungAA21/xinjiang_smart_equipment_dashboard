@@ -20,8 +20,8 @@ test('editing a custom location preserves its identity and all child parameter r
 })
 
 test('adding and editing detect duplicate names despite whitespace, case or fullwidth differences', () => {
-  assert.throws(() => updateLocation(emptyConfiguration(), 'duplicate', { name: 'ｍａｘ风机', machine: ' zj117 ' }), /同名大点位/)
-  assert.throws(() => updateLocation(fixture(), 'custom', { name: 'MAX风机', machine: 'ZJ117' }), /同名大点位/)
+  assert.throws(() => updateLocation(emptyConfiguration(), 'duplicate', { name: 'ｍａｘ风机', machine: ' zj17 ' }), /同名大点位/)
+  assert.throws(() => updateLocation(fixture(), 'custom', { name: 'MAX风机', machine: 'ZJ17' }), /同名大点位/)
   assert.equal(updateLocation(fixture(), 'custom', { name: '排风机', machine: 'YB55' }).locations.at(-1).id, 'custom')
 })
 

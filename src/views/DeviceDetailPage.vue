@@ -72,6 +72,8 @@ const selected = computed(() => entries.value.find((entry) => entry.key === sele
 const profileLocation = computed(() => monitoringLocations.find(item => item.id === route.query.location))
 const profileName = computed(() => profileLocation.value ? `${profileLocation.value.machine} · ${profileLocation.value.name}` : selected.value?.name || '')
 const profileImage = computed(() => {
+  if (/^ZJ17$/i.test(profileLocation.value?.machine?.replace(/\s/g, '') || '') && /高低(?:车)?速/.test(profileLocation.value?.name.replace(/\s/g, '') || '')) return '/equipment/zj17-speed-display.png'
+  if (/CV连接轴/i.test(profileLocation.value?.name.replace(/\s/g, '') || '')) return '/equipment/cv-connecting-shaft.jpg'
   if (profileLocation.value?.name.replace(/\s/g, '').includes('小包外观')) return '/equipment/small-pack-appearance.png'
   if (selected.value?.source === 'legacy' && selected.value.id === 'PRESS01') return '/equipment/zb25-pressure.png'
   if (selected.value?.source === 'legacy' && selected.value.id === 'PRESS02') return '/equipment/spider-pressure.png'

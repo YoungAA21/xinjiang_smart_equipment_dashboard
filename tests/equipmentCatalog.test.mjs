@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { isVibrationPoint, moduleDisplayName, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../src/charts/equipmentCatalog.js'
 
 test('documented vibration modules and measuring locations have readable equipment labels', () => {
-  assert.match(moduleDisplayName({ moduleId: 'VSE03', moduleName: '振动采集模块' }), /ZJ117.*振动/)
+  assert.match(moduleDisplayName({ moduleId: 'VSE03', moduleName: '振动采集模块' }), /ZJ17.*振动/)
   assert.match(moduleDisplayName({ moduleId: 'VSE04', moduleName: '振动采集模块' }), /ZB25.*振动/)
   assert.match(moduleDisplayName({ moduleId: 'VSE05', moduleName: '振动采集模块' }), /ZB25.*振动/)
   assert.match(moduleDisplayName({ moduleId: 'VSE08', moduleName: '振动采集模块' }), /YB55.*振动/)

@@ -8,17 +8,20 @@ import { buildLineMachines } from '../charts/productionLine.js'
 import { presentAcousticChannels } from '../charts/machineGroups.js'
 import { configuredMonitoringPoints, discoveredMonitoringModules } from '../charts/equipmentCatalog.js'
 import { machineReadings, machineHealth } from '../charts/productionLineStatus.js'
+import { configuredHomeAlarms } from '../charts/homeAlarms.js'
 
 export function useProductionLine() {
   const telemetry = useTelemetryStore()
   const acoustic = useHomeDevicesStore()
-  const selectedId = ref('ZJ117')
+  const selectedId = ref('ZJ17')
   const now = ref(Date.now())
   const live = ref(true)
   const refreshing = ref(false)
   const points = ref({})
   const pointErrors = ref({})
-  const events = ref(null)
+  const receivedEvents = ref(null)
+  // Share configured active alarms across the list, SVG counts and machine readings.
+  const events = computed(() => receivedEvents.value === null ? null : configuredHomeAlarms(receivedEvents.value))
   const alarmError = ref('')
   const controller = new AbortController()
   const options = { signal: controller.signal }
@@ -27,7 +30,7 @@ export function useProductionLine() {
     ...discoveredMonitoringModules(telemetry.modules || [], telemetry.latest || []).map(module => ({ id: module.moduleId, source: 'legacy', name: module.moduleName || module.moduleId, online: module.runtimeStatus?.isOnline, points: configuredMonitoringPoints(points.value[module.moduleId] || [], telemetry.latest, module.moduleId), raw: module })),
     ...(acoustic.devices || []).map(device => ({ id: device.deviceId, source: 'monitor', name: device.deviceName || device.deviceId, online: device.online, points: presentAcousticChannels(device), raw: device })),
   ])
-  const alarmsReady = computed(() => events.value !== null && !alarmError.value && events.value.length < 1000)
+  const alarmsReady = computed(() => receivedEvents.value !== null && !alarmError.value && receivedEvents.value.length < 1000)
   const machines = computed(() => buildLineMachines(devices.value, events.value || [], { legacy: Boolean(telemetry.errors.modules), monitor: Boolean(acoustic.error) }).map(machine => {
     const rows = machineReadings(machine, { latest: telemetry.latest, events: events.value || [], now: now.value,
       sourceErrors: { legacy: Boolean(telemetry.errors.latest || telemetry.errors.modules), monitor: Boolean(acoustic.error) },
@@ -45,7 +48,7 @@ export function useProductionLine() {
       await Promise.all([telemetry.refreshModules(options), telemetry.refreshLatest(options), acoustic.refresh(options), (async () => {
         try {
           const body = await alarmApi.getAlarms({ limit: 1000 }, options)
-          if (!controller.signal.aborted) { events.value = alarmEvents(body); alarmError.value = '' }
+          if (!controller.signal.aborted) { receivedEvents.value = alarmEvents(body); alarmError.value = '' }
         } catch (error) { if (!controller.signal.aborted) alarmError.value = error.message || '告警接口连接失败' }
       })()])
       const activeModules = telemetry.modules || []

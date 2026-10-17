@@ -15,7 +15,7 @@ import { configuredMonitoringPoints, discoveredMonitoringModules, moduleDisplayN
 import { productionLineTargets } from '../charts/productionLineTargets.js'
 
 const telemetry = useTelemetryStore()
-const props = defineProps({ initialMachine: { type: String, default: 'ZJ117' } })
+const props = defineProps({ initialMachine: { type: String, default: 'ZJ17' } })
 const homeControlsExpanded = inject('homeControlsExpanded', ref(false))
 const monitor = useHomeDevicesStore()
 const pointMap = ref({})
@@ -55,7 +55,7 @@ const machineData = computed(() => {
   if (!data.groups.some(group => group.id === 'YB95')) data.groups.push({ id: 'YB95', name: 'YB95 条外透明纸包装机', members: [], pointCount: 0, status: '未配置' })
   return data
 })
-const activeMachineId = ref(Object.values(productionLineTargets).some(target => target.machine === props.initialMachine) ? props.initialMachine : 'ZJ117')
+const activeMachineId = ref(Object.values(productionLineTargets).some(target => target.machine === props.initialMachine) ? props.initialMachine : 'ZJ17')
 const activeMachine = computed(() => machineData.value.groups.find(machine => machine.id === activeMachineId.value) || machineData.value.groups[0])
 const connectionKey = (device, channel) => JSON.stringify([device.id, channel.channelId])
 const currentTime = computed(() => new Date(now.value).toLocaleTimeString('zh-CN', { hour12: false }))
@@ -183,7 +183,7 @@ function soundCardStatus(row) {
   const frame = soundFrames.value[row.key]
   return frame ? now.value - frame.receivedAt > 10000 ? '未更新' : '实时' : soundStatus.value
 }
-const isFanLayout = computed(() => activeMachineId.value === 'ZJ117')
+const isFanLayout = computed(() => activeMachineId.value === 'ZJ17')
 const isZb25Layout = computed(() => activeMachineId.value === 'ZB25')
 const isYb55Layout = computed(() => activeMachineId.value === 'YB55')
 const fanGroups = computed(() => [

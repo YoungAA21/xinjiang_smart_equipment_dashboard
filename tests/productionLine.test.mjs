@@ -5,7 +5,7 @@ import { buildLineMachines, readingState } from '../src/charts/productionLine.js
 test('home preserves five footprints and maps YB25 only to the confirmed ZB25 sources', () => {
   const devices = [{ id: 'VSE04', source: 'legacy', online: true, points: [{ pointCode: 'vibration' }], raw: {} }]
   const result = buildLineMachines(devices)
-  assert.deepEqual(result.map(machine => machine.id), ['ZJ117', 'YB25', 'YB55', 'YB65', 'YB95'])
+  assert.deepEqual(result.map(machine => machine.id), ['ZJ17', 'YB25', 'YB55', 'YB65', 'YB95'])
   assert.equal(result[1].pointCount, 1)
   assert.equal(result[1].state, 'online')
   assert.equal(result[3].state, 'unconfigured')

@@ -5,7 +5,7 @@ import { configuredMachineId } from '../stores/pointConfiguration.js'
 // The site SVG owns physical footprints; these records own monitoring identities.
 // YB25 is the display alias for the existing ZB25 mapping only.
 export const lineMachines = [
-  { id: 'ZJ117', sourceId: 'ZJ117', name: '卷接机' },
+  { id: 'ZJ17', sourceId: 'ZJ17', name: '卷接机' },
   { id: 'YB25', sourceId: 'ZB25', name: '小盒包装机' },
   { id: 'YB55', sourceId: 'YB55', name: '小盒透明纸包装机' },
   { id: 'YB65', sourceId: null, name: '硬条包装机' },

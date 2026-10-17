@@ -48,7 +48,7 @@ const devices = computed(() => [
 ])
 const machineData = computed(() => groupMachineDevices(devices.value))
 const machineButtonNames = { ZB25: 'ZB25主机', YB55: 'ZB25辅机' }
-const activeMachineId = ref('ZJ117')
+const activeMachineId = ref('ZJ17')
 const activeMachine = computed(() => machineData.value.groups.find(machine => machine.id === activeMachineId.value) || machineData.value.groups[0])
 const connectionKey = (device, channel) => JSON.stringify([device.id, channel.channelId])
 const currentTime = computed(() => new Date(now.value).toLocaleTimeString('zh-CN', { hour12: false }))
@@ -177,7 +177,7 @@ function soundCardStatus(row) {
   const frame = soundFrames.value[row.key]
   return frame ? now.value - frame.receivedAt > 10000 ? '未更新' : '实时' : soundStatus.value
 }
-const isFanLayout = computed(() => activeMachineId.value === 'ZJ117')
+const isFanLayout = computed(() => activeMachineId.value === 'ZJ17')
 const isZb25Layout = computed(() => activeMachineId.value === 'ZB25')
 const isYb55Layout = computed(() => activeMachineId.value === 'YB55')
 const fanGroups = computed(() => [

@@ -17,7 +17,7 @@ let pointController, pointVersion = 0, timer
 const rows = computed(() => mergeGatewayInventory({ modules: modules.value, failed: errors }).filter(row => row.source === 'legacy'))
 const selected = computed(() => rows.value.find(row => row.key === selectedKey.value))
 const visible = computed(() => rows.value.filter(row => (machine.value === '全部' || row.machine === machine.value) && (kind.value === '全部' || row.kind === kind.value) && (state.value === '全部' || row.status === state.value) && `${row.name} ${row.host} ${row.controlHost || ''} ${row.entry?.host || ''} ${row.entry?.id || ''}`.toLowerCase().includes(search.value.trim().toLowerCase())))
-const groups = computed(() => ['ZJ117', 'ZB25', 'YB55', '其他'].map(id => ({ id, rows: visible.value.filter(row => row.machine === id) })).filter(group => group.rows.length))
+const groups = computed(() => ['ZJ17', 'ZB25', 'YB55', '其他'].map(id => ({ id, rows: visible.value.filter(row => row.machine === id) })).filter(group => group.rows.length))
 const counts = computed(() => ({ total: rows.value.length, online: rows.value.filter(row => row.online).length, offline: rows.value.filter(row => ['离线', '已停止'].includes(row.status)).length, pending: rows.value.filter(row => !['在线', '离线', '已停止'].includes(row.status)).length }))
 const filtered = computed(() => search.value.trim() || [machine.value, kind.value, state.value].some(value => value !== '全部'))
 function resetFilters() { search.value = ''; machine.value = kind.value = state.value = '全部' }
@@ -84,7 +84,7 @@ defineExpose({ refresh, loading })
     <div class="module-counts"><div>模块总数<strong>{{ counts.total }}</strong></div><div class="count-online">在线<strong>{{ counts.online }}</strong></div><div class="count-offline">离线 / 停止<strong>{{ counts.offline }}</strong></div><div class="count-pending">待确认<strong>{{ counts.pending }}</strong></div></div>
     <div class="module-filters">
       <input v-model="search" aria-label="搜索模块" placeholder="模块 / IP / 编号" />
-      <select v-model="machine" aria-label="筛选设备"><option v-for="value in ['全部','ZJ117','ZB25','YB55','其他']" :key="value" :value="value">{{ value === '全部' ? '全部设备' : value }}</option></select>
+      <select v-model="machine" aria-label="筛选设备"><option v-for="value in ['全部','ZJ17','ZB25','YB55','其他']" :key="value" :value="value">{{ value === '全部' ? '全部设备' : value }}</option></select>
       <select v-model="kind" aria-label="筛选类型"><option v-for="value in ['全部','振动','温度','压力','控制','其他']" :key="value" :value="value">{{ value === '全部' ? '全部类型' : value }}</option></select>
       <select v-model="state" aria-label="筛选状态"><option v-for="value in ['全部','在线','离线','已停止','连接中','状态未知','状态待确认','未接入']" :key="value" :value="value">{{ value === '全部' ? '全部状态' : value }}</option></select>
       <button v-if="filtered" class="module-reset" @click="resetFilters">显示全部</button>

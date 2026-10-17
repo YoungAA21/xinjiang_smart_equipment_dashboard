@@ -1,8 +1,13 @@
 import { shiftRange } from '../charts/shiftRange.js'
+import { localInputTime } from '../charts/telemetry.js'
 
 const abortError = () => new DOMException('请求已取消', 'AbortError')
 const time = row => Date.parse(row.collectedAt)
 const ordered = rows => [...new Map(rows.map(row => [time(row), row])).values()].sort((a, b) => time(a) - time(b))
+const queryTime = value => {
+  const milliseconds = new Date(value).getMilliseconds()
+  return localInputTime(value) + (milliseconds ? `.${String(milliseconds).padStart(3, '0')}` : '')
+}
 
 function subscribe(promise, signal) {
   if (!signal) return promise
@@ -52,7 +57,7 @@ export function createShiftHistoryCache({ load, storage, scope = '', now = Date.
   }
   async function fetchComplete(pointId, start, end) {
     check()
-    const result = await load({ pointId, start: new Date(start).toISOString(), end: new Date(end).toISOString(), limit: maxRows }, { signal })
+    const result = await load({ pointId, start: queryTime(start), end: queryTime(end), limit: maxRows }, { signal })
     check()
     if (!Array.isArray(result?.points) || (result.pointId != null && Number(result.pointId) !== Number(pointId))) throw new Error('历史点位返回格式不正确')
     if (result.points.some(row => !row || !Number.isFinite(time(row)) || (row.pointId != null && Number(row.pointId) !== Number(pointId)))) throw new Error('历史采样身份或时间格式不正确')
@@ -66,7 +71,8 @@ export function createShiftHistoryCache({ load, storage, scope = '', now = Date.
     return ordered(result.points.filter(row => time(row) >= start && time(row) < end))
   }
   async function block(pointId, shiftStart, start, end, background) {
-    const key = JSON.stringify([scope, shiftStart, pointId, start])
+    // Do not reuse blocks fetched with the old UTC query format.
+    const key = JSON.stringify(['local-time-v2', scope, shiftStart, pointId, start])
     for (;;) {
       check()
       let record = memory.get(key) || await persist('get', key)

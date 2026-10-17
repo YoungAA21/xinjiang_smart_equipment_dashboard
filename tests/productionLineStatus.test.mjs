@@ -73,7 +73,7 @@ test('alarm matching and machine filtering preserve point and module identities'
   assert.equal(alarmMatchesRow({ moduleId:'VSE05', pointId:42 }, row), false)
   assert.equal(alarmMatchesRow({ moduleId:'VSE04', pointCode:'v', channelId:'ch2' }, row), false)
   assert.equal(alarmMachineId({ moduleId:'VSE04' }), 'YB25')
-  assert.equal(alarmMachineId({ moduleId:'TEMP02' }), 'ZJ117')
+  assert.equal(alarmMachineId({ moduleId:'TEMP02' }), 'ZJ17')
   assert.equal(alarmMachineId({ moduleId:'unknown' }), null)
   const events = [{ moduleId:'VSE04', pointId:42, isActive:true }]
   const rows = machineReadings(machine, { latest, now, events, alarmsReady:true })

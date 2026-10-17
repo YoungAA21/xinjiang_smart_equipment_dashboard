@@ -5,15 +5,15 @@ import { moduleDisplayName } from './equipmentCatalog.js'
 // The document contributes installation locations only.
 const locations = {
   "VSE03": {
-    "location": "ZJ117子站箱",
-    "network": "ZJ117子站箱交换机"
+    "location": "ZJ17子站箱",
+    "network": "ZJ17子站箱交换机"
   },
   "TEMP02": {
-    "location": "ZJ117子站箱",
-    "network": "ZJ117子站箱交换机"
+    "location": "ZJ17子站箱",
+    "network": "ZJ17子站箱交换机"
   },
   "PRESS02": {
-    "location": "ZJ117蜘蛛手金属",
+    "location": "ZJ17蜘蛛手金属",
     "network": "主电柜交换机A"
   },
   "VSE04": {

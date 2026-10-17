@@ -76,3 +76,9 @@
 .production-home button.current-value { width:100%; text-align:left; font:inherit; border:0; border-bottom:1px solid var(--line-border); border-radius:0; background:transparent; }
 .production-home button.current-value:hover { background:var(--control-bg-active); }
 .production-home button.current-value:focus-visible { outline:2px solid #78c9a6; outline-offset:-2px; }
+
+.line-alarm-panel .line-alarm-table { overflow:auto; }
+.line-alarm-table thead { position:sticky; top:0; background:var(--line-surface); z-index:1; }
+.home-alarm-row { cursor:pointer; }
+.home-alarm-row:hover { background:var(--line-border); }
+.home-alarm-row:focus-visible { outline:2px solid #78c9a6; outline-offset:-2px; background:var(--line-border); }

@@ -56,10 +56,10 @@ test(`${page} defaults to the first machine and packs pressure and sound into on
   try {
     for (let i = 0; i < 20; i++) await vue.nextTick()
     assert.equal(state.refreshing, false)
-    assert.equal(state.activeMachineId, 'ZJ117')
-    assert.equal(state.activeMachine.id, 'ZJ117')
+    assert.equal(state.activeMachineId, 'ZJ17')
+    assert.equal(state.activeMachine.id, 'ZJ17')
     if (page === 'MachineOverviewPage') {
-      assert.deepEqual(Array.from(state.machineData.groups, machine => machine.id), ['ZJ117', 'ZB25', 'YB55'])
+      assert.deepEqual(Array.from(state.machineData.groups, machine => machine.id), ['ZJ17', 'ZB25', 'YB55'])
     }
     assert.ok(state.allRows.every(row => row.member.id === 'VSE03'))
     assert.equal(state.allRows.length, 3)

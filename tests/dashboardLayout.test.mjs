@@ -41,7 +41,7 @@ test('reordering preserves dimensions and hidden preferences across reloads', ()
 })
 
 test('pages, machines and locations have independent storage keys', () => {
-  const keys = ['machine-overview:ZJ117', 'machine-overview:ZB25', 'point-location:pressure', 'point-device:VSE01'].map(layoutStorageKey)
+  const keys = ['machine-overview:ZJ17', 'machine-overview:ZB25', 'point-location:pressure', 'point-device:VSE01'].map(layoutStorageKey)
   assert.equal(new Set(keys).size, 4)
 })
 
@@ -98,4 +98,14 @@ test('unavailable browser storage keeps layout usable and shows an explicit warn
     assert.equal(state.customized, false)
     assert.equal(state.cards.length, 2)
   } finally { app.unmount() }
+})
+
+test('corrected machine ID preserves old browser layout and prefers the new saved layout', () => {
+  const previous = { version: 1, items: [{ id: 'point', visible: false, span: 3, height: 400 }] }
+  const values = new Map([[layoutStorageKey('machine-overview:ZJ117'), JSON.stringify(previous)]])
+  const storage = { getItem: key => values.get(key) ?? null }
+  assert.deepEqual(layout.readStoredLayout(storage, 'machine-overview:ZJ17'), previous)
+  const current = { version: 1, items: [] }
+  values.set(layoutStorageKey('machine-overview:ZJ17'), JSON.stringify(current))
+  assert.deepEqual(layout.readStoredLayout(storage, 'machine-overview:ZJ17'), current)
 })

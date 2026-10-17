@@ -127,7 +127,7 @@ test('a custom hierarchy appears in point options and overrides machine ownershi
   const machines = buildLineMachines([{ source: 'legacy', id: 'VSE03', online: true, points: [point] }], [{ ...point, status: 'Active' }])
   assert.equal(machines.find(machine => machine.id === 'YB65').sourceId, 'YB65')
   assert.equal(machines.find(machine => machine.id === 'YB65').state, 'alarm')
-  assert.equal(machines.find(machine => machine.id === 'ZJ117').activeAlarms.length, 0)
+  assert.equal(machines.find(machine => machine.id === 'ZJ17').activeAlarms.length, 0)
   assert.equal(alarmMachineId(point), 'YB65')
 })
 
@@ -168,4 +168,14 @@ test('a latest-only module is discoverable before the module directory catches u
   assert.equal(rows[1].moduleId, 'NEW')
   assert.equal(rows[1].discoveredFromLatest, true)
   assert.equal(rows[1].runtimeStatus, undefined)
+})
+
+test('saved and imported assignments migrate to ZJ17 without changing point identities', () => {
+  const value = configured()
+  for (const location of value.locations) if (location.machine === 'ZJ17') location.machine = 'ZJ117'
+  const migrated = validateConfiguration(value)
+  assert.ok(migrated.locations.filter(location => ['ve', 'max', 'spider-pressure'].includes(location.id)).every(location => location.machine === 'ZJ17'))
+  assert.deepEqual(migrated.parameters, value.parameters)
+  assert.deepEqual(migrated.targets, value.targets)
+  assert.equal(value.locations[0].machine, 'ZJ117')
 })

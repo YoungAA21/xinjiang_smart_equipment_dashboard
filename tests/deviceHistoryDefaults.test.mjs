@@ -111,7 +111,7 @@ test('reentering history uses current time while manual queries preserve the cho
 })
 
 test('whole-machine history link selects the requested point rather than the first point', async (t) => {
-  const { app, state, calls } = await mountMonitor({ source: 'legacy', device: 'PRESS02', machine: 'ZJ117', pointId: '38', tab: 'history' })
+  const { app, state, calls } = await mountMonitor({ source: 'legacy', device: 'PRESS02', machine: 'ZJ17', pointId: '38', tab: 'history' })
   t.after(() => app.unmount())
   assert.equal(state.selectedPointId, 38)
   assert.equal(calls.at(-1).query.pointId, 38)
