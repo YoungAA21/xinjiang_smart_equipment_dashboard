@@ -22,3 +22,8 @@
 .hierarchy-location-actions { margin-left:auto; }.hierarchy-location-actions button { min-height:32px; padding:5px 12px; }
 .hierarchy-targets { margin-top:10px; }.hierarchy-edit { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding-top:16px; }.hierarchy-edit>div { grid-column:1/-1; display:flex; gap:10px; }
 .hierarchy-delete { margin-top:16px; padding:14px; border:1px solid #d9904366; border-radius:6px; }.hierarchy-delete p { margin:0 0 12px; line-height:1.7; }.hierarchy-delete label { margin-bottom:12px; }.hierarchy-delete>div { display:flex; gap:10px; }.hierarchy-delete button[type=submit] { color:#d99043; border-color:#d9904366; }
+.detail-tab-settings { display:grid; gap:8px; padding:0 20px 20px; }
+.detail-tab-setting { display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--glass-border); }
+.parameter-settings .detail-tab-setting label { display:flex; flex-direction:row; align-items:center; gap:12px; flex:1; }
+.parameter-settings .detail-tab-setting input { width:16px; min-height:16px; accent-color:var(--text-highlight); }
+.detail-tab-setting button { padding:5px 10px; min-height:30px; }

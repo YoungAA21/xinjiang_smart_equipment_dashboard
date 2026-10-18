@@ -13,7 +13,10 @@ import { auth } from '../services/auth.js'
 import { createSoundPreview } from '../services/soundPreview.js'
 import { acousticChannelDisplayName, presentAcousticChannels } from '../charts/machineGroups.js'
 import { configuredMonitoringPoints, discoveredMonitoringModules, monitoringPointName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
-import { monitoringLocations, monitoringLocationOf, locationPoint, pointLayoutLocations } from '../charts/monitoringLocations.js'
+import { monitoringLocations, monitoringLocationOf, locationPoint } from '../charts/monitoringLocations.js'
+import { pointConfiguration } from '../stores/pointConfiguration.js'
+import { detailTabLocations } from '../charts/pointDetailTabs.js'
+import { locationHierarchyLabel } from '../charts/machineTaxonomy.js'
 import { pointKey } from '../charts/telemetry.js'
 import { requestedPointRow } from '../charts/homePointNavigation.js'
 import { useRecentHistory } from '../composables/useRecentHistory.js'
@@ -25,6 +28,10 @@ const telemetry = useTelemetryStore()
 const monitor = useHomeDevicesStore()
 const pointMap = ref({})
 const pointErrors = ref({})
+const reportInformation = inject('reportInformation', () => {})
+watch(pointErrors, errors => {
+  for (const [id, error] of Object.entries(errors)) if (error) reportInformation('测点配置 · ' + id, error)
+}, { deep: true })
 const loadedAt = new Map()
 const busy = ref(false)
 const paused = ref(false)
@@ -32,8 +39,9 @@ const headerControlsExpanded = inject('homeControlsExpanded', ref(false))
 const now = ref(Date.now())
 const controller = new AbortController()
 let sampleTimer, configTimer
-const locationOptions = computed(() => pointLayoutLocations(monitoringLocations))
-const selected = computed(() => locationOptions.value.find(item => item.id === route.query.location) || locationOptions.value[0])
+const requestedLocation = computed(() => monitoringLocations.find(item => item.id === route.query.location))
+const locationOptions = computed(() => detailTabLocations(monitoringLocations, pointConfiguration.detailLocationIds))
+const selected = computed(() => requestedLocation.value || locationOptions.value[0] || { id: '', name: '', modules: [] })
 const selectedKey = ref('')
 const colors = { VibrationRms: '#508cef', VibrationUnbalance: '#508cef', Temperature: '#d99b3b', NegativePressure: '#18a99a', Speed: '#39a9ff', Current: '#a8cf71' }
 const sources = computed(() => [
@@ -58,6 +66,12 @@ function selectLocation(id) {
   router.replace({ path: '/device', query: { location: id } })
 }
 watch(() => selected.value.id, () => { selectedKey.value = '' })
+watch(() => pointConfiguration.detailLocationIds, () => {
+  if (requestedLocation.value && !pointConfiguration.detailLocationIds.includes(requestedLocation.value.id)) {
+    const { location: _location, machine: _machine, model: _model, ...query } = route.query
+    router.replace({ path: '/device', query: { ...query, ...(locationOptions.value[0] ? { location: locationOptions.value[0].id } : {}) } })
+  }
+})
 function openPoint(row) { selectedKey.value = row.key }
 watch([rows, () => route.query], () => {
   const row = requestedPointRow(rows.value, route.query)
@@ -165,7 +179,7 @@ onBeforeUnmount(() => {
   <section class="page machine-monitor">
     <header class="monitor-heading">
       <nav class="location-tabs" role="tablist" aria-label="监测点位">
-        <button v-for="(location, index) in locationOptions" :id="'location-tab-'+location.id" :key="location.id" type="button" role="tab" :aria-selected="selected.id === location.id" :aria-controls="'location-panel-'+selected.id" :tabindex="selected.id === location.id ? 0 : -1" :class="{ active: selected.id === location.id }" :title="location.machine + ' · ' + location.name" @click="selectLocation(location.id)" @keydown="navigateLocation($event, index)">{{ location.name }}</button>
+        <button v-for="(location, index) in locationOptions" :id="'location-tab-'+location.id" :key="location.id" type="button" role="tab" :aria-selected="selected.id === location.id" :aria-controls="'location-panel-'+selected.id" :tabindex="selected.id === location.id ? 0 : -1" :class="{ active: selected.id === location.id }" :title="locationHierarchyLabel(location)" @click="selectLocation(location.id)" @keydown="navigateLocation($event, index)">{{ location.name }}</button>
       </nav>
       <div class="monitor-actions">
         <button type="button" class="point-layout-button" :aria-label="paused ? '恢复自动刷新' : '暂停自动刷新'" :title="paused ? '恢复自动刷新' : '暂停自动刷新'" :aria-pressed="paused" @click="paused = !paused">
@@ -176,12 +190,11 @@ onBeforeUnmount(() => {
         <button type="button" class="point-layout-button" :aria-label="headerControlsExpanded ? '隐藏主题与账户设置' : '显示主题与账户设置'" :title="headerControlsExpanded ? '隐藏主题与账户设置' : '显示主题与账户设置'" :aria-expanded="headerControlsExpanded" @click="headerControlsExpanded = !headerControlsExpanded"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button>
       </div>
     </header>
-    <p v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="monitor-warning" role="alert">{{ [telemetry.errors.modules, telemetry.errors.latest, monitor.error].filter(Boolean).join('；') }}</p>
-    <HistoryCacheStatus />
-    <p v-if="recentHistory.loading.value" class="pending-note" role="status">正在补齐近期历史采样…</p>
-    <p v-if="recentHistory.failed.value" class="monitor-warning" role="alert">部分测点近期历史加载失败。<button type="button" @click="recentHistory.retry()">重试历史</button></p>
-    <p v-for="message in selectedErrors" :key="message" class="monitor-warning" role="alert">{{ message }}</p>
-    <div :id="'location-panel-'+selected.id" :key="selected.id" role="tabpanel" :aria-labelledby="'location-tab-'+selected.id" class="location-content">
+<!--    <HistoryCacheStatus />-->
+<!--    <p v-if="recentHistory.loading.value" class="pending-note" role="status">正在补齐近期历史采样…</p>-->
+<!--    <p v-if="recentHistory.failed.value" class="monitor-warning" role="alert">部分测点近期历史加载失败。<button type="button" @click="recentHistory.retry()">重试历史</button></p>-->
+    <p v-if="!selected.id" class="monitor-empty">暂无已展示的大点位，请在参数配置中设置顶部按钮。<RouterLink to="/settings/parameters">前往参数配置</RouterLink></p>
+    <div v-else :id="'location-panel-'+selected.id" :key="selected.id" role="tabpanel" :aria-label="selected.name" class="location-content">
       <ConfigurableDashboard uniform :scope="'point-location:' + selected.id" :items="layoutItems" :default-span="2" :default-height="320">
         <template #toolbar="{ editing, toggleEditing, reset }">
           <Teleport to="#point-layout-actions" defer>

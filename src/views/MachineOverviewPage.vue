@@ -12,8 +12,10 @@ import { useHomeDevicesStore } from '../stores/homeDevices'
 import { telemetryApi } from '../services/telemetry'
 import { pointKey } from '../charts/telemetry'
 import { groupMachineDevices, fanGroupOf, presentAcousticChannels } from '../charts/machineGroups.js'
+import { machineModel, modelsForMachine } from '../charts/machineTaxonomy.js'
 import { configuredMonitoringPoints, discoveredMonitoringModules, moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 
+const reportInformation = inject('reportInformation', () => {})
 const telemetry = useTelemetryStore()
 const homeControlsExpanded = ref(false)
 const headerControlsExpanded = inject('homeControlsExpanded', ref(false))
@@ -47,8 +49,9 @@ const devices = computed(() => [
   ...(monitor.devices || []).map(device => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', id: device.deviceId, name: device.deviceName || device.deviceId, online: device.online, points: presentAcousticChannels(device), raw: device })),
 ])
 const machineData = computed(() => groupMachineDevices(devices.value))
-const machineButtonNames = { ZB25: 'ZB25主机', YB55: 'ZB25辅机' }
+const machineButtonNames = { ZB25: 'ZB25主机', 'ZB25-AUX': 'ZB25辅机' }
 const activeMachineId = ref('ZJ17')
+const activeModel = ref('')
 const activeMachine = computed(() => machineData.value.groups.find(machine => machine.id === activeMachineId.value) || machineData.value.groups[0])
 const connectionKey = (device, channel) => JSON.stringify([device.id, channel.channelId])
 const currentTime = computed(() => new Date(now.value).toLocaleTimeString('zh-CN', { hour12: false }))
@@ -61,12 +64,13 @@ const categories = [
   { id: 'acoustic', name: '声纹监测', color: '#688bea', icon: AudioLines },
 ]
 const categoryOf = (point, member) => member.source === 'monitor' ? 'acoustic' : String(point.metricType || '').startsWith('Vibration') ? 'vibration' : point.metricType === 'Temperature' ? 'temperature' : point.metricType === 'NegativePressure' ? 'pressure' : 'other'
-const allRows = computed(() => activeMachine.value.members.flatMap(member => member.points
+const allRows = computed(() => activeMachine.value.members.filter(member => !activeModel.value || (member.model || machineModel(activeMachineId.value)) === activeModel.value).flatMap(member => member.points
   .map(point => ({ member, point, key: member.source === 'legacy' ? pointKey(point) : connectionKey(member, point), category: categoryOf(point, member) }))))
 const sections = computed(() => categories.map(category => ({ ...category, rows: allRows.value.filter(row => row.category === category.id && (source.value === 'all' || row.member.source === source.value) && `${row.member.name} ${row.member.id} ${row.point.name || row.point.channelName || ''} ${row.point.pointCode || row.point.channelId}`.toLowerCase().includes(search.value.trim().toLowerCase())) })).filter(category => category.rows.length))
 const activeErrors = computed(() => activeMachine.value.members.filter(member => pointErrors.value[member.id]).map(member => `${member.id}：${pointErrors.value[member.id]}`))
 const historyState = ref({})
 let warmingHistory = false
+watch(activeErrors, errors => { for (const error of errors) reportInformation('点位配置', error) })
 const historyFailed = computed(() => allRows.value.some(row => historyState.value[row.key] === 'error'))
 async function warmHistory() {
   if (warmingHistory || controller.signal.aborted) return
@@ -99,6 +103,7 @@ async function selectMachine(id) {
     await preview.stop()
     closePointChart()
     activeMachineId.value = id
+    activeModel.value = ''
     search.value = ''
     source.value = 'all'
   } finally { switchingAcoustic.value = false }
@@ -229,7 +234,7 @@ const homeCardSize = computed(() => {
     rows = Math.ceil((isZb25Layout.value ? zb25Rows.value : isYb55Layout.value ? yb55Rows.value : displayRows.value).length / gridColumns)
   }
   rows = Math.max(4, rows)
-  const warningHeight = (activeErrors.value.length + Number(historyFailed.value)) * 56
+  const warningHeight = Number(historyFailed.value) * 56
   const height = Math.floor((panelSize.value.height - 96 - 16 - overhead - warningHeight - (rows - 1) * 8) / rows)
   return { '--home-point-height': `${Math.max(150, height)}px` }
 })
@@ -308,11 +313,10 @@ onBeforeUnmount(() => {
     <div class="station-actions"><span class="refresh-indicator"><i></i>{{ autoRefresh ? '实时' : '暂停' }} · {{ currentTime }}</span><button class="plain-button view-settings" :aria-label="homeControlsExpanded ? '隐藏设置' : '显示设置'" :title="homeControlsExpanded ? '隐藏设置' : '显示设置'" :aria-expanded="homeControlsExpanded" @click="homeControlsExpanded = !homeControlsExpanded"><EyeOff v-if="homeControlsExpanded" :size="18"/><Eye v-else :size="18"/></button><span id="machine-layout-actions" class="machine-layout-actions"></span><button type="button" class="plain-button view-settings" aria-label="刷新数据" title="刷新数据" :disabled="refreshing" @click="refresh"><RefreshCw :size="18" :class="{ spinning: refreshing }" /></button><button type="button" class="plain-button view-settings" :aria-label="headerControlsExpanded ? '隐藏主题与账户设置' : '显示主题与账户设置'" :title="headerControlsExpanded ? '隐藏主题与账户设置' : '显示主题与账户设置'" :aria-expanded="headerControlsExpanded" @click="headerControlsExpanded = !headerControlsExpanded"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button></div>
     </div>
     <div v-if="homeControlsExpanded" class="home-controls"><label><Search :size="16"/><input v-model="search" aria-label="搜索当前设备点位" placeholder="搜索当前设备点位" /></label><select v-model="source" aria-label="点位来源"><option value="all">全部点位</option><option value="legacy">数值监测</option><option value="monitor">声纹通道</option></select><el-switch v-model="autoRefresh" aria-label="自动刷新" @change="toggleLive" /><span>自动刷新</span></div>
-    <p v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="home-warning" role="alert">{{ [telemetry.errors.modules, telemetry.errors.latest, monitor.error].filter(Boolean).join('；') }}</p>
+    <div class="machine-model-filter"><span>机型</span><button :class="{ active: !activeModel }" @click="activeModel = ''; closePointChart()">全部</button><button v-for="model in modelsForMachine(activeMachineId)" :key="model" :class="{ active: activeModel === model }" @click="activeModel = model; closePointChart()">{{ model }}</button></div>
     <Transition name="machine-fade" mode="out-in">
       <main :ref="observePanel" :id="'machine-panel-'+activeMachineId" :key="activeMachineId" role="tabpanel" :aria-labelledby="'machine-tab-'+activeMachineId" class="machine-panel">
         <p v-if="historyFailed" class="home-warning">历史采样加载失败。<button @click="retryHistory">重试历史</button></p>
-        <p v-for="error in activeErrors" :key="error" class="home-warning">{{ error }}</p>
         <ConfigurableDashboard :scope="'machine-overview:' + activeMachineId" :items="layoutItems" :default-height="240">
         <template #toolbar="{ editing, toggleEditing, reset }">
           <Teleport to="#machine-layout-actions" defer>

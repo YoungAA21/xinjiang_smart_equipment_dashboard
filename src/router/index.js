@@ -9,23 +9,25 @@ import DeviceDetailPage from '../views/DeviceDetailPage.vue'
 import DeviceMonitorPage from '../views/DeviceMonitorPage.vue'
 import AlarmListPage from '../views/AlarmListPage.vue'
 import GatewayCommPage from '../views/GatewayCommPage.vue'
-import RecordingManagementPage from '../views/RecordingManagementPage.vue'
 import PointConfigurationPage from '../views/PointConfigurationPage.vue'
 
 export const routes = [
   { path: '/login', name: 'login', component: LoginPage, meta: { title: '登录', public: true } },
   { path: '/', name: 'home', component: HomePage, meta: { title: '设备监控' } },
   { path: '/machine/overview', name: 'machine-overview', component: MachineOverviewPage, meta: { title: '机组概览' } },
-  { path: '/monitor', name: 'machine-monitor', component: MachineMonitorPage, props: route => ({ initialMachine: route.query.machine }), meta: { title: '设备实时监测' } },
+  { path: '/monitor', name: 'machine-monitor', component: MachineMonitorPage, props: route => ({ initialMachine: route.query.machine, initialModel: route.query.model }), meta: { title: '设备实时监测' } },
   { path: '/production-line/preview', name: 'production-line-preview', component: ProductionLinePreviewPage, meta: { title: '产线俯视图' } },
   { path: '/device', name: 'device-list', component: DeviceMonitorPage, meta: { title: '测点详情' } },
   { path: '/device/detail', name: 'device-detail', component: DeviceDetailPage, meta: { title: '测点详情' } },
   { path: '/gateway/communication', name: 'gateway-communication', component: GatewayCommPage, meta: { title: '网关通讯' } },
-  { path: '/recordings', name: 'recordings', component: RecordingManagementPage, meta: { title: '录音管理' } },
+  { path: '/recordings', redirect: '/realtime-listen' },
+  { path: '/realtime-listen', name: 'realtime-listen', component: () => import('../views/RealtimeListeningPage.vue'), meta: { title: '实时监听' } },
   { path: '/settings/parameters', name: 'parameter-settings', component: PointConfigurationPage, meta: { title: '参数配置' } },
   { path: '/analysis/trend', name: 'trend', redirect: (to) => ({ path: '/device/detail', query: { ...to.query, tab: 'trend', source: 'legacy' } }) },
   { path: '/analysis/spectrum', name: 'spectrum', redirect: (to) => ({ path: '/device/detail', query: { ...to.query, tab: 'spectrum', source: 'monitor' } }) },
   { path: '/alarm/list', name: 'alarm-list', component: AlarmListPage, meta: { title: '告警管理' } },
+  { path: '/reports', name: 'equipment-reports', component: () => import('../views/EquipmentReportPage.vue'), meta: { title: '报告配置' } },
+  { path: '/reports/view', name: 'report-view', component: () => import('../views/ReportViewPage.vue'), meta: { title: '报告查看' } },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 

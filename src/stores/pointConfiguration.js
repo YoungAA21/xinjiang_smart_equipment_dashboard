@@ -8,12 +8,13 @@ function apply(value) {
   pointConfiguration.locations.splice(0, pointConfiguration.locations.length, ...value.locations)
   pointConfiguration.targets = value.targets
   pointConfiguration.parameters = value.parameters
+  pointConfiguration.detailLocationIds = value.detailLocationIds
   pointConfiguration.savedAt = value.savedAt || ''
   pointConfiguration.error = ''
 }
 
 export function configurationSnapshot() {
-  return JSON.parse(JSON.stringify({ version: 1, locations: pointConfiguration.locations, targets: pointConfiguration.targets, parameters: pointConfiguration.parameters }))
+  return JSON.parse(JSON.stringify({ version: 1, locations: pointConfiguration.locations, targets: pointConfiguration.targets, parameters: pointConfiguration.parameters, detailLocationIds: pointConfiguration.detailLocationIds }))
 }
 
 export function savePointConfiguration(value, storage = globalThis.localStorage) {
@@ -47,11 +48,13 @@ export function configuredParameter(point, source = 'legacy', deviceId = '') {
 
 export function presentPoint(point, source = 'legacy', deviceId = '') {
   const config = configuredParameter(point, source, deviceId)
+  const location = pointConfiguration.locations.find(item => item.id === config?.locationId)
   const backendName = point.backendName ?? point.name ?? point.channelName ?? point.pointCode ?? point.channelId ?? ''
   const backendUnit = point.backendUnit ?? point.unit ?? ''
   return { ...point, backendName, backendUnit, name: backendName, unit: backendUnit,
     ...(source === 'monitor' ? { channelName: backendName } : {}),
     locationId: config?.locationId || '', targetId: config?.targetId || '',
+    machineId: location?.machine || '', modelId: location?.model || '',
     ...(config ? { name: config.displayName, channelName: config.displayName, unit: config.unit, locationId: config.locationId, targetId: config.targetId } : {}),
     configurationState: config ? 'configured' : 'unconfigured',
   }
@@ -66,6 +69,11 @@ export function configuredMachineId(point) {
   const config = configuredParameter(point)
   const machine = pointConfiguration.locations.find(location => location.id === config?.locationId)?.machine
   return machine && !machine.includes('/') ? machine : ''
+}
+
+export function configuredModelId(point, source = 'legacy', deviceId = '') {
+  const config = configuredParameter(point, source, deviceId)
+  return pointConfiguration.locations.find(location => location.id === config?.locationId)?.model || ''
 }
 
 loadPointConfiguration()

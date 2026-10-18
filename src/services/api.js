@@ -1,4 +1,5 @@
 import { auth } from './auth'
+import { reportInformation } from './information.js'
 import { healthApi } from './health'
 import { resolveServiceBase } from './endpoints.js'
 
@@ -73,11 +74,16 @@ const unwrapApiResponse = (body) => {
 }
 
 const newApiRequest = async (path, params, options = {}) => {
-  const body = await request(path, params, {
-    ...options,
-    baseUrl: NEW_API_BASE,
-  })
-  return unwrapApiResponse(body)
+  try {
+    const body = await request(path, params, {
+      ...options,
+      baseUrl: NEW_API_BASE,
+    })
+    return unwrapApiResponse(body)
+  } catch (error) {
+    reportInformation('声纹服务', error)
+    throw error
+  }
 }
 
 const tokenQueryValue = () => auth.getToken().replace(/^Bearer\s+/i, '')

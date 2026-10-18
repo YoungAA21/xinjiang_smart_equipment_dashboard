@@ -3,17 +3,17 @@ import { mergeDiscoveredPoints } from './pointConfiguration.js'
 // Supplied installation labels are suggestions until explicitly configured.
 const moduleNames = {
   VSE03: 'ZJ17 卷接机 · VE/MAX 风机振动',
-  VSE04: 'ZB25 小盒包装机 · 电机与铝纸切刀振动',
-  VSE05: 'ZB25 小盒包装机 · 主传动与封签振动',
-  VSE08: 'YB55 硬条包装机 · 辅机振动',
-  TEMP01: 'YB55 硬条包装机 · 辅机温度',
+  VSE04: 'ZB25主机 · YB25 · 电机与铝纸切刀振动',
+  VSE05: 'ZB25主机 · YB25 · 主传动与封签振动',
+  VSE08: 'ZB25辅机 · YB55 · 辅机振动',
+  TEMP01: 'ZB25辅机 · YB55 · 辅机温度',
   TEMP02: 'ZJ17 卷接机 · VE/MAX 风机温度',
-  TEMP03: 'ZB25 小盒包装机 · 主传动温度',
-  PRESS01: 'ZB25 小盒包装机 · 负压',
-  PRESS03: 'YB55 硬条包装机 · 主负压源',
+  TEMP03: 'ZB25主机 · YB25 · 主传动温度',
+  PRESS01: 'ZB25主机 · YB25 · 负压',
+  PRESS03: 'ZB25辅机 · YB55 · 主负压源',
   PRESS02: 'ZJ17 卷接机 · 蜘蛛手负压',
-  SC01: 'ZB25 小盒包装机 · 主电机控制',
-  SC02: 'YB55 硬条包装机 · 辅机控制',
+  SC01: 'ZB25主机 · YB25 · 主电机控制',
+  SC02: 'ZB25辅机 · YB55 · 辅机控制',
 }
 
 const vibrationLocations = {

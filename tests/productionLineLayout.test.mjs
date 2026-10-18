@@ -17,11 +17,11 @@ test('PDF generator reproduces all three shipped plans and retains approved navi
     assert.equal(svg, await readFile(new URL(`../artifacts/production-line-real-layout/${name}.svg`, import.meta.url), 'utf8'))
     assert.ok(svg.includes(`viewBox="${productionLineViewBox}"`))
     for (const item of source.paths) assert.ok(svg.includes(`d="${item.d}"`), 'every original vector path survives')
-    assert.equal((svg.match(/class="machine-link"/g) || []).length, 4)
+    assert.equal((svg.match(/class="machine-link"/g) || []).length, 5)
     for (const machine of productionLineLayout) {
       assert.ok(svg.includes(`id="machine-${machine.id}"`))
       const target = productionLineTarget(machine.id)
-      if (target) assert.ok(svg.includes(`href="/#/monitor?machine=${target.query.machine}"`))
+      if (target) assert.ok(svg.includes(`href="/#/monitor?${new URLSearchParams(target.query).toString().replaceAll('&', '&amp;')}"`))
     }
     assert.ok(!svg.includes('\\n<svg'), 'XML contains real newlines')
   }

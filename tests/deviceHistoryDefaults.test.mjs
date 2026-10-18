@@ -7,6 +7,7 @@ import * as vue from 'vue'
 import * as charts from '../src/charts/telemetry.js'
 import * as equipmentCatalog from '../src/charts/equipmentCatalog.js'
 import * as machineGroups from '../src/charts/machineGroups.js'
+import * as machineTaxonomy from '../src/charts/machineTaxonomy.js'
 import * as monitoringLocationCatalog from '../src/charts/monitoringLocations.js'
 import { shiftRange } from '../src/charts/shiftRange.js'
 
@@ -43,6 +44,7 @@ async function mountMonitor(query = { source: 'legacy', device: 'PRESS02' }) {
     '../charts/telemetry': charts,
     '../charts/equipmentCatalog.js': equipmentCatalog,
     '../charts/machineGroups.js': machineGroups,
+    '../charts/machineTaxonomy.js': machineTaxonomy,
     '../charts/monitoringLocations.js': monitoringLocationCatalog,
     '../charts/shiftRange.js': { shiftRange: mode => shiftRange(mode, new Date(now)) },
   }

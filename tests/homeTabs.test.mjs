@@ -9,6 +9,7 @@ import * as addresses from '../src/charts/pointAddress.js'
 import * as catalog from '../src/charts/equipmentCatalog.js'
 import * as charts from '../src/charts/telemetry.js'
 import * as targets from '../src/charts/productionLineTargets.js'
+import * as taxonomy from '../src/charts/machineTaxonomy.js'
 
 for (const page of ['MachineMonitorPage', 'MachineOverviewPage']) {
 test(`${page} defaults to the first machine and packs pressure and sound into one grid`, async () => {
@@ -37,6 +38,7 @@ test(`${page} defaults to the first machine and packs pressure and sound into on
     '../charts/machineGroups.js': groups, '../charts/pointAddress.js': addresses,
     '../charts/equipmentCatalog.js': catalog, '../charts/telemetry': charts,
     '../charts/productionLineTargets.js': targets,
+    '../charts/machineTaxonomy.js': taxonomy,
   }
   const source = await readFile(new URL(`../src/views/${page}.vue`, import.meta.url), 'utf8')
   const compiled = compileScript(parse(source).descriptor, { id: 'machine-monitor-test' })
@@ -59,7 +61,7 @@ test(`${page} defaults to the first machine and packs pressure and sound into on
     assert.equal(state.activeMachineId, 'ZJ17')
     assert.equal(state.activeMachine.id, 'ZJ17')
     if (page === 'MachineOverviewPage') {
-      assert.deepEqual(Array.from(state.machineData.groups, machine => machine.id), ['ZJ17', 'ZB25', 'YB55'])
+      assert.deepEqual(Array.from(state.machineData.groups, machine => machine.id), ['ZJ17', 'ZB25', 'ZB25-AUX'])
     }
     assert.ok(state.allRows.every(row => row.member.id === 'VSE03'))
     assert.equal(state.allRows.length, 3)
@@ -76,16 +78,15 @@ test(`${page} defaults to the first machine and packs pressure and sound into on
     assert.equal(state.displayRows.at(-2).member.source, 'legacy')
     assert.equal(state.soundTargets.length, 1)
     assert.deepEqual(Array.from(state.soundTargets[0].channelIds), ['ch1'])
-    await state.selectMachine('YB55')
-    assert.equal(state.activeMachineId, 'YB55')
+    await state.selectMachine('ZB25-AUX')
+    assert.equal(state.activeMachineId, 'ZB25-AUX')
     assert.equal(state.allRows.length, 3)
     assert.equal(state.allRows[0].member.id, 'PRESS03')
     assert.equal(state.sections.length, 2)
     assert.equal(state.switchingAcoustic, false)
     if (page === 'MachineMonitorPage') {
-      await state.selectMachine('YB95')
-      assert.equal(state.activeMachine.id, 'YB95')
-      assert.equal(state.activeMachine.status, '未配置')
+      state.activeModel = 'YB95'
+      assert.equal(state.activeMachine.id, 'ZB25-AUX')
       assert.equal(state.allRows.length, 0)
       assert.equal(state.soundTargets.length, 0)
     }

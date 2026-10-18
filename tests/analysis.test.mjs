@@ -123,10 +123,9 @@ test('trend chart helpers preserve zero values and map risk labels', () => {
   assert.equal(alarmOption.series[0].data[0], 0)
 })
 
-test('trend alarm panel defaults to the first module before querying events', async () => {
+test('trend alarm panel uses the shared equipment point query and hierarchy selector', async () => {
   const source = await readFile(new URL('../src/components/AnalysisAlarmPanel.vue', import.meta.url), 'utf8')
-  assert.match(source, /filters\.moduleId = modules\.value\[0\]\?\.moduleId \|\| ''/)
-  assert.match(source, /if \(filters\.moduleId\) await changeModule\(\)/)
-  assert.match(source, /async function handleModuleChange\(\) \{\s*await changeModule\(\)\s*await query\(\)\s*\}/)
-  assert.match(source, /onMounted\(async \(\) => \{ await loadModules\(\); await query\(\) \}\)/)
+  assert.ok(source.includes('usePointAlarmQuery(analysisApi.getTrendAlarms'))
+  assert.match(source, /<AlarmPointFilters/)
+  assert.doesNotMatch(source, /getModules|handleModuleChange/)
 })

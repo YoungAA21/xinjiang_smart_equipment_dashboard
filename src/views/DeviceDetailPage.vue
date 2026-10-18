@@ -1,6 +1,6 @@
 <script setup>
 import ConfigurableDashboard from '../components/ConfigurableDashboard.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import TrendPage from './TrendPage.vue'
 import SpectrumPage from './SpectrumPage.vue'
@@ -14,6 +14,7 @@ import { useTelemetryStore } from '../stores/telemetry'
 import { localInputTime, numericValue, pointKey } from '../charts/telemetry'
 import { configuredMonitoringPoints, discoveredMonitoringModules, moduleDisplayName, monitoringPointName, sortMonitoringModules } from '../charts/equipmentCatalog.js'
 import { acousticChannelDisplayName, presentAcousticChannels } from '../charts/machineGroups.js'
+import { locationHierarchyLabel } from '../charts/machineTaxonomy.js'
 import { monitoringLocations } from '../charts/monitoringLocations.js'
 import { shiftRange } from '../charts/shiftRange.js'
 import HistoryCacheStatus from '../components/HistoryCacheStatus.vue'
@@ -25,6 +26,8 @@ const route = { get query() { return props.detailContext || routerRoute.query } 
 const telemetry = useTelemetryStore()
 const monitorDevices = ref(null)
 const monitorError = ref('')
+const reportInformation = inject('reportInformation', () => {})
+watch(monitorError, error => { if (error) reportInformation('声纹服务', error) })
 const monitorTime = ref(null)
 const loadingMonitor = ref(false)
 const source = ref(['legacy', 'monitor'].includes(route.query.source) ? route.query.source : 'all')
@@ -70,7 +73,7 @@ const entryPointCount = entry => entry.source === 'monitor' ? entry.raw.channels
 function resetDeviceFilters() { deviceSearch.value = ''; statusFilter.value = 'all'; source.value = 'all' }
 const selected = computed(() => entries.value.find((entry) => entry.key === selectedKey.value) || null)
 const profileLocation = computed(() => monitoringLocations.find(item => item.id === route.query.location))
-const profileName = computed(() => profileLocation.value ? `${profileLocation.value.machine} · ${profileLocation.value.name}` : selected.value?.name || '')
+const profileName = computed(() => profileLocation.value ? locationHierarchyLabel(profileLocation.value) : selected.value?.name || '')
 const profileImage = computed(() => {
   if (/^ZJ17$/i.test(profileLocation.value?.machine?.replace(/\s/g, '') || '') && /高低(?:车)?速/.test(profileLocation.value?.name.replace(/\s/g, '') || '')) return '/equipment/zj17-speed-display.png'
   if (/CV连接轴/i.test(profileLocation.value?.name.replace(/\s/g, '') || '')) return '/equipment/cv-connecting-shaft.jpg'
@@ -207,8 +210,6 @@ onBeforeUnmount(() => {
   <section class="page unified-monitor" :class="{ 'equipment-directory-page': !showingDetail, 'embedded-detail': embedded }">
     <header v-if="!embedded" class="device-toolbar content-page-header"><div><h1 class="content-page-title">测点详情 </h1></div><el-button :icon="RefreshCcw" :loading="refreshing" @click="refreshAll">刷新设备</el-button></header>
     <div v-if="showingDetail && !embedded" class="source-summary"><span :class="telemetry.errors.modules ? 'warn' : ''">采集模块 · {{ telemetry.modules?.length ?? '—' }} 个 · {{ dateTime(telemetry.moduleTime) }}</span><span :class="monitorError ? 'warn' : ''">声纹设备 · {{ monitorDevices?.length ?? '—' }} 台 · {{ dateTime(monitorTime) }}</span></div>
-    <div v-if="telemetry.errors.modules" class="monitor-error" role="alert">采集模块获取失败：{{ telemetry.errors.modules }}</div>
-    <div v-if="monitorError" class="monitor-error" role="alert">声纹设备获取失败：{{ monitorError }}</div>
     <div class="device-workspace" :class="{ 'directory-view': !showingDetail }">
       <section v-if="!showingDetail" class="equipment-directory">
         <header class="fleet-overview">
@@ -265,8 +266,8 @@ onBeforeUnmount(() => {
               <p v-else-if="!points.length" class="empty-copy">该设备暂无可查询点位</p>
               <template v-else>
                 <template v-if="chartMode === 'live'">
-                  <header class="chart-toolbar"><strong>历史曲线 · {{ points.length }} 个测点</strong></header>
-                  <HistoryCacheStatus />
+<!--                  <header class="chart-toolbar"><strong>历史曲线 · {{ points.length }} 个测点</strong></header>-->
+<!--                  <HistoryCacheStatus />-->
                   <ConfigurableDashboard :hide-toolbar="embedded" default-grid-class="history-point-grid" :scope="'point-history:' + selected.key" :items="points.map(point => ({ id: pointKey(point), title: point.name || point.pointCode, point }))" :default-span="4" :default-height="560">
                     <template #card="{ item }"><HomePointExplorer embedded historical-only :row="{ point: item.point, member: { source: 'legacy', id: selected.id, raw: selected.raw } }" :buffers="{}" /></template>
                   </ConfigurableDashboard>

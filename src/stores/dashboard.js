@@ -1,5 +1,5 @@
 ﻿import { defineStore } from 'pinia'
-import { AlarmClock, BarChart3, Bell, DatabaseZap, FileAudio, Home, MonitorCog, RadioTower, Router, ShieldCheck } from 'lucide-vue-next'
+import { AlarmClock, BarChart3, Bell, ClipboardList, DatabaseZap, Home, MonitorCog, RadioTower, Router, ShieldCheck } from 'lucide-vue-next'
 import { api } from '../services/api'
 
 const axisColor = '#C3E2D9'
@@ -118,8 +118,9 @@ export const useDashboardStore = defineStore('dashboard', {
       { label: '机组概览', icon: BarChart3, path: '/machine/overview' },
       { label: '测点详情', icon: MonitorCog, path: '/device' },
       { label: '网关通讯', icon: Router, path: '/gateway/communication' },
-      { label: '录音管理', icon: FileAudio, path: '/recordings' },
+      { label: '实时监听', icon: RadioTower, path: '/realtime-listen' },
       { label: '告警管理', icon: AlarmClock, path: '/alarm/list' },
+      { label: '班报与日报', icon: ClipboardList, path: '/reports' },
       { label: '参数配置', icon: MonitorCog, path: '/settings/parameters' },
     ],
     apiStatus: 'error',

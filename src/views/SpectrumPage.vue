@@ -1,7 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Activity, AudioLines, CircleStop, Headphones, RefreshCcw } from 'lucide-vue-next'
-import { ElMessage } from 'element-plus'
 import EChart from '../components/EChart.vue'
 import AudioVisualizationPanel from '../components/AudioVisualizationPanel.vue'
 import { api } from '../services/api'
@@ -17,6 +16,7 @@ const props = defineProps({
   channelId: { type: String, default: '' },
   displayMode: { type: String, default: 'spectrum' },
 })
+const reportInformation = inject('reportInformation', () => {})
 const devices = ref([])
 const selectedDeviceId = ref('')
 const selectedChannelId = ref('')
@@ -305,7 +305,7 @@ const loadDevices = async () => {
       selectedChannelId.value = (selectedDevice.value?.channels || []).find((channel) => channel.online)?.channelId || selectedDevice.value?.channels?.[0]?.channelId || ''
     }
   } catch (error) {
-    ElMessage.error(error?.message || '可监听设备加载失败')
+    reportInformation('声纹服务', error?.message || '可监听设备加载失败')
   } finally {
     loadingDevices.value = false
   }
@@ -362,7 +362,7 @@ const connectSignalWs = async (version = sessionVersion) => {
   signalStatus.value = '连接中'
   sockets.signal.onopen = () => { signalStatus.value = '已连接' }
   sockets.signal.onclose = () => { signalStatus.value = session.value ? '已断开' : '未连接' }
-  sockets.signal.onerror = () => { signalStatus.value = '异常' }
+  sockets.signal.onerror = () => { signalStatus.value = '异常'; reportInformation('声纹频谱连接', '连接异常') }
   sockets.signal.onmessage = (event) => {
     if (disposed || version !== sessionVersion) return
     try {
@@ -406,7 +406,7 @@ const connectAudioWs = async (version = sessionVersion) => {
   audioStatus.value = '连接中'
   sockets.audio.onopen = () => { audioStatus.value = '已连接' }
   sockets.audio.onclose = () => { audioStatus.value = session.value ? '已断开' : '未连接' }
-  sockets.audio.onerror = () => { audioStatus.value = '异常' }
+  sockets.audio.onerror = () => { audioStatus.value = '异常'; reportInformation('声纹音频连接', '连接异常') }
   sockets.audio.onmessage = (event) => {
     if (disposed || version !== sessionVersion) return
     stats.audioChunks += 1
@@ -453,7 +453,7 @@ const beginSession = async () => {
     console.log('[monitor/session created]', result)
     await Promise.all([connectSignalWs(version), connectAudioWs(version)])
   } catch (error) {
-    if (!disposed && version === sessionVersion) ElMessage.error(error?.message || '监听会话创建失败')
+    if (!disposed && version === sessionVersion) reportInformation('声纹服务', error?.message || '监听会话创建失败')
   } finally {
     starting.value = false
   }
@@ -480,7 +480,7 @@ const stopSession = async () => {
   }
   audioState.nextTime = 0
   await api.closeMonitorSession(sessionId).catch((error) => {
-    ElMessage.warning(error?.message || '服务端会话关闭失败')
+    reportInformation('声纹服务', error?.message || '服务端会话关闭失败')
   })
 }
 

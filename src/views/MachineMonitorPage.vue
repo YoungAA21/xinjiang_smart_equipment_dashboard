@@ -12,10 +12,11 @@ import { telemetryApi } from '../services/telemetry'
 import { pointKey } from '../charts/telemetry'
 import { groupMachineDevices, fanGroupOf, presentAcousticChannels } from '../charts/machineGroups.js'
 import { configuredMonitoringPoints, discoveredMonitoringModules, moduleDisplayName, sortMonitoringModules, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
-import { productionLineTargets } from '../charts/productionLineTargets.js'
+import { machineCategoryId, machineModel, modelsForMachine } from '../charts/machineTaxonomy.js'
 
+const reportInformation = inject('reportInformation', () => {})
 const telemetry = useTelemetryStore()
-const props = defineProps({ initialMachine: { type: String, default: 'ZJ17' } })
+const props = defineProps({ initialMachine: { type: String, default: 'ZJ17' }, initialModel: { type: String, default: '' } })
 const homeControlsExpanded = inject('homeControlsExpanded', ref(false))
 const monitor = useHomeDevicesStore()
 const pointMap = ref({})
@@ -46,16 +47,14 @@ const devices = computed(() => [
   ...sortMonitoringModules(discoveredMonitoringModules(telemetry.modules || [], telemetry.latest || [])).map(module => ({ key: JSON.stringify(['legacy', module.moduleId]), source: 'legacy', id: module.moduleId, name: moduleDisplayName(module), online: module.runtimeStatus?.isOnline, points: configuredMonitoringPoints(pointMap.value[module.moduleId] || [], telemetry.latest, module.moduleId), raw: module })),
   ...(monitor.devices || []).map(device => ({ key: JSON.stringify(['monitor', device.deviceId]), source: 'monitor', id: device.deviceId, name: device.deviceName || device.deviceId, online: device.online, points: presentAcousticChannels(device), raw: device })),
 ])
-const machineData = computed(() => {
-  const data = groupMachineDevices(devices.value)
-  data.groups = data.groups.map(group => {
-    const displayId = Object.keys(productionLineTargets).find(id => productionLineTargets[id].machine === group.id)
-    return displayId ? { ...group, name: `${displayId} ${productionLineTargets[displayId].name}` } : group
-  })
-  if (!data.groups.some(group => group.id === 'YB95')) data.groups.push({ id: 'YB95', name: 'YB95 条外透明纸包装机', members: [], pointCount: 0, status: '未配置' })
-  return data
+const machineData = computed(() => groupMachineDevices(devices.value))
+const activeMachineId = ref(machineCategoryId(props.initialMachine) || 'ZJ17')
+const activeModel = ref(props.initialModel || (['YB55', 'YB65', 'YB95'].includes(props.initialMachine) ? props.initialMachine : ''))
+watch(() => [props.initialMachine, props.initialModel], () => {
+  closePointChart()
+  activeMachineId.value = machineCategoryId(props.initialMachine) || 'ZJ17'
+  activeModel.value = props.initialModel || (['YB55', 'YB65', 'YB95'].includes(props.initialMachine) ? props.initialMachine : '')
 })
-const activeMachineId = ref(Object.values(productionLineTargets).some(target => target.machine === props.initialMachine) ? props.initialMachine : 'ZJ17')
 const activeMachine = computed(() => machineData.value.groups.find(machine => machine.id === activeMachineId.value) || machineData.value.groups[0])
 const connectionKey = (device, channel) => JSON.stringify([device.id, channel.channelId])
 const currentTime = computed(() => new Date(now.value).toLocaleTimeString('zh-CN', { hour12: false }))
@@ -68,12 +67,13 @@ const categories = [
   { id: 'acoustic', name: '声纹监测', color: '#688bea', icon: AudioLines },
 ]
 const categoryOf = (point, member) => member.source === 'monitor' ? 'acoustic' : String(point.metricType || '').startsWith('Vibration') ? 'vibration' : point.metricType === 'Temperature' ? 'temperature' : point.metricType === 'NegativePressure' ? 'pressure' : 'other'
-const allRows = computed(() => activeMachine.value.members.flatMap(member => member.points
+const allRows = computed(() => activeMachine.value.members.filter(member => !activeModel.value || (member.model || machineModel(activeMachineId.value)) === activeModel.value).flatMap(member => member.points
   .map(point => ({ member, point, key: member.source === 'legacy' ? pointKey(point) : connectionKey(member, point), category: categoryOf(point, member) }))))
 const sections = computed(() => categories.map(category => ({ ...category, rows: allRows.value.filter(row => row.category === category.id && (source.value === 'all' || row.member.source === source.value) && `${row.member.name} ${row.member.id} ${row.point.name || row.point.channelName || ''} ${row.point.pointCode || row.point.channelId}`.toLowerCase().includes(search.value.trim().toLowerCase())) })).filter(category => category.rows.length))
 const activeErrors = computed(() => activeMachine.value.members.filter(member => pointErrors.value[member.id]).map(member => `${member.id}：${pointErrors.value[member.id]}`))
 const historyState = ref({})
 let warmingHistory = false
+watch(activeErrors, errors => { for (const error of errors) reportInformation('点位配置', error) })
 const historyFailed = computed(() => allRows.value.some(row => historyState.value[row.key] === 'error'))
 async function warmHistory() {
   if (warmingHistory || controller.signal.aborted) return
@@ -106,6 +106,7 @@ async function selectMachine(id) {
     await preview.stop()
     closePointChart()
     activeMachineId.value = id
+    activeModel.value = ''
     search.value = ''
     source.value = 'all'
   } finally { switchingAcoustic.value = false }
@@ -235,7 +236,7 @@ const homeCardSize = computed(() => {
     rows = Math.ceil((isZb25Layout.value ? zb25Rows.value : isYb55Layout.value ? yb55Rows.value : displayRows.value).length / gridColumns)
   }
   rows = Math.max(4, rows)
-  const warningHeight = (activeErrors.value.length + Number(historyFailed.value)) * 56
+  const warningHeight = Number(historyFailed.value) * 56
   const height = Math.floor((panelSize.value.height - 96 - 16 - overhead - warningHeight - (rows - 1) * 8) / rows)
   return { '--home-point-height': `${Math.max(150, height)}px` }
 })
@@ -314,11 +315,10 @@ onBeforeUnmount(() => {
     <div class="station-actions"><span class="refresh-indicator"><i></i>{{ autoRefresh ? '实时' : '暂停' }} · {{ currentTime }}</span><button class="plain-button view-settings" :aria-label="homeControlsExpanded ? '隐藏设置' : '显示设置'" :title="homeControlsExpanded ? '隐藏设置' : '显示设置'" :aria-expanded="homeControlsExpanded" @click="homeControlsExpanded = !homeControlsExpanded"><EyeOff v-if="homeControlsExpanded" :size="18"/><Eye v-else :size="18"/></button><el-button :icon="RefreshCw" :loading="refreshing" @click="refresh">刷新</el-button></div>
     </div>
     <div v-if="homeControlsExpanded" class="home-controls"><label><Search :size="16"/><input v-model="search" aria-label="搜索当前设备点位" placeholder="搜索当前设备点位" /></label><select v-model="source" aria-label="点位来源"><option value="all">全部点位</option><option value="legacy">数值监测</option><option value="monitor">声纹通道</option></select><el-switch v-model="autoRefresh" aria-label="自动刷新" @change="toggleLive" /><span>自动刷新</span></div>
-    <p v-if="telemetry.errors.modules || telemetry.errors.latest || monitor.error" class="home-warning" role="alert">{{ [telemetry.errors.modules, telemetry.errors.latest, monitor.error].filter(Boolean).join('；') }}</p>
+    <div class="machine-model-filter"><span>机型</span><button :class="{ active: !activeModel }" @click="activeModel = ''; closePointChart()">全部</button><button v-for="model in modelsForMachine(activeMachineId)" :key="model" :class="{ active: activeModel === model }" @click="activeModel = model; closePointChart()">{{ model }}</button></div>
     <Transition name="machine-fade" mode="out-in">
       <main :ref="observePanel" :id="'machine-panel-'+activeMachineId" :key="activeMachineId" role="tabpanel" :aria-labelledby="'machine-tab-'+activeMachineId" class="machine-panel">
         <p v-if="historyFailed" class="home-warning">历史采样加载失败。<button @click="retryHistory">重试历史</button></p>
-        <p v-for="error in activeErrors" :key="error" class="home-warning">{{ error }}</p>
         <div v-if="isFanLayout" class="fan-layout">
           <section v-for="group in fanGroups" :key="group.id" class="fan-group" :class="group.id">
             <header class="fan-group-heading"><h2>{{ group.title }}</h2></header>

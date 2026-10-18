@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import GatewayModuleOverview from '../components/GatewayModuleOverview.vue'
 import { Activity, Clock3, Cpu, Database, History, ListFilter, RefreshCcw, Server, Wifi } from 'lucide-vue-next'
-import { ElMessage } from 'element-plus'
+import { reportInformation } from '../services/information.js'
 import { api } from '../services/api'
 import { acousticCollectorDisplayName } from '../charts/machineGroups.js'
 
@@ -170,7 +170,7 @@ async function loadStatuses() {
       selectedId.value = statuses.value[0]?.collectorId ? String(statuses.value[0].collectorId) : ''
     }
   } catch (error) {
-    ElMessage.error(error?.message || '网关实时状态加载失败')
+    reportInformation('网关通讯', error?.message || '网关实时状态加载失败')
   } finally {
     loading.value = false
   }
@@ -190,7 +190,7 @@ async function loadSingleStatus() {
   } catch (error) {
     if (version !== detailVersion) return
     singleStatus.value = selectedRow.value?.runtime || null
-    ElMessage.error(error?.message || '单网关状态加载失败')
+    reportInformation('网关通讯', error?.message || '单网关状态加载失败')
   } finally {
     if (version === detailVersion) detailLoading.value = false
   }
@@ -208,7 +208,7 @@ async function loadHistory() {
       historyFilter.page = 1
     }
   } catch (error) {
-    ElMessage.error(error?.message || '在线历史加载失败')
+    reportInformation('网关通讯', error?.message || '在线历史加载失败')
   } finally {
     historyLoading.value = false
   }
@@ -233,7 +233,7 @@ async function loadEvents(resetPage = false) {
     eventFilter.page = Number(data?.currentPage || eventFilter.page)
     eventFilter.pageSize = Number(data?.pageSize || eventFilter.pageSize)
   } catch (error) {
-    ElMessage.error(error?.message || '事件日志加载失败')
+    reportInformation('网关通讯', error?.message || '事件日志加载失败')
   } finally {
     eventsLoading.value = false
   }
@@ -274,13 +274,13 @@ function selectCollector(row) {
 </script>
 
 <template>
-  <section class="page gateway-page">
-    <div class="gateway-controls">
+  <section class="page gateway-page configuration-workspace" aria-label="网关通讯">
+    <div class="gateway-controls configuration-toolbar" aria-label="通讯视图与操作">
       <nav class="gateway-view-tabs" aria-label="通讯视图"><button :class="{active: view === 'modules'}" :aria-pressed="view === 'modules'" @click="changeView('modules')">模块总览</button><button :class="{active: view === 'acoustic'}" :aria-pressed="view === 'acoustic'" @click="changeView('acoustic')">声纹通讯</button></nav>
       <div class="monitor-actions gateway-filter-actions">
         <label v-if="view === 'acoustic'">历史范围 <el-input-number v-model="historyFilter.hours" :min="1" :max="720" /> 小时</label>
         <label v-if="view === 'acoustic'">每网关事件 <el-input-number v-model="historyFilter.limitPerCollector" :min="10" :max="1000" /></label>
-        <el-button :icon="RefreshCcw" :loading="view === 'modules' ? overview?.loading : loading || detailLoading || historyLoading || eventsLoading" type="primary" circle aria-label="刷新状态" title="刷新状态" @click="view === 'modules' ? overview?.refresh() : loadAll()" />
+        <el-button :icon="RefreshCcw" :loading="view === 'modules' ? overview?.loading : loading || detailLoading || historyLoading || eventsLoading" type="primary" aria-label="刷新状态" title="刷新状态" @click="view === 'modules' ? overview?.refresh() : loadAll()">刷新状态</el-button>
       </div>
     </div>
     <GatewayModuleOverview v-if="view === 'modules'" ref="overview" />

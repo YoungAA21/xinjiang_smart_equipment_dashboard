@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { Database, Download, FileAudio, RefreshCcw, Search, SlidersHorizontal, Waves } from 'lucide-vue-next'
-import { ElMessage } from 'element-plus'
+import { reportInformation } from '../services/information.js'
 import EChart from '../components/EChart.vue'
 import { api } from '../services/api'
 import { acousticChannelDisplayName } from '../charts/machineGroups.js'
@@ -152,7 +152,7 @@ async function loadMonitorDevices() {
       filters.channelId = ''
     }
   } catch (error) {
-    ElMessage.error(error?.message || '设备列表加载失败')
+    reportInformation('录音管理', error?.message || '设备列表加载失败')
   } finally {
     deviceLoading.value = false
   }
@@ -187,7 +187,7 @@ async function loadRecordings(resetPage = false) {
       await selectRecording(recordings.value[0] || null)
     }
   } catch (error) {
-    ElMessage.error(error?.message || '录音列表加载失败')
+    reportInformation('录音管理', error?.message || '录音列表加载失败')
   } finally {
     loading.value = false
   }
@@ -203,7 +203,7 @@ async function selectRecording(row) {
     selectedDetail.value = await api.getRecording(row.id)
     await loadVisualization()
   } catch (error) {
-    ElMessage.error(error?.message || '录音详情加载失败')
+    reportInformation('录音管理', error?.message || '录音详情加载失败')
   } finally {
     detailLoading.value = false
   }
@@ -223,7 +223,7 @@ async function loadVisualization() {
     })
   } catch (error) {
     visualization.value = null
-    ElMessage.error(error?.message || '录音可视化加载失败')
+    reportInformation('录音管理', error?.message || '录音可视化加载失败')
   } finally {
     visualLoading.value = false
   }
@@ -246,11 +246,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="page recording-page">
-    <header class="monitor-toolbar recording-toolbar content-page-header">
-      <div>
-        <h1 class="content-page-title">录音管理</h1>
-      </div>
+  <section class="page recording-page configuration-workspace" aria-label="录音管理">
+    <header class="recording-toolbar configuration-toolbar" aria-label="录音操作">
       <div class="monitor-actions recording-actions">
         <el-button :icon="Search" type="primary" :loading="loading" @click="loadRecordings(true)">查询</el-button>
         <el-button :icon="RefreshCcw" :loading="loading || visualLoading" @click="loadRecordings()">刷新</el-button>

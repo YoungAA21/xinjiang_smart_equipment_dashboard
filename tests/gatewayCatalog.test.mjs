@@ -9,7 +9,7 @@ test('gateway inventory uses every home module and acoustic host', () => {
   assert.equal(gatewayCatalog.length, 17)
   assert.deepEqual(gatewayCatalog.filter(r => r.source === 'legacy').map(r => r.moduleIds[0]), machines.flatMap(m => m.modules))
   assert.deepEqual(gatewayCatalog.filter(r => r.source === 'monitor').map(r => r.host), Object.keys(acousticHosts))
-  assert.equal(gatewayCatalog.find(r => r.key === 'legacy:PRESS03').machine, 'YB55')
+  assert.equal(gatewayCatalog.find(r => r.key === 'legacy:PRESS03').machine, 'ZB25-AUX')
 })
 test('runtime module identity and address override document IP assumptions', () => {
   const rows = mergeGatewayInventory({modules:[{moduleId:'SC02',host:'192.168.3.112',runtimeStatus:{isOnline:true}},{moduleId:'VSE03',host:'192.168.3.122',runtimeStatus:{isOnline:false}}]})

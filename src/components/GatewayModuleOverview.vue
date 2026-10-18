@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElDrawer } from 'element-plus'
 import { telemetryApi } from '../services/telemetry'
-import { fanGroupOf } from '../charts/machineGroups.js'
+import { fanGroupOf, machines } from '../charts/machineGroups.js'
 import { presentMonitoringPoint, monitoringPointName, sortMonitoringPoints } from '../charts/equipmentCatalog.js'
 import { mergeGatewayInventory } from '../charts/gatewayCatalog.js'
 
@@ -17,7 +17,9 @@ let pointController, pointVersion = 0, timer
 const rows = computed(() => mergeGatewayInventory({ modules: modules.value, failed: errors }).filter(row => row.source === 'legacy'))
 const selected = computed(() => rows.value.find(row => row.key === selectedKey.value))
 const visible = computed(() => rows.value.filter(row => (machine.value === '全部' || row.machine === machine.value) && (kind.value === '全部' || row.kind === kind.value) && (state.value === '全部' || row.status === state.value) && `${row.name} ${row.host} ${row.controlHost || ''} ${row.entry?.host || ''} ${row.entry?.id || ''}`.toLowerCase().includes(search.value.trim().toLowerCase())))
-const groups = computed(() => ['ZJ17', 'ZB25', 'YB55', '其他'].map(id => ({ id, rows: visible.value.filter(row => row.machine === id) })).filter(group => group.rows.length))
+const machineOptions = [...machines.map(item => item.id), '其他']
+const machineName = id => machines.find(item => item.id === id)?.name || id
+const groups = computed(() => machineOptions.map(id => ({ id, rows: visible.value.filter(row => row.machine === id) })).filter(group => group.rows.length))
 const counts = computed(() => ({ total: rows.value.length, online: rows.value.filter(row => row.online).length, offline: rows.value.filter(row => ['离线', '已停止'].includes(row.status)).length, pending: rows.value.filter(row => !['在线', '离线', '已停止'].includes(row.status)).length }))
 const filtered = computed(() => search.value.trim() || [machine.value, kind.value, state.value].some(value => value !== '全部'))
 function resetFilters() { search.value = ''; machine.value = kind.value = state.value = '全部' }
@@ -27,7 +29,7 @@ const facts = computed(() => {
   const row = selected.value
   if (!row) return []
   const raw = row.entry?.raw || {}, runtime = row.runtime
-  return [['设备', row.machine], ['模块编号', row.entry?.id || row.moduleIds[0]], ['安装位置', row.location], ['所属交换机', row.network], ['通讯 IP', row.host], ['协议 / 驱动', raw.protocol || runtime.driver], ['端口', raw.port ?? raw.audioPort ?? runtime.port], ['从站地址', raw.unitId], ['采样率', runtime.configuredSampleRate ? `${runtime.configuredSampleRate} Hz` : null], ['最后数据', dateText(runtime.lastDataAt || raw.lastSeenAt)], ['状态更新', dateText(runtime.lastUpdatedAt || runtime.updatedAt)]]
+  return [['设备', machineName(row.machine)], ['模块编号', row.entry?.id || row.moduleIds[0]], ['安装位置', row.location], ['所属交换机', row.network], ['通讯 IP', row.host], ['协议 / 驱动', raw.protocol || runtime.driver], ['端口', raw.port ?? raw.audioPort ?? runtime.port], ['从站地址', raw.unitId], ['采样率', runtime.configuredSampleRate ? `${runtime.configuredSampleRate} Hz` : null], ['最后数据', dateText(runtime.lastDataAt || raw.lastSeenAt)], ['状态更新', dateText(runtime.lastUpdatedAt || runtime.updatedAt)]]
 })
 function pointName(point) { return monitoringPointName(point) }
 function pointGroup(point) {
@@ -84,7 +86,7 @@ defineExpose({ refresh, loading })
     <div class="module-counts"><div>模块总数<strong>{{ counts.total }}</strong></div><div class="count-online">在线<strong>{{ counts.online }}</strong></div><div class="count-offline">离线 / 停止<strong>{{ counts.offline }}</strong></div><div class="count-pending">待确认<strong>{{ counts.pending }}</strong></div></div>
     <div class="module-filters">
       <input v-model="search" aria-label="搜索模块" placeholder="模块 / IP / 编号" />
-      <select v-model="machine" aria-label="筛选设备"><option v-for="value in ['全部','ZJ17','ZB25','YB55','其他']" :key="value" :value="value">{{ value === '全部' ? '全部设备' : value }}</option></select>
+      <select v-model="machine" aria-label="筛选设备"><option value="全部">全部设备</option><option v-for="value in machineOptions" :key="value" :value="value">{{ machineName(value) }}</option></select>
       <select v-model="kind" aria-label="筛选类型"><option v-for="value in ['全部','振动','温度','压力','控制','其他']" :key="value" :value="value">{{ value === '全部' ? '全部类型' : value }}</option></select>
       <select v-model="state" aria-label="筛选状态"><option v-for="value in ['全部','在线','离线','已停止','连接中','状态未知','状态待确认','未接入']" :key="value" :value="value">{{ value === '全部' ? '全部状态' : value }}</option></select>
       <button v-if="filtered" class="module-reset" @click="resetFilters">显示全部</button>
@@ -94,7 +96,7 @@ defineExpose({ refresh, loading })
     <div class="module-workspace">
       <div class="module-groups">
         <section v-for="group in groups" :key="group.id" class="panel module-group">
-          <h2>{{ group.id }} <span>{{ group.rows.filter(row => row.online).length }} / {{ group.rows.length }} 在线</span></h2>
+          <h2>{{ machineName(group.id) }} <span>{{ group.rows.filter(row => row.online).length }} / {{ group.rows.length }} 在线</span></h2>
           <div class="module-grid"><button v-for="row in group.rows" :key="row.key" class="module-card" :class="{ active: detailOpen && selectedKey === row.key }" :aria-label="`${group.id} ${row.name} ${row.status}，查看详情`" @click="openDetail(row)">
             <div><strong :title="row.name">{{ row.name }}</strong><span class="module-state" :class="{ online: row.online, offline: ['离线', '已停止'].includes(row.status) }">{{ row.status }}</span></div>
             <div><span>{{ row.kind }} · {{ row.entry?.id || row.moduleIds[0] || '采集器' }}</span><span>{{ row.host || row.entry?.host || '—' }}</span></div>

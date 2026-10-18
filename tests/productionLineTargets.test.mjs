@@ -2,9 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { productionLineTarget } from '../src/charts/productionLineTargets.js'
 
-test('only four approved machine footprints navigate, preserving existing source ownership', () => {
-  for (const [displayId, machine] of [['ZJ17', 'ZJ17'], ['YB25', 'ZB25'], ['YB55', 'YB55'], ['YB95', 'YB95']]) {
-    assert.deepEqual(productionLineTarget(displayId), { path: '/monitor', query: { machine } })
+test('five model footprints navigate to their category and preserve individual model selection', () => {
+  for (const [displayId, machine] of [['ZJ17', 'ZJ17'], ['YB25', 'ZB25'], ['YB55', 'ZB25-AUX'], ['YB65', 'ZB25-AUX'], ['YB95', 'ZB25-AUX']]) {
+    assert.deepEqual(productionLineTarget(displayId), { path: '/monitor', query: { machine, ...(displayId === 'ZJ17' ? {} : { model: displayId }) } })
   }
-  for (const id of ['YB65', 'MAIN-CABINET', 'STORAGE-DRUM', 'unknown', 'toString']) assert.equal(productionLineTarget(id), null)
+  for (const id of ['MAIN-CABINET', 'STORAGE-DRUM', 'unknown', 'toString']) assert.equal(productionLineTarget(id), null)
 })

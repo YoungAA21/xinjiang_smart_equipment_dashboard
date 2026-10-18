@@ -13,6 +13,8 @@ import { parameterKey } from '../src/charts/pointConfiguration.js'
 import * as charts from '../src/charts/telemetry.js'
 import * as homeNavigation from '../src/charts/homePointNavigation.js'
 import * as recentHistory from '../src/composables/useRecentHistory.js'
+import * as taxonomy from '../src/charts/machineTaxonomy.js'
+import * as detailTabs from '../src/charts/pointDetailTabs.js'
 
 test('measurement layout omits the three status tabs without changing saved locations', () => {
   const items = [
@@ -54,6 +56,7 @@ test('point monitoring caches metadata and freely arranges cards across secondar
     '../charts/equipmentCatalog.js': catalog, '../charts/telemetry.js': charts,
     '../charts/homePointNavigation.js': homeNavigation,
     '../composables/useRecentHistory.js': recentHistory,
+    '../charts/machineTaxonomy.js': taxonomy, '../charts/pointDetailTabs.js': detailTabs,
   }
   const source = await readFile(new URL('../src/views/DeviceMonitorPage.vue', import.meta.url), 'utf8')
   const compiled = compileScript(parse(source).descriptor, { id: 'machine-monitor-test' })
@@ -74,6 +77,11 @@ test('point monitoring caches metadata and freely arranges cards across secondar
     for (let i = 0; i < 20; i++) await vue.nextTick()
     assert.equal(state.busy, false)
     assert.equal(state.selected.id, 've')
+    assert.ok(state.locationOptions.some(location => location.id === 'main-motor'))
+    assert.ok(state.locationOptions.some(location => location.id === 'aux-motor'))
+    assert.equal(state.activeMachine, undefined)
+    assert.equal(state.activeModel, undefined)
+    assert.doesNotMatch(source, /aria-label="选择机组类别"|aria-label="选择机型"/)
     assert.equal(state.rows.length, 0)
     assert.ok(state.locationOptions.every(location => location.id !== 'unconfigured'))
     assert.equal(state.pointMap.PRESS01.length, 3)

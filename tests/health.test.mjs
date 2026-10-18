@@ -18,7 +18,7 @@ const maintenance = { options: { futurePartitionMonths: 3, dataRetentionMonths: 
 const reply = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 const sampleFetch = async (url) => reply(url.endsWith('/detail') ? healthy : url.endsWith('/table-maintenance') ? maintenance : heartbeat)
 
-async function loadApi(fetch, env = {}, location) {
+async function loadApi(fetch, env = {}, location, onInformation) {
   const context = vm.createContext({ fetch, AbortSignal, URL, URLSearchParams, ...(location ? { location } : {}) })
   const makeModule = async (file) => new vm.SourceTextModule(await readFile(new URL(file, import.meta.url), 'utf8'), { context, initializeImportMeta(meta) { meta.env = env } })
   const endpoints = await makeModule('../src/services/endpoints.js')
@@ -27,10 +27,22 @@ async function loadApi(fetch, env = {}, location) {
   await health.link((specifier) => specifier === './endpoints.js' ? endpoints : Promise.reject(new Error(`Unexpected health dependency: ${specifier}`)))
   const auth = new vm.SyntheticModule(['auth'], function () { this.setExport('auth', { getToken: () => 'test-token' }) }, { context })
   const api = await makeModule('../src/services/api.js')
-  await api.link((specifier) => specifier === './auth' ? auth : specifier === './health' ? health : endpoints)
+  const information = await makeModule('../src/services/information.js')
+  await information.link(() => { throw new Error('Unexpected information dependency') })
+  await api.link((specifier) => specifier === './information.js' ? information : specifier === './auth' ? auth : specifier === './health' ? health : endpoints)
   await api.evaluate()
+  if (onInformation) information.namespace.subscribeInformation(onInformation)
   return api.namespace.api
 }
+
+test('expired acoustic tokens are recorded in the information bar while the request still rejects', async () => {
+  let messages = []
+  const api = await loadApi(async () => reply({ code: 401, message: '用户token已失效，请重新登录' }), {}, undefined, value => { messages = value })
+  await assert.rejects(api.getMonitorDevices(), /用户token已失效/)
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].source, '声纹服务')
+  assert.equal(messages[0].message, '用户token已失效，请重新登录')
+})
 
 test('only three migrated health routes are enabled; no 18080 token is sent', async () => {
   const calls = []

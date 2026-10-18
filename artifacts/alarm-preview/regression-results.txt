@@ -1,0 +1,353 @@
+✔ alarm color defaults and overrides prefer individual alarm, then kind, then severity (1.2782ms)
+✔ alarm colors persist per account without changing server alarm data (3.1928ms)
+✔ 5158 alarm routes use the isolated same-origin proxy and supported filters without credentials (41.2342ms)
+✔ alarm filters reject invalid input and retain false, zero-free IDs and optional times (0.606ms)
+✔ HTTP 500 is reported and never interpreted as an empty successful result (3.747ms)
+✔ a failed new query retains the previous rows and the previous applied filter label (2.092ms)
+✔ analysis worker success does not fill failed event queries with runtime alarms (1.6739ms)
+✔ new query results win races and clearing invalidates outstanding requests (3.1641ms)
+✔ event parsing rejects unknown envelopes and preserves alarm display helpers (0.422ms)
+(node:64340) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ development alarm proxy only permits two read-only endpoints (370.9931ms)
+✔ collection alarm panel uses the shared equipment point query and hierarchy selector (2.7635ms)
+✖ editable trend axis bounds support zero, negatives and automatic range without altering readings or limits (3.5033ms)
+✔ analysis routes use the same-origin 5158 proxy, preserve filters and omit credentials (39.1912ms)
+✔ analysis transport rejects an SPA fallback response with a proxy-specific message (1.237ms)
+✔ analysis transport supports a conventional API response envelope (0.7372ms)
+✔ analysis query validation enforces endpoint constraints and complete time ranges (0.4703ms)
+(node:42908) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ development proxy permits only the trend analysis endpoints (489.7044ms)
+✔ trend chart helpers preserve zero values and map risk labels (1.202ms)
+✔ trend alarm panel uses the shared equipment point query and hierarchy selector (2.7782ms)
+✔ documented collection configuration sends latest through the original 5158 proxy (12.2678ms)
+(node:57748) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ layout validates stored data and clamps unsafe sizes (2.4895ms)
+✔ layout retains missing cards and appends newly discovered cards (0.5994ms)
+✔ reordering preserves dimensions and hidden preferences across reloads (0.5541ms)
+✔ pages, machines and locations have independent storage keys (0.1965ms)
+✔ switching scope reads independent preferences and reset clears only that scope (86.3767ms)
+✔ unavailable browser storage keeps layout usable and shows an explicit warning (32.0147ms)
+✔ corrected machine ID preserves old browser layout and prefers the new saved layout (0.4657ms)
+(node:51680) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ collection scope excludes acoustic modules, samples, checks and nested details (3.164ms)
+✔ failed refresh preserves data and successful timestamp while exposing the error (21.4891ms)
+✔ late point response cannot overwrite the new selection (39.1647ms)
+✔ leaving the page prevents pending overview responses from repopulating the store (1.0909ms)
+✖ trend keeps its data and axis range during refresh and ignores same-point metadata replacements (141.2083ms)
+✔ embedded trend queries the parent point and ignores a late response after point selection changes (32.5786ms)
+✔ leaving an embedded spectrum panel closes a session that finishes creating after unmount (40.027ms)
+✔ switching acoustic points closes the old session and clears its waveform and counters (22.7137ms)
+(node:65664) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:44096) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ history table entry and point changes automatically query the current shift (31.2204ms)
+✔ opening point details defaults to historical charts without requesting live samples (8.533ms)
+✔ reentering history uses current time while manual queries preserve the chosen range (7.9411ms)
+✔ whole-machine history link selects the requested point rather than the first point (6.0499ms)
+✔ historical charts are embedded alongside a separate history table and loading state (0.4738ms)
+✔ analysis tabs keep the selected device and point; choosing a device resets the view (8.3618ms)
+✔ legacy analysis entry opens the requested device detail tab (7.3154ms)
+✔ device directory waits for an explicit device choice and missing devices do not fall back (10.0013ms)
+✔ device tabs exclude unsupported analysis and old URLs fall back to live (12.8951ms)
+✔ measurement layout omits the three status tabs without changing saved locations (2.07ms)
+✔ point monitoring caches metadata and freely arranges cards across secondary targets (142.9579ms)
+(node:43724) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ each of six DI channels creates its own incident, and repeated high values do not repeat notifications (22.6328ms)
+✔ recovery closes only the matching incident; a subsequent high starts a new event (0.5395ms)
+✔ absent, invalid, stale and wrong-quality data never create or recover alarms (0.3481ms)
+✔ signal labels and point filters match the supplied installation sheet (0.5924ms)
+✔ local cache preserves unacknowledged alarms across restart without replaying prompts (122.0802ms)
+✔ new alarms and recoveries remain recorded without generating automatic notifications (1.8112ms)
+✔ documented vibration modules and measuring locations have readable equipment labels (2.2584ms)
+✔ vibration measurements appear before status points without altering API identities (1.3829ms)
+✔ confirmed cutter and sealing labels override backend names without swapping samples or identities (1.6147ms)
+✔ equipment stays readable as the world grows, with every device accessible without overlap (3.067ms)
+✔ zoom preserves three columns within the displayed width (1.223ms)
+✔ gateway inventory uses every home module and acoustic host (2.4895ms)
+✔ runtime module identity and address override document IP assumptions (0.8596ms)
+✔ home and gateway use identical fan temperature and sound assignments (1.0416ms)
+✔ sound channel labels follow configured collector IP and channel number (0.5848ms)
+✔ device monitor resolves acoustic channels when collector IDs have different types (0.3859ms)
+✔ gateway collector names use configured IP instead of backend svt collector labels (0.2258ms)
+✔ missing and failed runtime state is never presented as online or offline (0.3808ms)
+✔ collector channels stay partitioned and unmatched modules remain visible (0.4714ms)
+✔ module overview refreshes only collection modules and excludes acoustic rows from counts and filters (82.6343ms)
+(node:34760) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ expired acoustic tokens are recorded in the information bar while the request still rejects (63.0575ms)
+(node:50780) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ only three migrated health routes are enabled; no 18080 token is sent (69.0259ms)
+✔ health base override is independent of the same-origin new service and trims trailing slash (31.1844ms)
+✔ development health and new service calls use scoped same-origin proxies (23.078ms)
+✔ production uses same-origin proxies for both services (17.4154ms)
+✖ proxy allowlist excludes unmigrated legacy routes and all new API routes (298.2499ms)
+✔ login endpoint override preserves form submission and does not change other service URLs (19.1587ms)
+✖ blank login override falls back to development or production service configuration (6.4518ms)
+✔ new API methods, auth, body, unwrapping and audio URLs remain unchanged (9.441ms)
+✔ monitor device requests accept cancellation without changing authentication or URL (5.7697ms)
+✔ 503 detail remains usable, other HTTP errors and invalid data reject (23.4209ms)
+✔ healthy system can contain offline modules; no preview data on first load (7.7723ms)
+✔ failed refresh retains last data and marks only failing section; recovery clears error (1.612ms)
+✔ refreshes do not overlap, and unmount cancellation does not mutate data (1.1335ms)
+✔ 503 unhealthy check details reach the store (0.7992ms)
+✔ health gauge measures check pass rate independently from module connectivity (3.4802ms)
+✔ unhealthy and degraded checks reduce the gauge (0.3083ms)
+✔ missing data has an explicit empty state, not a synthetic score (0.4778ms)
+✔ check grouping includes unexpected checks exactly once (0.8687ms)
+✔ partition matrix distinguishes covered, absent, optional and unknown partitions (0.6995ms)
+✔ zero cache is an empty ring; populated cache represents actual counts (0.3199ms)
+✔ maintenance bar counts come from actual partition lists, including pmax (0.307ms)
+✔ an alarming group targets the alarming parameter instead of its first normal parameter (2.9161ms)
+✔ normal and unknown groups retain normal navigation without requesting a drawer (3.8025ms)
+✔ drawer requests wait for the correct device and parameter and never fall back to the first row (0.3753ms)
+✔ home hides pending wording while preserving alarms, normal and offline labels (0.221ms)
+✔ home alarms hide unconfigured points, preserve active configured events and follow configuration changes (12.9691ms)
+✔ alarm identity without channel resolves only an unambiguous configured point and retains its point ID (1.0684ms)
+(node:10452) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ merged overview counts 10 legacy modules plus one device, not its collectors/channels (2.3571ms)
+✔ same IDs across services or protocols stay distinct (0.3027ms)
+✔ missing/invalid online values remain unknown and child status does not override device status (0.2512ms)
+✔ source filtering keeps the expected individual distributions (0.3117ms)
+✔ source summary distinguishes partial data, stale data and a complete empty source (0.3549ms)
+✔ monitor refresh uses cancellable transport and validates response shape (24.4189ms)
+✔ failure preserves snapshot without classifying missing source devices as offline; recovery clears error (4.6501ms)
+✔ requests do not overlap and unmount abort prevents publishing a snapshot (5.0501ms)
+✔ clearing a previous session invalidates late responses without disturbing the next request (3.9264ms)
+(node:37192) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ opening the history drawer loads current-shift samples through the installed cache and real transport (146.3238ms)
+✔ explorer immediately loads current shift, switches ranges and ignores cancelled late results (39.2081ms)
+✔ appearance rejection uses inverted switch values from the specified point (1.5734ms)
+(node:57616) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ MachineMonitorPage defaults to the first machine and packs pressure and sound into one grid (126.8406ms)
+✔ MachineOverviewPage defaults to the first machine and packs pressure and sound into one grid (44.1526ms)
+✔ information log merges repeated errors, clears all rows and accepts new errors after clearing (2.051ms)
+✔ information log is bounded and callers cannot mutate its internal records (5.6643ms)
+(node:35380) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ recording failures from devices, list, details and visualization go to the shared message log (95.0748ms)
+✔ pages no longer use global error popups and monitor headers do not print raw service errors (58.3369ms)
+✔ new messages shake the button, opening acknowledges them and clearing resets the indicator (9.6654ms)
+✔ editing a custom location preserves its identity and all child parameter relationships (4.6184ms)
+✔ adding and editing detect duplicate names despite whitespace, case or fullwidth differences (3.003ms)
+✔ deleting a duplicate location migrates children and merges normalized target names without losing units (2.0985ms)
+✔ migration to an empty destination keeps target identities and explicit unconfiguration removes references (0.9954ms)
+✔ fixed locations and invalid migration destinations cannot be deleted or changed (1.6385ms)
+✔ all confirmed modules join three machines while unknown pressure sources stay visible (3.9511ms)
+✔ acoustic channels split by collector without changing identifiers or dropping unknown channels (0.7817ms)
+✔ partial offline acquisition is never reported as fully online (0.3521ms)
+✔ latest installation addresses partition all five collectors and their channels (1.3905ms)
+✔ three categories own all five models, including legacy machine aliases (2.0782ms)
+✔ legacy configuration migration preserves locations, parameters, units and model ownership (1.3187ms)
+✔ one collection module splits auxiliary models without duplicating samples or alarms (13.8586ms)
+✔ detail tab visibility and ordering are reactive and do not remove location data (3.786ms)
+✔ a model cannot be assigned to the wrong category and duplicate location names are scoped to models (1.0257ms)
+✔ alarm hierarchy follows current configured equipment, targets and parameters, using live IDs (3.7081ms)
+✔ device queries expand to selected point IDs, merge newest first and preserve event values and units (1.5977ms)
+✔ choosing a parent automatically selects the first valid option through the remaining hierarchy (0.7911ms)
+✔ per-point and merged limits are explicit and zero selected points never falls back to a global query (0.8895ms)
+✔ trend charts keep distinct parameters and historical units in separate selectable groups (0.4844ms)
+✔ missing current IDs, mixed point responses and individual failures cannot become a successful empty result (2.5584ms)
+✔ events without numeric point IDs require an unambiguous channel and code identity (0.7789ms)
+✔ catalog checks identity and reports failed modules while supporting other equipment (0.7426ms)
+✔ point alarm queries bound concurrency and stop queued work on navigation (0.9291ms)
+✔ rapid equipment changes cancel old queries, reset child selections and only show current scope (27.7456ms)
+✔ same-scope failure preserves applied filters; configuration removal clears old results and sends no broad request (7.4196ms)
+✔ unmount cancels requests and ignores late responses (5.955ms)
+(node:47996) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ identities isolate sources, modules, channels and parameter codes without coercing device IDs (1.6949ms)
+✔ configuration changes update cached computed names, units and ownership while preserving samples and IDs (10.7695ms)
+✔ new backend parameters remain unconfigured even next to a configured parameter (2.6399ms)
+✔ latest-only discovery preserves zero and does not overwrite metadata or duplicate a known parameter (0.2541ms)
+✔ empty unit is an explicit configuration rather than a fallback to the backend unit (1.2735ms)
+✔ clearing configuration restores original names and units even for an already decorated selected point (1.579ms)
+✔ saving, reloading and exporting configuration retain relationships for all local users (2.1088ms)
+✔ invalid hierarchy and failed disk writes cannot replace the current valid configuration (4.566ms)
+✔ a custom hierarchy appears in point options and overrides machine ownership by individual parameter (3.6012ms)
+✔ acoustic channel configuration remains independent of collection parameter configuration (1.4146ms)
+✔ fan layout and point details share exactly the same temperature assignments (1.1334ms)
+✔ alarm rows with omitted channels resolve only unambiguous configured parameters (1.6364ms)
+✔ a latest-only module is discoverable before the module directory catches up (0.2856ms)
+✔ saved and imported assignments migrate to ZJ17 without changing point identities (0.3817ms)
+✔ production proxy forwards point limit PATCH instead of returning the dedicated API 404 (7.1207ms)
+✔ point limit PATCH sends both nullable fields, accepts equal bounds and carries no acoustic token (35.6278ms)
+✔ point limit PATCH clears either bound and rejects reversed bounds before sending (1.726ms)
+✔ home preserves five footprints and maps YB25 only to the confirmed ZB25 sources (4.081ms)
+✔ readings preserve zero and reject missing, bad quality, future and stale samples (9.1107ms)
+✔ PDF generator reproduces all three shipped plans and retains approved navigation (200.3067ms)
+✔ annotated machine regions place the full YB25 beside the cabinet and YB95/YB65/YB55 below (0.6744ms)
+(node:14644) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ leaving the production home cancels requests, clears timers and ignores late point configuration (23.2604ms)
+✔ SVG machine alarms and counts exclude unconfigured points and react immediately to configuration removal (48.0038ms)
+✔ home values exclude unconfigured parameters and preserve configured zero and unavailable samples (1.9395ms)
+✔ home point list never substitutes acquisition module names for missing locations (1.3158ms)
+✔ zero is a normal current value only with valid fresh samples and a successful alarm source (0.8643ms)
+✔ connection banner depends on device online states, not sampling or measurement alarms (0.3464ms)
+✔ MAX fan combines vibration, temperature and acoustic measurements into a single monitoring point (0.6765ms)
+✔ alarm matching and machine filtering preserve point and module identities (0.8098ms)
+✔ five model footprints navigate to their category and preserve individual model selection (2.0081ms)
+✔ recent history retries failed points, skips successful metadata replacements and warms newly visible points (9.2979ms)
+✔ saved report configuration and snapshots are isolated by user (43.4049ms)
+✔ viewing a saved period reuses its fixed HTML after configuration or source changes (4.5014ms)
+✔ aborted generation never writes a stale snapshot and all failed histories remain retryable (1.6107ms)
+✔ report persistence failures are visible and a concurrent existing snapshot remains fixed (0.4551ms)
+✔ switching backwards respects night ownership, month boundaries and natural days (0.3878ms)
+✔ retention preserves the newly requested historical report without storing raw histories (3.1651ms)
+✔ report defaults always select the most recent completed shift, including the idle period (1.5863ms)
+✔ report ranges use calendar shifts, adjacent or same shifts, and completed natural days (2.9513ms)
+✔ cleaning preserves zero/negative readings, rejects unknown quality, isolates point identity and deduplicates boundaries (0.9519ms)
+✔ trend smoothing does not remove original peaks from sample statistics and resets after gaps (3.3123ms)
+✔ IO debounce ignores bounce edges, never bridges bad quality/gaps, and does not infer a first rising edge (0.9858ms)
+✔ event statistics enforce the half-open period and never resolve ambiguous channel identity (0.4277ms)
+✔ IO defaults retain short pulses and final observed edges without inventing final duration (0.4635ms)
+✔ report queue bounds concurrency, preserves partial failures and stops scheduling after cancellation (10.3458ms)
+✔ report catalogs include only key measurements and reject mismatched catalog modules (1.4153ms)
+✔ report generation exposes partial errors and exports a standalone HTML report without IO (42.4053ms)
+✔ sparse and truncated histories never yield a period comparison (2.5689ms)
+(node:61756) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ runtime transport uses collection proxy without credentials or authentication (7.4334ms)
+✔ home polls every second, skips overlap, retains failed data and cancels late responses (5.8951ms)
+✔ current-shift history preserves the local-time API contract used by uncached queries (7.5926ms)
+✔ old UTC cache blocks are refetched instead of hiding current-shift samples (0.7793ms)
+✔ local-time requests retain millisecond boundaries when capped intervals split (7.6559ms)
+✔ raw current-shift samples survive reload; point/account identities and query limits stay isolated (2.3211ms)
+✔ full-shift reads split capped responses and cache only complete blocks (1.3584ms)
+✔ concurrent readers share requests; cancelling one consumer does not cancel another (1.866ms)
+✔ failed/truncated/mismatched responses never mark a range complete; storage failure falls back (1.3509ms)
+✔ active blocks fetch only the tail with overlap, including late arrivals and corrections (1.3781ms)
+✔ custom history bypasses current-shift caching and rotating shift prunes stored data (0.6787ms)
+✔ session cancellation prevents late responses from persisting or repainting (0.6824ms)
+✔ already cancelled readers perform no I/O; full warmup keeps blocks without assembling a chart array (1.0695ms)
+✔ history network concurrency stays bounded across different points (1.7506ms)
+✔ settled blocks expire and fully revalidate to pick up older backend corrections (0.6403ms)
+✔ current and previous shifts preserve the production schedule across midnight and idle hours (8.2118ms)
+✔ one visual session routes channels and releases before switching, without an audio socket (3.2816ms)
+✔ a pending creation is closed when the user leaves before it returns (1.5305ms)
+✔ direct and cached history transport allow 120 seconds while metadata keeps 10 seconds (33.2874ms)
+✔ slow history remains cancellable and reports the history timeout during body reading (1.4875ms)
+✔ four telemetry routes use the same-origin 5158 proxy without credentials; history only uses pointId (1.5571ms)
+✔ module route encodes IDs and HTTP errors are not accepted as samples (0.5253ms)
+✔ point configuration retries a transient timeout once and returns the real response (0.7426ms)
+✔ point configuration stops after two network failures and never retries navigation cancellation (0.5455ms)
+✔ history rejects invalid point IDs, times and limits before fetching (0.4562ms)
+(node:43152) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ development route uses dedicated telemetry prefix without widening health or 18080 proxies (211.1213ms)
+✔ same value with new timestamps is retained; repeated cached sample is not duplicated (0.5509ms)
+✔ latest buffers isolate tuples, sort timestamps and release removed points (0.2986ms)
+✔ chart preserves zero, does not turn missing values into zero, and gaps real-time outages (0.5033ms)
+✔ datetime-local defaults use local calendar components (0.1451ms)
+✔ point changes ignore late responses from previous module (3.1742ms)
+✔ metadata refresh retains same-module points while loading and clears them for a different module (1.1183ms)
+✔ failed latest refresh keeps the real previous samples and marks error (1.2491ms)
+✔ changing point invalidates old history requests and clears the old chart (0.7963ms)
+✔ history records the executed range, not mutable form fields (0.8448ms)
+✔ unmount clear prevents late sample response contaminating the next visit (0.9339ms)
+✔ home history fills a bounded window, merges concurrent live data and rolls oldest samples out (4.7829ms)
+✔ home history does not fabricate samples or restore data after leaving the page (0.9149ms)
+✔ current thresholds preserve zero, support one-sided limits and stay visible outside sample range (0.6466ms)
+(node:50484) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ history list shows local timestamp, point identity, raw numeric precision, zero and raw quality (33.6231ms)
+✔ list paginates large result sets, defaults to newest first, and does not mutate chart samples (4.2394ms)
+✔ empty query result has explicit empty state and disabled pagination (0.6996ms)
+✔ four primary sections retain every existing menu destination under workspace tabs (2.2682ms)
+✔ deep links and the original monitoring route select the appropriate section and tab (0.415ms)
+ℹ tests 231
+ℹ suites 0
+ℹ pass 227
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1441.525
+
+✖ failing tests:
+
+test at tests\analysis.test.mjs:8:1
+✖ editable trend axis bounds support zero, negatives and automatic range without altering readings or limits (3.5033ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  undefined !== 0
+  
+      at TestContext.<anonymous> (file:///C:/Users/14116/WebstormProjects/xinjiang_smart_equipment_dashboard/tests/analysis.test.mjs:15:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\deviceAnalysisContext.test.mjs:48:1
+✖ trend keeps its data and axis range during refresh and ignores same-point metadata replacements (141.2083ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  undefined !== -10
+  
+      at TestContext.<anonymous> (file:///C:/Users/14116/WebstormProjects/xinjiang_smart_equipment_dashboard/tests/deviceAnalysisContext.test.mjs:82:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: -10,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\health.test.mjs:89:1
+✖ proxy allowlist excludes unmigrated legacy routes and all new API routes (298.2499ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'http://66.66.66.6:15158'
+  - 'http://66.66.66.4:5158'
+                     ^
+  
+      at TestContext.<anonymous> (file:///C:/Users/14116/WebstormProjects/xinjiang_smart_equipment_dashboard/tests/health.test.mjs:100:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'http://66.66.66.6:15158',
+    expected: 'http://66.66.66.4:5158',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\health.test.mjs:125:1
+✖ blank login override falls back to development or production service configuration (6.4518ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'http://66.66.66.4:18080/auth/login'
+  - 'http://dev.example:18080/auth/login'
+            ^
+  
+      at TestContext.<anonymous> (file:///C:/Users/14116/WebstormProjects/xinjiang_smart_equipment_dashboard/tests/health.test.mjs:134:12)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'http://66.66.66.4:18080/auth/login',
+    expected: 'http://dev.example:18080/auth/login',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

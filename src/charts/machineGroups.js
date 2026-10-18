@@ -1,14 +1,15 @@
 import { configuredParameter, pointConfiguration, presentPoint } from '../stores/pointConfiguration.js'
 import { monitoringLocationOf } from './monitoringLocations.js'
+import { machineCategoryId, machineModel } from './machineTaxonomy.js'
 
 export const machines = [
-  { id: 'ZJ17', name: 'ZJ17 卷接机', modules: ['VSE03', 'TEMP02', 'PRESS02'] },
-  { id: 'ZB25', name: 'ZB25 小盒包装机', modules: ['VSE04', 'VSE05', 'TEMP03', 'SC01', 'PRESS01'] },
-  { id: 'YB55', name: 'YB55 硬条包装机', modules: ['VSE08', 'TEMP01', 'SC02', 'PRESS03'] },
+  { id: 'ZJ17', name: 'ZJ17', modules: ['VSE03', 'TEMP02', 'PRESS02'] },
+  { id: 'ZB25', name: 'ZB25主机', modules: ['VSE04', 'VSE05', 'TEMP03', 'SC01', 'PRESS01'] },
+  { id: 'ZB25-AUX', name: 'ZB25辅机', modules: ['VSE08', 'TEMP01', 'SC02', 'PRESS03'] },
 ]
 export const acousticHosts = {
   '192.168.3.51': 'ZJ17', '192.168.3.52': 'ZJ17',
-  '192.168.3.53': 'ZB25', '192.168.3.54': 'ZB25', '192.168.3.55': 'YB55',
+  '192.168.3.53': 'ZB25', '192.168.3.54': 'ZB25', '192.168.3.55': 'ZB25-AUX',
 }
 const acousticChannelNames = {
   '192.168.3.51': { 1: 'VE 风机电机声纹', 2: 'VE 风机整体声纹' },
@@ -54,14 +55,11 @@ function acousticMachine(device, channel) {
   if (owners.size === 1 && !owners.has(null)) return [...owners][0]
   if (collectors.length) return null
   const name = `${device.id} ${device.name}`.toUpperCase()
-  const matches = machines.filter(machine => new RegExp(`(^|[^A-Z0-9])${machine.id}([^A-Z0-9]|$)`).test(name))
-  return matches.length === 1 ? matches[0].id : null
+  const matches = new Set([...name.matchAll(/(?:^|[^A-Z0-9])(ZB25-AUX|ZJ117|ZJ17|ZB25|YB25|YB55|YB65|YB95)(?=$|[^A-Z0-9])/g)].map(match => machineCategoryId(match[1])))
+  return matches.size === 1 ? [...matches][0] : null
 }
 export function groupMachineDevices(devices) {
   const groups = machines.map(({ id, name }) => ({ id, name, members: [] }))
-  for (const location of pointConfiguration.locations) {
-    if (!location.machine.includes('/') && !groups.some(group => group.id === location.machine)) groups.push({ id: location.machine, name: location.machine, members: [] })
-  }
   const pending = { id: 'pending', name: '待确认归属', members: [] }
   const add = (id, member) => (groups.find(group => group.id === id) || pending).members.push(member)
   for (const device of devices) {
@@ -69,24 +67,28 @@ export function groupMachineDevices(devices) {
       const partitions = new Map()
       for (const point of device.points) {
         const configured = configuredParameter(point, device.source, device.id)
-        const owner = pointConfiguration.locations.find(location => location.id === configured?.locationId)?.machine
-        const id = owner && !owner.includes('/') ? owner : machines.find(machine => machine.modules.includes(device.id))?.id
-        if (!partitions.has(id)) partitions.set(id, [])
-        partitions.get(id).push(point)
+        const location = pointConfiguration.locations.find(location => location.id === configured?.locationId)
+        const id = location?.machine || machines.find(machine => machine.modules.includes(device.id))?.id
+        const model = location?.model || machineModel(id)
+        const key = JSON.stringify([id, model])
+        if (!partitions.has(key)) partitions.set(key, { id, model, points: [] })
+        partitions.get(key).points.push(point)
       }
       if (!partitions.size) add(machines.find(machine => machine.modules.includes(device.id))?.id, device)
-      for (const [id, points] of partitions) add(id, { ...device, points })
+      for (const { id, model, points } of partitions.values()) add(id, { ...device, model, points })
     } else {
       const partitions = new Map()
       for (const channel of device.points) {
         const configured = configuredParameter(channel, 'monitor', device.id)
-        const owner = pointConfiguration.locations.find(location => location.id === configured?.locationId)?.machine
-        const id = owner && !owner.includes('/') ? owner : acousticMachine(device, channel)
-        if (!partitions.has(id)) partitions.set(id, [])
-        partitions.get(id).push(channel)
+        const location = pointConfiguration.locations.find(location => location.id === configured?.locationId)
+        const id = location?.machine || acousticMachine(device, channel)
+        const model = location?.model || machineModel(id, `${device.id} ${device.name}`.match(/YB(?:25|55|65|95)/i)?.[0])
+        const key = JSON.stringify([id, model])
+        if (!partitions.has(key)) partitions.set(key, { id, model, points: [] })
+        partitions.get(key).points.push(channel)
       }
       if (!partitions.size) add(null, device)
-      for (const [id, points] of partitions) add(id, { ...device, points })
+      for (const { id, model, points } of partitions.values()) add(id, { ...device, model, points })
     }
   }
   for (const group of [...groups, pending]) {

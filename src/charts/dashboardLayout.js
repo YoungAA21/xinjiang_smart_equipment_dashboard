@@ -4,6 +4,7 @@ export function readStoredLayout(storage, scope) {
   let text = storage.getItem(layoutStorageKey(scope))
   // Preserve browser layouts created before the machine ID correction.
   if (text === null && scope === 'machine-overview:ZJ17') text = storage.getItem(layoutStorageKey('machine-overview:ZJ117'))
+  if (text === null && scope === 'machine-overview:ZB25-AUX') text = storage.getItem(layoutStorageKey('machine-overview:YB55'))
   return normalizeLayout(JSON.parse(text || 'null'))
 }
 

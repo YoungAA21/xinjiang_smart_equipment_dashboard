@@ -1,3 +1,6 @@
+import { machineCategoryId, machineModel, modelsForMachine } from './machineTaxonomy.js'
+import { pointLayoutLocations } from './pointDetailTabs.js'
+
 // Display configuration never changes acquisition IDs, samples or engineering values.
 export const defaultLocations = [
   { id: 've', name: 'VE 风机', machine: 'ZJ17', modules: ['VSE03', 'TEMP02'] },
@@ -7,10 +10,12 @@ export const defaultLocations = [
   { id: 'cutter', name: '铝纸切刀', machine: 'ZB25', modules: ['VSE04'] },
   { id: 'seal', name: '封签', machine: 'ZB25', modules: ['VSE05'] },
   { id: 'paper-wheel', name: '齿轮箱', machine: 'ZB25', modules: [] },
-  { id: 'aux-motor', name: '辅机电机', machine: 'YB55', modules: ['VSE08', 'TEMP01', 'SC02'] }
-]
+  { id: 'aux-motor', name: '辅机电机', machine: 'ZB25-AUX', modules: ['VSE08', 'TEMP01', 'SC02'] },
+  { id: 'main-pressure', name: '主机负压', machine: 'ZB25', modules: ['PRESS01'] },
+  { id: 'aux-pressure', name: '辅机负压', machine: 'ZB25-AUX', modules: ['PRESS03'] }
+].map(location => ({ ...location, model: machineModel(location.machine) }))
 
-export const emptyConfiguration = () => ({ version: 1, locations: defaultLocations.map(item => ({ ...item, modules: [...item.modules] })), targets: [], parameters: {} })
+export const emptyConfiguration = () => ({ version: 1, locations: defaultLocations.map(item => ({ ...item, modules: [...item.modules] })), targets: [], parameters: {}, detailLocationIds: defaultLocations.map(item => item.id) })
 
 export const normalizedPointLabel = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ')
 const comparableLabel = value => normalizedPointLabel(value).replace(/\s/g, '').toLowerCase()
@@ -21,11 +26,16 @@ export function updateLocation(configuration, id, fields) {
   const existing = value.locations.find(location => location.id === id)
   if (existing && isFixedLocation(id)) throw new Error('系统固定大点位不能修改')
   const name = normalizedPointLabel(fields.name)
-  const machine = normalizedPointLabel(fields.machine).toUpperCase()
+  const machine = machineCategoryId(fields.machine)
+  const model = machineModel(fields.machine, fields.model)
   if (!name || !machine) throw new Error('请输入大点位名称和所属机组')
-  if (value.locations.some(location => location.id !== id && comparableLabel(location.name) === comparableLabel(name) && comparableLabel(location.machine) === comparableLabel(machine))) throw new Error('该机组下已存在同名大点位（忽略空格、大小写及全角差异）')
-  if (existing) Object.assign(existing, { name, machine })
-  else value.locations.push({ id, name, machine, modules: [] })
+  if (fields.model && !modelsForMachine(machine).includes(fields.model)) throw new Error('机型必须归属于所选机组类别')
+  if (value.locations.some(location => location.id !== id && comparableLabel(location.name) === comparableLabel(name) && location.machine === machine && location.model === model)) throw new Error('该机型下已存在同名大点位（忽略空格、大小写及全角差异）')
+  if (existing) Object.assign(existing, { name, machine, model })
+  else {
+    value.locations.push({ id, name, machine, model, modules: [] })
+    if (pointLayoutLocations([{ name }]).length) value.detailLocationIds.push(id)
+  }
   return validateConfiguration(value)
 }
 
@@ -49,6 +59,8 @@ export function removeLocation(configuration, id, replacementId = '') {
     else delete value.parameters[key]
   }
   value.locations = value.locations.filter(location => location.id !== id)
+  value.detailLocationIds = value.detailLocationIds.filter(locationId => locationId !== id)
+  if (!value.detailLocationIds.length) value.detailLocationIds = pointLayoutLocations(value.locations).slice(0, 1).map(location => location.id)
   return validateConfiguration(value)
 }
 
@@ -59,6 +71,12 @@ export function parameterKey(point, source = 'legacy', deviceId = '') {
 
 export function validateConfiguration(value) {
   if (!value || value.version !== 1 || !Array.isArray(value.locations) || !Array.isArray(value.targets) || !value.parameters || typeof value.parameters !== 'object' || Array.isArray(value.parameters)) throw new Error('配置文件格式不正确')
+  value = JSON.parse(JSON.stringify(value))
+  // Older configurations had pressure modules without a corresponding location.
+  for (const id of ['main-pressure', 'aux-pressure']) if (!value.locations.some(location => location.id === id)) {
+    value.locations.push({ ...defaultLocations.find(location => location.id === id) })
+    if (Array.isArray(value.detailLocationIds)) value.detailLocationIds.push(id)
+  }
   const unique = (rows, label) => {
     const ids = new Set()
     for (const row of rows) {
@@ -82,8 +100,17 @@ export function validateConfiguration(value) {
     if (!locations.has(parameter.locationId) || !value.targets.some(target => target.id === parameter.targetId && target.locationId === parameter.locationId)) throw new Error('参数必须选择对应的大点位和被测点位')
   }
   const normalized = JSON.parse(JSON.stringify(value))
-  // Migrate previously saved/imported machine assignments to the corrected model ID.
-  for (const location of normalized.locations) if (location.machine === 'ZJ117') location.machine = 'ZJ17'
+  // Migrate saved/imported model-as-machine assignments without altering child IDs.
+  for (const location of normalized.locations) {
+    const machine = machineCategoryId(location.machine)
+    if (!machine) throw new Error('大点位必须选择 ZJ17、ZB25主机或ZB25辅机')
+    if (location.model && !modelsForMachine(machine).includes(location.model)) throw new Error('机型必须归属于所选机组类别')
+    location.model = machineModel(location.machine, location.model)
+    location.machine = machine
+  }
+  const eligible = new Set(pointLayoutLocations(normalized.locations).map(location => location.id))
+  if (normalized.detailLocationIds === undefined) normalized.detailLocationIds = [...eligible]
+  if (!Array.isArray(normalized.detailLocationIds) || !normalized.detailLocationIds.length || normalized.detailLocationIds.some(id => !eligible.has(id)) || new Set(normalized.detailLocationIds).size !== normalized.detailLocationIds.length) throw new Error('测点详情至少保留一个有效顶部按钮，且不能重复')
   return normalized
 }
 

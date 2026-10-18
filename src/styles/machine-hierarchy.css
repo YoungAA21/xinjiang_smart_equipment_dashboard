@@ -1,0 +1,7 @@
+.machine-category-filter, .machine-model-filter { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.machine-category-filter button, .machine-model-filter button { border:1px solid var(--glass-border); border-radius:6px; background:var(--glass-card); color:var(--text-main); padding:7px 14px; font:inherit; font-size:13px; cursor:pointer; }
+.machine-category-filter button { flex:1; min-height:38px; }
+.machine-model-filter { color:var(--text-muted); font-size:12px; margin:8px 0; }
+.machine-model-filter span { margin-right:8px; }
+.machine-category-filter button.active, .machine-model-filter button.active { color:var(--text-highlight); background:var(--control-bg-active); border-color:var(--control-border-active); }
+.machine-category-filter button:focus-visible, .machine-model-filter button:focus-visible { outline:2px solid var(--text-highlight); outline-offset:2px; }

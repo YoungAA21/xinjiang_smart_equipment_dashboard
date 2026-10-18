@@ -10,7 +10,7 @@ const percent = value => typeof value === 'number' && Number.isFinite(value) ? `
   <section class="production-summary" aria-label="86号机台生产状态">
     <h2>86#机台</h2>
     <dl><div><dt>牌号</dt><dd>{{ summary.brand || '—' }}</dd></div><div><dt>小盒产量</dt><dd>{{ count(summary.checkCount) }}</dd></div><div><dt>NG数</dt><dd>{{ count(summary.checkNg) }}</dd></div><div><dt>NG率</dt><dd>{{ percent(summary.ngP) }}</dd></div></dl>
-    <p v-if="status" class="runtime-status" :title="error" role="status">{{ status }}</p>
+<!--    <p v-if="status" class="runtime-status" :title="error" role="status">{{ status }}</p>-->
   </section>
 </template>
 

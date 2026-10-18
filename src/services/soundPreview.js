@@ -1,3 +1,5 @@
+import { reportInformation } from './information.js'
+
 // One visualization session at a time; never subscribe to the audio socket.
 export function createSoundPreview({ api, token, Socket, onFrame, onStatus }) {
   let version = 0, sessionId = '', socket, queue = Promise.resolve()
@@ -21,8 +23,8 @@ export function createSoundPreview({ api, token, Socket, onFrame, onStatus }) {
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
       url.searchParams.set('token', token().replace(/^Bearer\s+/i, ''))
       socket = new Socket(url.toString())
-      socket.onclose = () => { if (current === version) onStatus('连接断开') }
-      socket.onerror = () => { if (current === version) onStatus('连接异常') }
+      socket.onclose = () => { if (current === version) { onStatus('连接断开'); reportInformation('声纹连接', '连接断开') } }
+      socket.onerror = () => { if (current === version) { onStatus('连接异常'); reportInformation('声纹连接', '连接异常') } }
       socket.onmessage = event => {
         if (current !== version) return
         try {

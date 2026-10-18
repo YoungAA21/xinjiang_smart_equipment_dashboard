@@ -33,7 +33,7 @@ test('latest installation addresses partition all five collectors and their chan
     ['192.168.3.52', 'ZJ17', 'max', 'MAX 风机采集器'],
     ['192.168.3.53', 'ZB25', 'main-motor', '主机主电机采集器'],
     ['192.168.3.54', 'ZB25', 'paper-wheel', '齿轮箱采集器'],
-    ['192.168.3.55', 'YB55', 'aux-motor', '辅机主电机采集器'],
+    ['192.168.3.55', 'ZB25-AUX', 'aux-motor', '辅机主电机采集器'],
   ]
   const raw = { collectors: assignments.map(([ip], index) => ({ collectorId: index + 1, ip })) }
   const points = assignments.flatMap((_, index) => [1, 2].map(ch => ({ collectorId: String(index + 1), channelId: `CH${ch}` })))

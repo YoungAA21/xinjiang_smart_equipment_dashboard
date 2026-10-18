@@ -1,0 +1,26 @@
+.realtime-listening-page { display:flex; flex-direction:column; gap:14px; overflow-y:auto; color:var(--text-main); padding-bottom:24px; }
+.listening-heading, .listening-signal > header, .listening-audio { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+.realtime-listening-page h1 { display:flex; align-items:center; gap:10px; margin:0; font-size:26px; }
+.realtime-listening-page h2 { margin:0; font-size:18px; }
+.realtime-listening-page p { margin:7px 0 0; color:var(--text-muted); font-size:14px; line-height:1.6; }
+.listening-panel { padding:18px; border:1px solid var(--glass-border); border-radius:8px; background:var(--glass-card); }
+.listening-controls { display:grid; grid-template-columns:minmax(220px,1.3fr) minmax(230px,1.5fr) minmax(145px,.7fr) auto; align-items:end; gap:14px; }
+.listening-controls label { display:grid; min-width:0; gap:8px; font-size:15px; color:var(--text-muted); }
+.listening-controls .el-select { width:100%; }
+.listening-actions { display:flex; gap:8px; }
+.listening-actions .el-button { margin:0; }
+.listening-status-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+.listening-status-grid article { display:grid; gap:8px; }
+.listening-status-grid span { color:var(--text-muted); font-size:14px; }
+.listening-status-grid strong { font-size:22px; }
+.listening-badge { flex-shrink:0; border:1px solid var(--glass-border); border-radius:20px; padding:7px 14px; color:var(--text-muted); font-size:14px; }
+.listening-badge.live { color:var(--green); border-color:var(--green); }
+.listening-signal > header { margin-bottom:18px; }
+.listening-signal h2 span { font-weight:400; }
+.listening-audio > div { flex:1; }
+.listening-audio label { display:flex; align-items:center; gap:12px; width:min(330px,35vw); font-size:14px; }
+.listening-audio input { flex:1; min-width:0; accent-color:var(--cyan); }
+.realtime-listening-page .listening-error { color:var(--orange); padding:12px; border:1px solid var(--glass-border); border-radius:6px; }
+.listening-empty { padding:8px 0; }
+@media(max-width:1200px) { .listening-controls { grid-template-columns:repeat(2,minmax(0,1fr)); } .listening-actions { justify-content:flex-end; } }
+@media(max-width:720px) { .listening-controls { grid-template-columns:minmax(0,1fr); } .listening-status-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .listening-audio, .listening-heading { align-items:stretch; flex-direction:column; } .listening-audio label { width:100%; } }

@@ -24,7 +24,7 @@ for (const variant of variants) {
   const machines = productionLineLayout.map(machine => {
     const target = productionLineTarget(machine.id)
     const tag = target ? 'a' : 'g'
-    const attributes = target ? ` class="machine-link" data-machine="${machine.id}" href="/#/monitor?machine=${encodeURIComponent(target.query.machine)}" target="_top" tabindex="0" aria-label="${machine.id} ${machine.name}"` : ''
+    const attributes = target ? ` class="machine-link" data-machine="${machine.id}" href="/#/monitor?${new URLSearchParams(target.query).toString().replaceAll('&', '&amp;')}" target="_top" tabindex="0" aria-label="${machine.id} ${machine.name}"` : ''
     const geometry = paths.filter((item, index) => {
       if (assigned.has(index) || !inside(item.bounds, machine)) return false
       assigned.add(index)

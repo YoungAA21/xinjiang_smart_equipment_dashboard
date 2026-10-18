@@ -1,0 +1,86 @@
+/* Shared presentation for data/configuration and alarm/report workspaces. */
+:is(.page, .equipment-report-page):is(.configuration-workspace, .analysis-workspace) {
+  padding: 16px;
+  overflow-y: auto;
+  color: var(--text-main);
+  font-size: 14px;
+}
+:is(.configuration-workspace, .analysis-workspace) > .configuration-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 62px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: var(--glass-card);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+:is(.configuration-workspace, .analysis-workspace) .configuration-toolbar :is(.monitor-actions, .parameter-actions, .report-heading-actions) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+:is(.configuration-workspace, .analysis-workspace) .configuration-toolbar .gateway-view-tabs {
+  margin: 0 auto 0 0;
+  gap: 8px;
+}
+:is(.configuration-workspace, .analysis-workspace) .configuration-toolbar :is(button, .el-button) {
+  min-height: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 18px;
+}
+:is(.configuration-workspace, .analysis-workspace) .configuration-toolbar .parameter-actions button {
+  background: var(--control-bg);
+  border-color: var(--control-border);
+}
+:is(.configuration-workspace, .analysis-workspace) .configuration-toolbar .gateway-view-tabs button.active {
+  color: var(--text-main);
+  background: var(--control-bg-active);
+  border-color: var(--control-border-active);
+}
+:is(.configuration-workspace, .analysis-workspace) :is(.panel, .report-panel, .external-side-card, .parameter-directory, .parameter-editor, .parameter-hierarchy) {
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--glass-card);
+  box-shadow: none;
+}
+:is(.configuration-workspace, .analysis-workspace) .panel:hover { transform: none; box-shadow: none; border-color: var(--glass-border); }
+:is(.configuration-workspace, .analysis-workspace) :is(.recording-filter-panel, .recording-list-panel, .recording-detail-panel, .recording-visual-control, .recording-chart-card, .module-group, .parameter-editor) {
+  padding: 16px;
+}
+:is(.configuration-workspace, .analysis-workspace) :is(.recording-filter-panel, .recording-summary, .recording-layout, .recording-visual-control, .recording-chart-stack) {
+  margin-bottom: 16px;
+}
+:is(.configuration-workspace, .analysis-workspace) :is(.recording-filter-panel, .recording-section-heading, .recording-chart-card, .gateway-section-heading, .module-group, .parameter-editor) h2 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  text-shadow: none;
+}
+:is(.configuration-workspace, .analysis-workspace) .parameter-hierarchy { margin: 0 0 16px; }
+:is(.configuration-workspace, .analysis-workspace) .parameter-workspace { gap: 16px; }
+:is(.configuration-workspace, .analysis-workspace) .parameter-editor { top: 0; }
+@media (max-width: 1400px) {
+  .page:is(.configuration-workspace, .analysis-workspace) { padding: 12px; }
+  :is(.configuration-workspace, .analysis-workspace) > .configuration-toolbar { padding: 10px 12px; }
+}
+
+.analysis-workspace > .configuration-toolbar { flex-shrink:0; }
+.analysis-workspace .report-panel { margin-bottom:16px; border-radius:8px; }
+.analysis-workspace .report-summary-grid { gap:16px; }
+.analysis-workspace .report-panel:not(.report-query) { padding:16px; }
+.analysis-workspace .report-query-controls { padding:16px; }
+.analysis-workspace .report-metrics { gap:16px; margin-bottom:16px; }
+.analysis-workspace .report-section-heading h2 { font-size:16px; font-weight:600; }
+.analysis-workspace .alarm-tabs > .el-tabs__header { margin:0 0 16px; }
+.analysis-workspace .alarm-tabs .el-tabs__item { font-size:14px; }
+.analysis-workspace .configuration-toolbar .alarm-colors-button { background:var(--control-bg); border-color:var(--control-border); }

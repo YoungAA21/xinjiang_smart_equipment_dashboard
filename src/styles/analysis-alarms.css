@@ -69,7 +69,7 @@
 
 .analysis-alarm-filters {
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) minmax(210px, 1.2fr) minmax(130px, .65fr) minmax(290px, 1.55fr) 110px auto;
+  grid-template-columns: minmax(130px, 1fr) minmax(290px, 2fr) 110px auto;
   align-items: end;
   gap: 12px;
   padding: 14px;
@@ -132,6 +132,8 @@
   gap: 8px;
   color: var(--analysis-accent);
 }
+
+.analysis-trend-card > header > .alarm-chart-point { display: block; width: min(460px, 55%); }
 
 .analysis-trend-card h3,
 .analysis-event-table-panel h3,

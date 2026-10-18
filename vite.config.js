@@ -4,8 +4,8 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig(({ mode }) => {
 
   const env = loadEnv(mode, process.cwd(), 'VITE_')
-  const api5158Target = env.VITE_DEV_API_BASE_URL || env.VITE_API_BASE_URL || 'http://66.66.66.4:5158'
-  const api18080Target = env.VITE_DEV_NEW_API_BASE_URL || env.VITE_NEW_API_BASE_URL || 'http://66.66.66.4:18080'
+  const api5158Target = env.VITE_DEV_API_BASE_URL || env.VITE_API_BASE_URL || 'http://66.66.66.6:5158'
+  const api18080Target = env.VITE_DEV_NEW_API_BASE_URL || env.VITE_NEW_API_BASE_URL || 'http://66.66.66.6:18080'
   const proxy = {
     '^/_runtime-api/api/runtime-info/latest$': {
       target: api5158Target,

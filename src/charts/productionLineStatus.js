@@ -3,7 +3,8 @@ import { readingState } from './productionLine.js'
 import { pointKey } from './telemetry.js'
 import { monitoringPointName } from './equipmentCatalog.js'
 import { monitoringLocations, monitoringLocationOf } from './monitoringLocations.js'
-import { configuredMachineId } from '../stores/pointConfiguration.js'
+import { configuredMachineId, configuredModelId } from '../stores/pointConfiguration.js'
+import { machineModel } from './machineTaxonomy.js'
 
 export function acquisitionConnectionStatus(modules, devices, { legacyError = '', monitorError = '' } = {}) {
   const states = [...(modules || []).map(module => module.runtimeStatus?.isOnline), ...(devices || []).map(device => device.online)]
@@ -33,7 +34,7 @@ export function groupedMonitoringPoints(rows) {
 export const isActiveAlarm = event => event.isActive === true || event.status === 'Active'
 export function alarmMachineId(event) {
   const id = configuredMachineId(event) || machines.find(machine => machine.modules.includes(event.moduleId))?.id
-  return id === 'ZB25' ? 'YB25' : id || null
+  return configuredModelId(event) || machineModel(id) || null
 }
 export function alarmMatchesRow(event, row) {
   if (row.member.source !== 'legacy' || event.moduleId !== row.member.id) return false
