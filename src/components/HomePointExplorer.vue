@@ -8,6 +8,8 @@ import { localInputTime, numericValue, pointKey, telemetryLine } from '../charts
 import { monitoringPointName } from '../charts/equipmentCatalog.js'
 import { acousticChannelDisplayName } from '../charts/machineGroups.js'
 import { shiftRange } from '../charts/shiftRange.js'
+import { useLiveLineColor } from '../composables/useLiveLineColors.js'
+const liveColor = useLiveLineColor()
 
 const props = defineProps({ row: Object, buffers: Object, paused: Boolean, embedded: Boolean, historicalOnly: Boolean })
 const emit = defineEmits(['close', 'live-change'])
@@ -162,7 +164,9 @@ async function query(page = 1) {
 
 const option = computed(() => {
   if (!acoustic.value) {
-    const value = telemetryLine(samples.value, { ...point.value, minimumValue: limits.value?.minimumValue, maximumValue: limits.value?.maximumValue, name: title.value }, { history: !live.value, color: props.row.color, showLimits: true })
+    const chartPoint = { ...point.value, minimumValue: limits.value?.minimumValue, maximumValue: limits.value?.maximumValue, name: title.value }
+    const color = live.value ? liveColor?.(chartPoint, last.value) || props.row.color : props.row.color
+    const value = telemetryLine(samples.value, chartPoint, { history: !live.value, color, showLimits: true })
     value.graphic = samples.value.length ? [] : [{ type: 'text', left: 'center', top: 'middle', style: { text: loading.value ? '加载中' : '暂无数据', fill: '#C3E2D9', fontSize: 16 } }]
     value.dataZoom[0] = { ...value.dataZoom[0], moveOnMouseMove: true, zoomOnMouseWheel: true }
     return value
@@ -216,7 +220,7 @@ onBeforeUnmount(() => { invalidate(); limitsVersion++; limitsController?.abort()
         <button v-if="!historicalOnly" type="button" :class="{ active: live }" @click="showLive">实时</button>
         <button type="button" @click="chartVersion++">重置视图</button>
       </form>
-      <div v-if="!acoustic" class="explorer-value"><strong>{{ lastValue }}</strong><span>{{ point.unit }}</span><time>{{ dateText(last?.collectedAt) }}</time><span>{{ live ? paused ? '已暂停' : '实时' : loading ? '加载班次数据' : '历史 · ' + history.length + ' 条' }}</span></div>
+      <div v-if="!acoustic" class="explorer-value"><strong :style="live && liveColor ? { color: option.series[0].lineStyle.color } : {}">{{ lastValue }}</strong><span>{{ point.unit }}</span><time>{{ dateText(last?.collectedAt) }}</time><span>{{ live ? paused ? '已暂停' : '实时' : loading ? '加载班次数据' : '历史 · ' + history.length + ' 条' }}</span></div>
       <div v-if="!acoustic" class="explorer-limits" aria-live="polite">
         <strong>当前阈值</strong><span v-if="limitsLoading">读取中…</span>
         <span v-else-if="limitsError" class="explorer-error" role="alert">阈值读取失败：{{ limitsError }}</span>

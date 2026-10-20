@@ -72,7 +72,8 @@ export function cleanReportSamples(samples, point, range) {
     byTime.set(time, { time, value: reportNumber(sample.value), quality: sample.quality })
   }
   const ordered = [...byTime.values()].sort((a, b) => a.time - b.time)
-  const raw = ordered.map(row => ({ ...row, value: row.quality === 'Good' ? row.value : null }))
+  // Collection history serializes Good as enum value 1; other responses use its name.
+  const raw = ordered.map(row => ({ ...row, value: row.quality === 'Good' || row.quality === 1 ? row.value : null }))
   const valid = raw.filter(row => row.value !== null)
   return { raw, valid, invalid: raw.length - valid.length, outside, duplicates }
 }

@@ -45,6 +45,7 @@ test('point monitoring caches metadata and freely arranges cards across secondar
     ] }
   } }
   const dependencies = {
+    '../composables/useLiveLineColors.js': { provideLiveLineColors() {} },
     vue, 'vue-router': { useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query } }) },
     '../stores/telemetry': { useTelemetryStore: () => telemetry },
     '../stores/homeDevices': { useHomeDevicesStore: () => monitor },

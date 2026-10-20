@@ -31,6 +31,7 @@ test('opening the history drawer loads current-shift samples through the install
  try {
   const dependencies = { vue:{...vue,onMounted:callback=>hooks.push(callback)},'element-plus':{ElDrawer:{}},
    '../services/telemetry':{telemetryApi},'../services/api':{api:{}},'../charts/telemetry':telemetry,
+   '../composables/useLiveLineColors.js':{useLiveLineColor:()=>null},
    '../charts/equipmentCatalog.js':catalog,'../charts/machineGroups.js':machines,
    '../charts/shiftRange.js':{shiftRange:mode=>shifts.shiftRange(mode,new Date(now))} }
   const compiled = compileScript(parse(await readFile(new URL('../src/components/HomePointExplorer.vue',import.meta.url),'utf8')).descriptor,{id:'cached-explorer-test'})
@@ -69,6 +70,7 @@ test('explorer immediately loads current shift, switches ranges and ignores canc
  let limitReply=()=>Promise.resolve({moduleId:'VSE03',points:[{pointId:42,minimumValue:0,maximumValue:1.2}]})
  const dependencies={'element-plus':{ElDrawer:{}},vue:{...vue,onMounted:callback=>hooks.push(callback)},'../services/telemetry':{telemetryApi:{getModulePoints(moduleId,options){limitCalls.push({moduleId,signal:options.signal});return limitReply()},getHistory(query,options){calls.push({query,signal:options.signal});return new Promise(resolve=>pending.push(resolve))}}},'../services/api':{api:{}},'../charts/telemetry':telemetry,'../charts/equipmentCatalog.js':catalog,'../charts/machineGroups.js':machines,'../charts/shiftRange.js':shifts}
  const context=vm.createContext({Date,AbortController,window:{innerWidth:1400,innerHeight:900,addEventListener(){},removeEventListener(){}},document:{activeElement:null}})
+ dependencies['../composables/useLiveLineColors.js']={useLiveLineColor:()=>null}
  const compiled=compileScript(parse(await readFile(new URL('../src/components/HomePointExplorer.vue',import.meta.url),'utf8')).descriptor,{id:'explorer-test'})
  const module=new vm.SourceTextModule(compiled.content,{context})
  await module.link(specifier=>{const exports=specifier.endsWith('.vue')?{default:{}}:dependencies[specifier];assert.ok(exports,specifier);return new vm.SyntheticModule(Object.keys(exports),function(){for(const[key,value]of Object.entries(exports))this.setExport(key,value)},{context})});await module.evaluate()

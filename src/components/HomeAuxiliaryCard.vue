@@ -2,10 +2,14 @@
 import { computed } from 'vue'
 import EChart from './EChart.vue'
 import { telemetryLine } from '../charts/telemetry.js'
+import { useLiveLineColor } from '../composables/useLiveLineColors.js'
+const liveColor = useLiveLineColor()
 const props = defineProps({ speed: Object, current: Object, buffers: Object, now: Number, paused: Boolean, speedName: { type: String, default: '辅机车速' }, currentName: { type: String, default: '辅机电流' }, title: { type: String, default: '辅机运行参数' } })
 function latest(point) { return (props.buffers[point?.key] || []).at(-1) }
 const speedSample = computed(() => latest(props.speed))
 const currentSample = computed(() => latest(props.current))
+const speedColor = computed(() => liveColor?.(props.speed, speedSample.value) || '#368ce8')
+const currentColor = computed(() => liveColor?.(props.current, currentSample.value) || '#18a99a')
 const speedSamples = computed(() => props.buffers[props.speed?.key] || [])
 const currentSamples = computed(() => props.buffers[props.current?.key] || [])
 function lineOption(samples, point, color) {
@@ -20,8 +24,8 @@ function lineOption(samples, point, color) {
   option.series[0].areaStyle.opacity = .4
   return option
 }
-const speedOption = computed(() => lineOption(speedSamples.value, props.speed, '#368ce8'))
-const currentOption = computed(() => lineOption(currentSamples.value, props.current, '#18a99a'))
+const speedOption = computed(() => lineOption(speedSamples.value, props.speed, speedColor.value))
+const currentOption = computed(() => lineOption(currentSamples.value, props.current, currentColor.value))
 const status = computed(() => {
   if (props.paused) return '已暂停'
   const samples = [speedSample.value, currentSample.value].filter(Boolean)
@@ -37,12 +41,12 @@ function value(sample) { return typeof sample?.value === 'number' && Number.isFi
       <div class="reading">
         <span>{{ speedName }}</span>
         <div class="trend" role="img" aria-label="辅机车速实时折线"><EChart :option="speedOption" /></div>
-        <div class="reading-value"><strong>{{ value(speedSample) }}</strong><small>rpm</small></div>
+        <div class="reading-value"><strong :style="liveColor ? { color: speedColor } : {}">{{ value(speedSample) }}</strong><small>rpm</small></div>
       </div>
       <div class="reading">
         <span>{{ currentName }}</span>
         <div class="trend" role="img" aria-label="辅机电流实时折线"><EChart :option="currentOption" /></div>
-        <div class="reading-value"><strong>{{ value(currentSample) }}</strong><small>{{ current?.unit || '' }}</small></div>
+        <div class="reading-value"><strong :style="liveColor ? { color: currentColor } : {}">{{ value(currentSample) }}</strong><small>{{ current?.unit || '' }}</small></div>
       </div>
     </div>
   </section>

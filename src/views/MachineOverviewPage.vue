@@ -1,5 +1,6 @@
 <script setup>
 import ConfigurableDashboard from '../components/ConfigurableDashboard.vue'
+import { provideLiveLineColors } from '../composables/useLiveLineColors.js'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Search, RefreshCw, Activity, AudioLines, Thermometer, Gauge, Eye, EyeOff } from 'lucide-vue-next'
 import HomeMonitorTile from '../components/HomeMonitorTile.vue'
@@ -17,6 +18,7 @@ import { configuredMonitoringPoints, discoveredMonitoringModules, moduleDisplayN
 
 const reportInformation = inject('reportInformation', () => {})
 const telemetry = useTelemetryStore()
+provideLiveLineColors()
 const homeControlsExpanded = ref(false)
 const headerControlsExpanded = inject('homeControlsExpanded', ref(false))
 const monitor = useHomeDevicesStore()

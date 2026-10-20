@@ -1,5 +1,6 @@
 <script setup>
 import ConfigurableDashboard from '../components/ConfigurableDashboard.vue'
+import { provideLiveLineColors } from '../composables/useLiveLineColors.js'
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import HomePointCard from '../components/HomePointCard.vue'
@@ -25,6 +26,7 @@ import HistoryCacheStatus from '../components/HistoryCacheStatus.vue'
 const route = useRoute()
 const router = useRouter()
 const telemetry = useTelemetryStore()
+provideLiveLineColors()
 const monitor = useHomeDevicesStore()
 const pointMap = ref({})
 const pointErrors = ref({})

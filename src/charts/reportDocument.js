@@ -65,5 +65,5 @@ export function reportHtml(report, { title, scope, notes = '' }) {
 ${sections}<section><h2>告警概况</h2><table><thead><tr><th>事件类型</th><th>本期</th><th>对比期</th></tr></thead><tbody>${eventSummary.join('')}</tbody></table><small>仅统计区间内新发且匹配本报告测点的事件，两类事件分别统计。</small></section>
 ${warnings.length ? `<section class="warning"><h2>数据完整性提示</h2><ul>${warnings.map(item => `<li>${escape(item)}</li>`).join('')}</ul></section>` : ''}
 ${notes.trim() ? `<section><h2>交班备注</h2><p class="notes">${escape(notes)}</p></section>` : ''}
-<section><details><summary>统计说明</summary><p>区间采用 [开始, 结束)，仅使用质量 Good 的有限数值；0 与负数有效。均值和极值取自原始有效采样；趋势按分钟中位值、尾随 5 分钟中值及 EMA（α=0.3）处理，缺数处断开。</p><p>两期有数分钟占比均达到 60% 且未截断时才计算均值变化；占比不是设备在线率。基数为零时仅给绝对差。均值变化达到 10% 只作为复核提示。采样越限按生成时的当前阈值重算，不代替历史正式告警。</p></details></section><footer>固定 HTML 报告快照 · 可离线打开或通过浏览器打印。历史报告保留生成时的范围与结果。</footer></main></body></html>`
+<section><details><summary>统计说明</summary><p>区间采用 [开始, 结束)，仅使用质量 Good（字符串 Good 或数字 1）的有限数值；0 与负数有效。均值和极值取自原始有效采样；趋势按分钟中位值、尾随 5 分钟中值及 EMA（α=0.3）处理，缺数处断开。</p><p>两期有数分钟占比均达到 60% 且未截断时才计算均值变化；占比不是设备在线率。基数为零时仅给绝对差。均值变化达到 10% 只作为复核提示。采样越限按生成时的当前阈值重算，不代替历史正式告警。</p></details></section><footer>固定 HTML 报告快照 · 可离线打开或通过浏览器打印。历史报告保留生成时的范围与结果。</footer></main></body></html>`
 }

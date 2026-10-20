@@ -29,6 +29,7 @@ test(`${page} defaults to the first machine and packs pressure and sound into on
     ] }
   } }
   const dependencies = {
+    '../composables/useLiveLineColors.js': { provideLiveLineColors() {} },
     '../services/soundPreview.js': { createSoundPreview: () => ({ stop: async () => {}, setTarget: async () => {} }) },
     '../services/api': { api: {} }, '../services/auth': { auth: { getToken: () => '' } },
     vue: { ...vue, inject: (_key, fallback) => fallback }, 'element-plus': { ElDialog: {} }, 'lucide-vue-next': Object.fromEntries(['Search','RefreshCw','Activity','AudioLines','Thermometer','Gauge','Eye','EyeOff'].map(name => [name, {}])),

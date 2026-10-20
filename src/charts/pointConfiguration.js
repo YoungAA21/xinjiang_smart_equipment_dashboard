@@ -1,5 +1,6 @@
 import { machineCategoryId, machineModel, modelsForMachine } from './machineTaxonomy.js'
 import { pointLayoutLocations } from './pointDetailTabs.js'
+import { defaultLineColors, validateLineColors } from './liveLineColors.js'
 
 // Display configuration never changes acquisition IDs, samples or engineering values.
 export const defaultLocations = [
@@ -15,7 +16,7 @@ export const defaultLocations = [
   { id: 'aux-pressure', name: '辅机负压', machine: 'ZB25-AUX', modules: ['PRESS03'] }
 ].map(location => ({ ...location, model: machineModel(location.machine) }))
 
-export const emptyConfiguration = () => ({ version: 1, locations: defaultLocations.map(item => ({ ...item, modules: [...item.modules] })), targets: [], parameters: {}, detailLocationIds: defaultLocations.map(item => item.id) })
+export const emptyConfiguration = () => ({ version: 1, lineColors: { ...defaultLineColors }, locations: defaultLocations.map(item => ({ ...item, modules: [...item.modules] })), targets: [], parameters: {}, detailLocationIds: defaultLocations.map(item => item.id) })
 
 export const normalizedPointLabel = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ')
 const comparableLabel = value => normalizedPointLabel(value).replace(/\s/g, '').toLowerCase()
@@ -100,6 +101,7 @@ export function validateConfiguration(value) {
     if (!locations.has(parameter.locationId) || !value.targets.some(target => target.id === parameter.targetId && target.locationId === parameter.locationId)) throw new Error('参数必须选择对应的大点位和被测点位')
   }
   const normalized = JSON.parse(JSON.stringify(value))
+  normalized.lineColors = validateLineColors(normalized.lineColors)
   // Migrate saved/imported model-as-machine assignments without altering child IDs.
   for (const location of normalized.locations) {
     const machine = machineCategoryId(location.machine)

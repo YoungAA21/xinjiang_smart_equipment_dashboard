@@ -21,12 +21,13 @@ function apply(value) {
   pointConfiguration.targets = value.targets
   pointConfiguration.parameters = value.parameters
   pointConfiguration.detailLocationIds = value.detailLocationIds
+  pointConfiguration.lineColors = value.lineColors
   pointConfiguration.savedAt = value.savedAt || ''
   pointConfiguration.error = ''
 }
 
 export function configurationSnapshot() {
-  return JSON.parse(JSON.stringify({ version: 1, locations: pointConfiguration.locations, targets: pointConfiguration.targets, parameters: pointConfiguration.parameters, detailLocationIds: pointConfiguration.detailLocationIds }))
+  return JSON.parse(JSON.stringify({ version: 1, lineColors: pointConfiguration.lineColors, locations: pointConfiguration.locations, targets: pointConfiguration.targets, parameters: pointConfiguration.parameters, detailLocationIds: pointConfiguration.detailLocationIds }))
 }
 
 export function savePointConfiguration(value, storage = globalThis.localStorage) {

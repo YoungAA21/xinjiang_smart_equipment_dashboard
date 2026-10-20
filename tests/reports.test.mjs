@@ -49,6 +49,24 @@ test('cleaning preserves zero/negative readings, rejects unknown quality, isolat
   assert.throws(() => cleanReportSamples([sample(0, 1, { channelId: 'AI02' })], point, range), /身份/)
 })
 
+test('report generation accepts numeric Good quality from collection history without admitting bad or missing readings', async () => {
+  const readings = Array.from({ length: 60 }, (_, i) => sample(i, i - 1, { quality: 1 }))
+  const rejected = [0, 2, 3, null, undefined, '1', 'Bad'].map((quality, i) => sample(i + 0.5, 999, { quality }))
+  rejected.push(sample(7.5, null, { quality: 1 }), sample(8.5, '32.9', { quality: 1 }))
+  const report = await generateEquipmentReport({ points: [point], ranges: { current: range, baseline: range },
+    telemetry: { getHistory: async () => ({ points: [...readings, ...rejected] }) },
+    alarms: { getAlarms: async () => ({ events: [] }) }, analysis: { getTrendAlarms: async () => ({ events: [] }) },
+  })
+  const row = report.rows[0]
+  assert.equal(row.current.count, 60)
+  assert.equal(row.current.invalid, rejected.length)
+  assert.equal(row.current.coverage, 1)
+  assert.equal(row.current.min, -1)
+  assert.equal(row.current.max, 58)
+  assert.equal(row.current.mean, 28.5)
+  assert.equal(row.change.percent, 0)
+})
+
 test('trend smoothing does not remove original peaks from sample statistics and resets after gaps', () => {
   const clean = cleanReportSamples(Array.from({ length: 60 }, (_, i) => sample(i, i === 30 ? 1000 : i)), point, range)
   const summary = summarizeReportSamples(clean, point, range)
