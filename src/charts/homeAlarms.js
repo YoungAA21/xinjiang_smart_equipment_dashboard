@@ -1,12 +1,13 @@
 import { presentMonitoringPoint } from './equipmentCatalog.js'
 import { alarmMachineId, isActiveAlarm } from './productionLineStatus.js'
 import { configuredParameter } from '../stores/pointConfiguration.js'
+import { compareAlarmPriority } from './gradedAlarms.js'
 
 export function configuredHomeAlarms(events, machineId = '') {
   return (events || []).map(presentMonitoringPoint)
     .filter(event => event.configurationState === 'configured' && isActiveAlarm(event)
       && (!machineId || alarmMachineId(event) === machineId))
-    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
+    .sort(compareAlarmPriority)
 }
 
 export function homeAlarmTarget(event) {

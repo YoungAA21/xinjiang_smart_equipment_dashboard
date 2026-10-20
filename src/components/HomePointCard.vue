@@ -3,7 +3,7 @@ import { monitoringPointName } from '../charts/equipmentCatalog.js'
 import { computed } from 'vue'
 import EChart from './EChart.vue'
 import { numericValue, telemetryLine } from '../charts/telemetry.js'
-const props = defineProps({ point: { type: Object, required: true }, samples: { type: Array, default: () => [] }, color: { type: String, default: '#39a9ff' }, now: Number, paused: Boolean, compact: Boolean, sourceIp: String })
+const props = defineProps({ point: { type: Object, required: true }, samples: { type: Array, default: () => [] }, color: { type: String, default: '#39a9ff' }, loading: Boolean, now: Number, paused: Boolean, compact: Boolean, sourceIp: String })
 const label = computed(() => monitoringPointName(props.point))
 const latest = computed(() => props.samples.at(-1))
 const value = computed(() => numericValue(latest.value?.value) === null ? '—' : latest.value.value.toFixed(2))
@@ -33,8 +33,8 @@ const option = computed(() => {
   <section class="home-point" :class="{ compact }" :title="label + (latest ? ' · 采样时间 ' + new Date(latest.collectedAt).toLocaleString('zh-CN') : ' · 暂无采样')" :style="{ '--signal': color }">
     <header><h3>{{ label }}</h3><span :class="{ stale, 'is-live': !paused && !stale && latest }">{{ paused ? '已暂停' : stale ? '未更新' : latest ? '实时' : '待采样' }}</span></header>
     <p v-if="sourceIp !== undefined" class="point-address">采集 IP：{{ sourceIp || '未提供' }}</p>
-    <div class="home-point-value"><strong :key="latest?.collectedAt">{{ value }}</strong><small>{{ point.unit }}</small></div>
-    <div class="home-point-chart" role="img" :aria-label="label + '实时折线，' + samples.length + '个样本'"><EChart :option="option" /></div>
+    <div class="home-point-value"><strong :key="latest?.collectedAt"><DataLoading :loading="loading && !samples.length" compact>{{ value }}</DataLoading></strong><small>{{ point.unit }}</small></div>
+    <div :aria-busy="loading && !samples.length" class="home-point-chart" role="img" :aria-label="label + '实时折线，' + samples.length + '个样本'"><DataLoading :loading="loading && !samples.length" chart><EChart :option="option" /></DataLoading></div>
     <footer><span>{{ point.channelId }} · {{ point.pointCode }}</span><time>{{ latest ? new Date(latest.collectedAt).toLocaleTimeString('zh-CN', { hour12: false }) : '暂无数据' }}</time></footer>
   </section>
 </template>

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 
 test('documented collection configuration sends latest through the original 5158 proxy', async () => {
-  const env = Object.fromEntries((await readFile(new URL('../.env.example', import.meta.url), 'utf8')).split(/\r?\n/).filter(line => /^VITE_\w+=/.test(line)).map(line => { const index = line.indexOf('='); return [line.slice(0,index),line.slice(index+1).trim()] }))
+  const env = Object.fromEntries((await readFile(new URL('../.env.development', import.meta.url), 'utf8')).split(/\r?\n/).filter(line => /^VITE_\w+=/.test(line)).map(line => { const index = line.indexOf('='); return [line.slice(0,index),line.slice(index+1).trim()] }))
   const calls = []
   const context = vm.createContext({ URLSearchParams, AbortSignal, process: { cwd: () => '' }, fetch: async url => {
     calls.push(url)
@@ -17,12 +17,8 @@ test('documented collection configuration sends latest through the original 5158
   const latest=await transport.namespace.telemetryApi.getLatest()
   assert.ok(Array.isArray(latest),'latest was routed to the gateway business-404 envelope')
   assert.equal(calls[0],'/_telemetry-api/api/realtime/latest')
-  const configModule = new vm.SourceTextModule(await readFile(new URL('../vite.config.js',import.meta.url),'utf8'),{context})
-  await configModule.link(specifier => new vm.SyntheticModule(specifier === 'vite' ? ['defineConfig','loadEnv'] : ['default'],function(){
-    if(specifier === 'vite'){this.setExport('defineConfig',value=>value);this.setExport('loadEnv',()=>env)}else this.setExport('default',()=>({}))
-  },{context}))
-  await configModule.evaluate()
-  const proxies=configModule.namespace.default({mode:'development'}).server.proxy
+  const { default: config } = await import('../vite.config.build.js')
+  const proxies=config({mode:'development'}).server.proxy
   const key=Object.keys(proxies).find(key=>new RegExp(key).test(calls[0]))
   assert.ok(key.startsWith('^/_telemetry-api/'))
   assert.equal(proxies[key].target,'http://66.66.66.4:5158')

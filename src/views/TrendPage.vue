@@ -23,6 +23,7 @@ const bucketMinutes = 5
 const days = ref([])
 const insight = ref(null)
 const metadataLoading = ref(false)
+const initialLoading = ref(true)
 const analysisLoading = ref(false)
 const metadataError = ref('')
 const analysisError = ref('')
@@ -199,11 +200,14 @@ function syncSelection() {
   rawPoints.value = props.point ? [props.point] : []
   selectedModuleId.value = props.moduleId
   selectedPointId.value = props.point?.pointId ?? null
-  if (props.point) loadAnalysis()
+  if (props.point) return loadAnalysis()
 }
 watch([selectedModuleId, () => selectedPoint.value?.pointId], loadLimits)
 watch([() => props.moduleId, () => props.point?.pointId], () => { if (props.embedded) syncSelection() })
-onMounted(() => props.embedded ? syncSelection() : loadModules())
+onMounted(async () => {
+  try { await (props.embedded ? syncSelection() : loadModules()) }
+  finally { initialLoading.value = false }
+})
 onBeforeUnmount(() => {
   limitsVersion += 1
   pageController.abort()
@@ -214,7 +218,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page trend-analysis-page" :class="{ 'embedded-analysis': embedded }">
+  <section :aria-busy="initialLoading" class="page trend-analysis-page" :class="{ 'embedded-analysis': embedded }">
     <header v-if="!embedded" class="trend-toolbar content-page-header">
       <div><h1 class="content-page-title">趋势分析</h1></div>
       <el-button :icon="RefreshCcw" :loading="metadataLoading || analysisLoading" @click="loadModules">刷新数据</el-button>
@@ -231,10 +235,10 @@ onBeforeUnmount(() => {
     <p v-if="analysisError" class="trend-error" role="alert">{{ analysisError }}</p>
 
     <section class="trend-kpis">
-      <article><span><CalendarRange :size="15" />统计天数</span><strong>{{ days.length }}</strong></article>
-      <article :class="{ warning: exceededDays > 0 }"><span><Activity :size="15" />超限天数</span><strong>{{ exceededDays }}</strong><small>累计 {{ exceededMinutes }} 分钟</small></article>
-      <article><span><Gauge :size="15" />样本总数</span><strong>{{ totalSamples.toLocaleString() }}</strong></article>
-      <article :class="['risk', riskTone(insight?.riskLevel)]"><span><TrendingUp :size="15" />趋势风险</span><strong>{{ riskLabel(insight?.riskLevel) }}</strong><small>{{ selectedPoint?.pointCode || '尚未选择点位' }}</small></article>
+      <article><span><CalendarRange :size="15" />统计天数</span><strong><DataLoading :loading="initialLoading" compact>{{ days.length }}</DataLoading></strong></article>
+      <article :class="{ warning: exceededDays > 0 }"><span><Activity :size="15" />超限天数</span><strong><DataLoading :loading="initialLoading" compact>{{ exceededDays }}</DataLoading></strong><small>累计 {{ exceededMinutes }} 分钟</small></article>
+      <article><span><Gauge :size="15" />样本总数</span><strong><DataLoading :loading="initialLoading" compact>{{ totalSamples.toLocaleString() }}</DataLoading></strong></article>
+      <article :class="['risk', riskTone(insight?.riskLevel)]"><span><TrendingUp :size="15" />趋势风险</span><strong><DataLoading :loading="initialLoading" compact>{{ riskLabel(insight?.riskLevel) }}</DataLoading></strong><small>{{ selectedPoint?.pointCode || '尚未选择点位' }}</small></article>
     </section>
 
     <section class="trend-workspace">
@@ -248,7 +252,7 @@ onBeforeUnmount(() => {
           <span v-if="limitsMessage" class="trend-limit-message" role="status">{{ limitsMessage }}</span>
         </form>
         <p v-if="limitsError" class="trend-error" role="alert">{{ limitsError }}</p>
-        <div v-if="analysisLoading && !days.length" class="trend-empty">正在计算趋势…</div>
+        <DataLoading v-if="initialLoading" chart label="正在加载趋势数据" />
         <div v-else-if="!days.length" class="trend-empty">当前时段暂无聚合趋势数据</div>
         <EChart v-else class="trend-chart" :option="chartOption" merge-updates :aria-busy="analysisLoading" />
       </article>
@@ -256,7 +260,7 @@ onBeforeUnmount(() => {
       <aside class="trend-side">
         <section class="trend-insight-card">
           <header><div><Activity :size="15" /><h2>趋势洞察</h2></div><span :class="['risk-badge', riskTone(insight?.riskLevel)]">{{ riskLabel(insight?.riskLevel) }}</span></header>
-          <div v-if="!insight" class="trend-empty compact">暂无趋势洞察</div>
+          <DataLoading v-if="initialLoading" label="正在加载趋势洞察" /><div v-else-if="!insight" class="trend-empty compact">暂无趋势洞察</div>
           <template v-else>
             <dl class="insight-metrics">
               <div><dt>近期均值</dt><dd>{{ valueText(insight.recentAverageValue, selectedPoint?.unit) }}</dd></div>
@@ -282,7 +286,7 @@ onBeforeUnmount(() => {
         <el-table-column prop="sampleCount" label="样本数" min-width="100" />
         <el-table-column label="超限分钟" min-width="110"><template #default="{ row }">{{ Number(row.belowLimitMinutes || 0) + Number(row.aboveLimitMinutes || 0) }}</template></el-table-column>
         <el-table-column label="状态" min-width="90"><template #default="{ row }"><span :class="['risk-badge', row.limitStatus === 'Normal' ? 'normal' : 'warning']">{{ row.limitStatus === 'Normal' ? '正常' : row.limitStatus || '未知' }}</span></template></el-table-column>
-      </el-table>
+      <template #empty><DataLoading :loading="initialLoading">暂无每日分析数据</DataLoading></template></el-table>
     </section>
   </section>
 </template>

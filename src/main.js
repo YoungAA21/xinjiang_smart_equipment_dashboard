@@ -22,10 +22,12 @@ import {
 import 'element-plus/dist/index.css'
 import './style.css'
 import App from './App.vue'
+import DataLoading from './components/DataLoading.vue'
 import { router } from './router'
 
 
 const app = createApp(App)
+app.component('DataLoading', DataLoading)
 
 ;[
   ElButton,

@@ -4,9 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "vite --config vite.config.build.js --mode development",
+    "debug": "vite --config vite.config.build.js --mode debug",
+    "build": "vite build --config vite.config.build.js --mode production",
+    "build:debug": "vite build --config vite.config.build.js --mode debug",
+    "preview": "vite preview --config vite.config.build.js --mode production",
+    "preview:debug": "vite preview --config vite.config.build.js --mode debug"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

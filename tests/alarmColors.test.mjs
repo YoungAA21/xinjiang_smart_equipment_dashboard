@@ -24,3 +24,24 @@ test('alarm colors persist per account without changing server alarm data',()=>{
  localStorage.setItem('equipment_dashboard_user',JSON.stringify({username:'userA'}));store.ensureUser();assert.ok(store.color(event).includes('red'));store.save(key,'');assert.ok(store.color(event).includes('yellow'));assert.equal(event.severity,'Warning')
  }finally{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage}
 })
+
+test('orange graded color overrides survive a store reload', t => {
+ const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+ const saved = new Map()
+ Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+  getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, String(value)),
+ } })
+ t.after(() => { if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage })
+ const event = { alarmKey: 'GradedLimit', alarmId: 1025, severity: 2 }
+ const key = alarmRuleKey('severity', event)
+ setActivePinia(createPinia())
+ const first = useAlarmColorsStore()
+ first.ensureUser()
+ first.save(key, 'orange')
+ setActivePinia(createPinia())
+ const reloaded = useAlarmColorsStore()
+ reloaded.ensureUser()
+ assert.equal(reloaded.rules[key], 'orange')
+ assert.ok(reloaded.color(event).includes('orange'))
+ assert.equal(event.severity, 2)
+})

@@ -8,6 +8,7 @@ import { mergeGatewayInventory } from '../charts/gatewayCatalog.js'
 
 const modules = ref([])
 const errors = reactive({}), loading = ref(false), detailLoading = ref(false)
+const initialLoading = ref(true)
 const search = ref(''), machine = ref('全部'), kind = ref('全部'), state = ref('全部')
 const selectedKey = ref('legacy:VSE03'), rawPoints = ref([]), pointError = ref('')
 const detailOpen = ref(false), refreshedAt = ref(null)
@@ -52,6 +53,7 @@ async function refresh() {
     if (!controller.signal.aborted) errors.modules = error.message || '模块状态加载失败'
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
   if (controller.signal.aborted) return
   refreshedAt.value = new Date()
@@ -82,8 +84,8 @@ defineExpose({ refresh, loading })
 </script>
 
 <template>
-  <section class="module-overview" :aria-busy="loading">
-    <div class="module-counts"><div>模块总数<strong>{{ counts.total }}</strong></div><div class="count-online">在线<strong>{{ counts.online }}</strong></div><div class="count-offline">离线 / 停止<strong>{{ counts.offline }}</strong></div><div class="count-pending">待确认<strong>{{ counts.pending }}</strong></div></div>
+  <section class="module-overview" :aria-busy="initialLoading">
+    <div class="module-counts"><div>模块总数<strong><DataLoading :loading="initialLoading" compact>{{ counts.total }}</DataLoading></strong></div><div class="count-online">在线<strong><DataLoading :loading="initialLoading" compact>{{ counts.online }}</DataLoading></strong></div><div class="count-offline">离线 / 停止<strong><DataLoading :loading="initialLoading" compact>{{ counts.offline }}</DataLoading></strong></div><div class="count-pending">待确认<strong><DataLoading :loading="initialLoading" compact>{{ counts.pending }}</DataLoading></strong></div></div>
     <div class="module-filters">
       <input v-model="search" aria-label="搜索模块" placeholder="模块 / IP / 编号" />
       <select v-model="machine" aria-label="筛选设备"><option value="全部">全部设备</option><option v-for="value in machineOptions" :key="value" :value="value">{{ machineName(value) }}</option></select>
@@ -97,12 +99,12 @@ defineExpose({ refresh, loading })
       <div class="module-groups">
         <section v-for="group in groups" :key="group.id" class="panel module-group">
           <h2>{{ machineName(group.id) }} <span>{{ group.rows.filter(row => row.online).length }} / {{ group.rows.length }} 在线</span></h2>
-          <div class="module-grid"><button v-for="row in group.rows" :key="row.key" class="module-card" :class="{ active: detailOpen && selectedKey === row.key }" :aria-label="`${group.id} ${row.name} ${row.status}，查看详情`" @click="openDetail(row)">
+          <div class="module-grid"><DataLoading :loading="initialLoading"><button v-for="row in group.rows" :key="row.key" class="module-card" :class="{ active: detailOpen && selectedKey === row.key }" :aria-label="`${group.id} ${row.name} ${row.status}，查看详情`" @click="openDetail(row)">
             <div><strong :title="row.name">{{ row.name }}</strong><span class="module-state" :class="{ online: row.online, offline: ['离线', '已停止'].includes(row.status) }">{{ row.status }}</span></div>
             <div><span>{{ row.kind }} · {{ row.entry?.id || row.moduleIds[0] || '采集器' }}</span><span>{{ row.host || row.entry?.host || '—' }}</span></div>
-          </button></div>
+          </button></DataLoading></div>
         </section>
-        <div v-if="!groups.length" class="empty-state">无匹配模块 <button class="module-reset" @click="resetFilters">显示全部</button></div>
+        <div v-if="!initialLoading && !groups.length" class="empty-state">无匹配模块 <button class="module-reset" @click="resetFilters">显示全部</button></div>
       </div>
     </div>
     <el-drawer v-model="detailOpen" title="模块通讯详情" size="min(780px, 92vw)" class="module-detail-drawer">
@@ -119,7 +121,7 @@ defineExpose({ refresh, loading })
           <el-table-column prop="pointCode" label="点位编码" min-width="125" />
           <el-table-column label="寄存器" width="90"><template #default="{row}">{{ row.address ?? '—' }}</template></el-table-column>
           <el-table-column prop="unit" label="单位" width="100" />
-        </el-table>
+        <template #empty><DataLoading :loading="detailLoading && !rawPoints.length">{{ detailLoading ? '加载中' : '暂无接口点位' }}</DataLoading></template></el-table>
       </section>
     </el-drawer>
   </section>

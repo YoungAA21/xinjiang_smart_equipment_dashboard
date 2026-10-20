@@ -12,6 +12,7 @@ const selectedDetail = ref(null)
 const visualization = ref(null)
 const monitorDevices = ref([])
 const loading = ref(false)
+const initialLoading = ref(true)
 const deviceLoading = ref(false)
 const detailLoading = ref(false)
 const visualLoading = ref(false)
@@ -240,13 +241,12 @@ function handleSizeChange(size) {
 }
 
 onMounted(() => {
-  loadMonitorDevices()
-  loadRecordings()
+  Promise.all([loadMonitorDevices(), loadRecordings()]).finally(() => { initialLoading.value = false })
 })
 </script>
 
 <template>
-  <section class="page recording-page configuration-workspace" aria-label="录音管理">
+  <section :aria-busy="initialLoading" class="page recording-page configuration-workspace" aria-label="录音管理">
     <header class="recording-toolbar configuration-toolbar" aria-label="录音操作">
       <div class="monitor-actions recording-actions">
         <el-button :icon="Search" type="primary" :loading="loading" @click="loadRecordings(true)">查询</el-button>
@@ -298,10 +298,10 @@ onMounted(() => {
     </section>
 
     <section class="recording-summary">
-      <article class="panel"><span><FileAudio :size="15" />当前页录音</span><strong>{{ recordings.length }}</strong></article>
-      <article class="panel"><span><Database :size="15" />总记录数</span><strong>{{ filters.total }}</strong></article>
-      <article class="panel"><span><Waves :size="15" />当前页时长</span><strong>{{ formatDuration(totalDuration) }}</strong></article>
-      <article class="panel"><span><Download :size="15" />当前页大小</span><strong>{{ formatBytes(totalSize) }}</strong></article>
+      <article class="panel"><span><FileAudio :size="15" />当前页录音</span><strong><DataLoading :loading="initialLoading" compact>{{ recordings.length }}</DataLoading></strong></article>
+      <article class="panel"><span><Database :size="15" />总记录数</span><strong><DataLoading :loading="initialLoading" compact>{{ filters.total }}</DataLoading></strong></article>
+      <article class="panel"><span><Waves :size="15" />当前页时长</span><strong><DataLoading :loading="initialLoading" compact>{{ formatDuration(totalDuration) }}</DataLoading></strong></article>
+      <article class="panel"><span><Download :size="15" />当前页大小</span><strong><DataLoading :loading="initialLoading" compact>{{ formatBytes(totalSize) }}</DataLoading></strong></article>
     </section>
 
     <section class="recording-layout">
@@ -326,7 +326,7 @@ onMounted(() => {
             <template #default="{ row }">{{ formatBytes(row.sizeBytes) }}</template>
           </el-table-column>
           <el-table-column prop="analysisStatus" label="分析状态" width="130" show-overflow-tooltip />
-        </el-table>
+        <template #empty><DataLoading :loading="initialLoading">暂无数据</DataLoading></template></el-table>
         <el-pagination
           v-model:current-page="filters.page"
           v-model:page-size="filters.pageSize"

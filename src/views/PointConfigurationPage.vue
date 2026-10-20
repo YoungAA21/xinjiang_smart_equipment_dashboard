@@ -1,5 +1,6 @@
 <script setup>
 import {computed, onBeforeUnmount, onMounted, reactive, ref, watch} from 'vue'
+import { ElMessage } from 'element-plus'
 import {telemetryApi} from '../services/telemetry.js'
 import {reportInformation} from '../services/information.js'
 import {api} from '../services/api.js'
@@ -19,6 +20,7 @@ import {
   configurationSnapshot,
   pointConfiguration,
   savePointConfiguration,
+  uploadPointConfiguration,
   configuredParameter
 } from '../stores/pointConfiguration.js'
 import '../styles/point-configuration.css'
@@ -32,6 +34,7 @@ watch(errors, value => {
   for (const [source, error] of Object.entries(value)) if (error) reportInformation(`参数配置 · ${source}`, error)
 }, {deep: true})
 const loading = ref(false)
+const initialLoading = ref(true)
 const search = ref('')
 const source = ref('all')
 const status = ref('all')
@@ -41,6 +44,8 @@ const notice = ref('')
 const saveError = ref('')
 const importInput = ref(null)
 const editor = reactive({displayName: '', unit: '', locationId: '', targetId: '', machine: 'ZJ17', model: 'ZJ17'})
+const editorBaseline = ref('')
+const editorContent = () => JSON.stringify([editor.displayName, editor.unit, editor.locationId, editor.targetId, editor.machine, editor.model])
 const newLocation = reactive({name: '', machine: 'ZJ17', model: 'ZJ17'})
 const newTarget = reactive({name: '', locationId: ''})
 const locationEdit = reactive({id: '', name: '', machine: '', model: ''})
@@ -159,6 +164,7 @@ function resetEditor() {
   const location = pointConfiguration.locations.find(item => item.id === editor.locationId)
   editor.machine = location?.machine || 'ZJ17'
   editor.model = location?.model || machineModel(editor.machine)
+  editorBaseline.value = editorContent()
   notice.value = '';
   saveError.value = ''
 }
@@ -181,6 +187,19 @@ function persist(value, message) {
   }
 }
 
+async function uploadConfiguration() {
+  saveError.value = ''
+  notice.value = ''
+  if (selected.value && editorBaseline.value !== editorContent()) {
+    saveError.value = '请先保存当前参数修改，再上传配置'
+    return
+  }
+  try {
+    await uploadPointConfiguration()
+    notice.value = pointConfiguration.dirty ? '配置已上传，上传期间的新修改仍待上传' : '配置已上传，其他电脑重新打开系统即可读取'
+  } catch (error) { if (!pointConfiguration.syncError) saveError.value = error.message || '配置上传失败，请重试' }
+}
+
 function saveParameter() {
   if (!selected.value) return
   const row = selected.value
@@ -194,7 +213,16 @@ function saveParameter() {
     backendUnit: row.point.unit || '',
     pointId: row.point.pointId
   }
-  persist(value, '参数配置已保存，监测页面已同步更新')
+  if (persist(value, '参数配置已保存到本机，监测页面已同步更新')) {
+    editorBaseline.value = editorContent()
+    ElMessage({ message: '参数保存成功，请点击“上传配置”同步到服务器', type: 'success', duration: 3500, showClose: true, grouping: true, customClass: 'parameter-save-feedback' })
+  } else {
+    ElMessage({ message: saveError.value || '参数保存失败，请重试', type: 'error', duration: 5000, showClose: true, grouping: true, customClass: 'parameter-save-feedback' })
+  }
+}
+
+function showInvalidParameter() {
+  ElMessage({ message: '请填写前端名称，并选择大点位和被测点位', type: 'warning', duration: 4000, showClose: true, grouping: true, customClass: 'parameter-save-feedback' })
 }
 
 function clearParameter() {
@@ -380,6 +408,7 @@ async function refresh() {
     ])
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 
@@ -396,7 +425,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page parameter-settings configuration-workspace" aria-label="参数配置">
+  <section :aria-busy="initialLoading" class="page parameter-settings configuration-workspace" aria-label="参数配置">
+    <div class="parameter-sync-toolbar" aria-label="配置同步">
+      <strong>{{ pointConfiguration.dirty ? '本机修改待上传' : pointConfiguration.source === 'server' ? '服务器配置' : pointConfiguration.source === 'builtin' ? '内置配置' : '本机缓存' }}</strong>
+      <time v-if="pointConfiguration.uploadedAt">上次上传 {{ new Date(pointConfiguration.uploadedAt).toLocaleString('zh-CN', { hour12: false }) }}</time>
+      <button type="button" :disabled="pointConfiguration.uploading" @click="uploadConfiguration">{{ pointConfiguration.uploading ? '上传中…' : '上传配置' }}</button>
+    </div>
+    <p v-if="pointConfiguration.syncError" class="parameter-error" role="status">{{ pointConfiguration.syncError }}</p>
 
     <!--    <p class="parameter-storage">配置保存在本机浏览器，所有账号及同源标签页共享；其他电脑可导入配置文件。单位仅修改显示标签，采样数值保持不变。</p>-->
     <p v-if="pointConfiguration.error || saveError" class="parameter-error" role="alert">
@@ -497,7 +532,7 @@ onBeforeUnmount(() => {
           <option value="unconfigured">未配置</option>
           <option value="configured">已配置</option>
         </select></div>
-        <div class="parameter-table-scroll">
+        <div class="parameter-table-scroll"><DataLoading :loading="initialLoading">
           <table>
             <thead>
             <tr>
@@ -532,7 +567,7 @@ onBeforeUnmount(() => {
           </table>
           <p v-if="!filtered.length" class="parameter-empty">{{
               loading ? '正在读取后端参数…' : '暂无匹配参数，请检查来源或调整筛选'
-            }}</p></div>
+            }}</p></DataLoading></div>
         <footer class="parameter-pagination"><span>{{ filtered.length }} 项 · 第 {{ page }} / {{ pageCount }} 页</span>
           <button :disabled="page <= 1" @click="page--">上一页</button>
           <button :disabled="page >= pageCount" @click="page++">下一页</button>
@@ -550,7 +585,7 @@ onBeforeUnmount(() => {
         <h2>{{ selected ? '配置参数' : '选择一个参数' }}</h2>
         <template v-if="selected"><p class="parameter-origin">{{ backendName(selected) }}<small>{{ selected.deviceId }}
           / {{ selected.point.channelId }} / {{ selected.point.pointCode || '声纹通道' }}</small></p>
-          <form @submit.prevent="saveParameter"><label>前端名称<input v-model="editor.displayName" required
+          <form @submit.prevent="saveParameter" @invalid.capture="showInvalidParameter"><label>前端名称<input v-model="editor.displayName" required
                                                                       maxlength="120"
                                                                       placeholder="输入监测页面显示的名称"/></label><label>显示单位<input
               v-model="editor.unit" list="parameter-units" maxlength="30"
@@ -570,7 +605,7 @@ onBeforeUnmount(() => {
               <option value="" disabled>选择被测点位</option>
               <option v-for="target in targets" :key="target.id" :value="target.id">{{ target.name }}</option>
             </select></label>
-            <button class="parameter-save" type="submit">保存并同步</button>
+            <button class="parameter-save" type="submit">保存参数</button>
             <button type="button" @click="resetEditor">重置编辑</button>
             <button v-if="selected.config" type="button" @click="clearParameter">恢复未配置</button>
           </form>

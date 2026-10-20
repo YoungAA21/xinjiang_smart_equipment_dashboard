@@ -87,7 +87,7 @@ test('production uses same-origin proxies for both services', async () => {
 })
 
 test('proxy allowlist excludes unmigrated legacy routes and all new API routes', async () => {
-  const { default: config } = await import('../vite.config.js')
+  const { default: config } = await import('../vite.config.build.js')
   const proxies = config({ mode: 'test' }).server.proxy
   const healthProxyKey = Object.keys(proxies).find((key) => key.startsWith('^/_health-api/'))
   const pattern = new RegExp(healthProxyKey)
@@ -122,11 +122,11 @@ test('login endpoint override preserves form submission and does not change othe
   }
 })
 
-test('blank login override falls back to development or production service configuration', async () => {
+test('blank login override uses the explicit service base or the same-origin proxy in every mode', async () => {
   for (const [env, location, expected] of [
-    [{ DEV: true, VITE_DEV_NEW_API_BASE_URL: 'http://dev.example:18080/' }, undefined, 'http://dev.example:18080/auth/login'],
+    [{ DEV: true, VITE_DEV_NEW_API_BASE_URL: 'http://dev.example:18080/' }, { origin: 'http://localhost:5173' }, 'http://localhost:5173/auth/login'],
     [{ VITE_NEW_API_BASE_URL: 'https://service.example/v1/' }, undefined, 'https://service.example/v1/auth/login'],
-    [{}, { origin: 'https://dashboard.example' }, 'https://dashboard.example:18080/auth/login'],
+    [{}, { origin: 'https://dashboard.example' }, 'https://dashboard.example/auth/login'],
   ]) {
     const calls = []
     const api = await loadApi(async (url) => { calls.push(url); return reply({ token: 'token' }) }, { ...env, VITE_LOGIN_API_URL: '  ' }, location)

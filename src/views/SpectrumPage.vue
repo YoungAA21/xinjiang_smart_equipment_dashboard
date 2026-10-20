@@ -21,6 +21,7 @@ const devices = ref([])
 const selectedDeviceId = ref('')
 const selectedChannelId = ref('')
 const loadingDevices = ref(false)
+const initialLoading = ref(!props.embedded)
 const starting = ref(false)
 let sessionVersion = 0
 let disposed = false
@@ -308,6 +309,7 @@ const loadDevices = async () => {
     reportInformation('声纹服务', error?.message || '可监听设备加载失败')
   } finally {
     loadingDevices.value = false
+    initialLoading.value = false
   }
 }
 
@@ -510,7 +512,7 @@ onBeforeUnmount(() => { disposed = true; stopSession() })
     <div class="compact-waveform" role="img" :aria-label="channelId + '实时波形'"><EChart v-if="waveformSamples.length" :option="waveformOption" /><div v-else class="compact-empty">{{ starting ? '正在连接点位…' : '等待声纹采样' }}</div></div>
     <footer><span>{{ lastFrameAt ? new Date(lastFrameAt).toLocaleTimeString('zh-CN') : '暂无采样' }}</span><el-button v-if="!session" size="small" :loading="starting" :disabled="!canStart" @click="startSession">连接点位</el-button><el-button v-else size="small" @click="stopSession">暂停</el-button></footer>
   </article>
-  <section v-else class="page single-page spectrum-live-page" :class="{ 'embedded-spectrum': embedded }" :data-mode="displayMode">
+  <section v-else :aria-busy="initialLoading" class="page single-page spectrum-live-page" :class="{ 'embedded-spectrum': embedded }" :data-mode="displayMode">
     <header v-if="!embedded" class="spectrum-page-header content-page-header"><h1 class="content-page-title">频谱分析</h1></header>
     <article class="panel spectrum-live-panel">
       <h2>{{ embedded && displayMode === 'live' ? '实时声纹监测' : '实时频谱分析' }}</h2>
@@ -538,7 +540,7 @@ onBeforeUnmount(() => { disposed = true; stopSession() })
         <span>音频块：<b>{{ stats.audioChunks }}</b></span>
       </div>
 
-      <section class="spectrum-live-grid">
+      <section class="spectrum-live-grid"><DataLoading :loading="initialLoading" chart label="正在加载频谱设备">
         <AudioVisualizationPanel v-if="!embedded || displayMode === 'spectrum'"
           :active="frameLive"
           :waveform="waveform"
@@ -568,7 +570,7 @@ onBeforeUnmount(() => { disposed = true; stopSession() })
           <div v-if="!waterfallMatrix.length" class="empty-state">开始监听后显示当前点位的频谱瀑布</div>
           <EChart v-else :option="waterfallOption" />
         </section>
-      </section>
+      </DataLoading></section>
     </article>
   </section>
 </template>

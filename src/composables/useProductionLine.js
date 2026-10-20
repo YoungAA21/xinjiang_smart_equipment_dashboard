@@ -17,6 +17,7 @@ export function useProductionLine() {
   const now = ref(Date.now())
   const live = ref(true)
   const refreshing = ref(false)
+  const initialLoading = ref(true)
   const points = ref({})
   const pointErrors = ref({})
   const receivedEvents = ref(null)
@@ -26,6 +27,7 @@ export function useProductionLine() {
   const controller = new AbortController()
   const options = { signal: controller.signal }
   let clockTimer, sampleTimer, metadataTimer
+  let alarmRefreshing = false
   const devices = computed(() => [
     ...discoveredMonitoringModules(telemetry.modules || [], telemetry.latest || []).map(module => ({ id: module.moduleId, source: 'legacy', name: module.moduleName || module.moduleId, online: module.runtimeStatus?.isOnline, points: configuredMonitoringPoints(points.value[module.moduleId] || [], telemetry.latest, module.moduleId), raw: module })),
     ...(acoustic.devices || []).map(device => ({ id: device.deviceId, source: 'monitor', name: device.deviceName || device.deviceId, online: device.online, points: presentAcousticChannels(device), raw: device })),
@@ -41,16 +43,20 @@ export function useProductionLine() {
   }))
   const selected = computed(() => machines.value.find(machine => machine.id === selectedId.value) || machines.value[0])
   const readings = computed(() => selected.value.rows)
+  async function refreshAlarms() {
+    if (alarmRefreshing || controller.signal.aborted) return
+    alarmRefreshing = true
+    try {
+      const body = await alarmApi.getAlarms({ isActive: true, limit: 1000 }, options)
+      if (!controller.signal.aborted) { receivedEvents.value = alarmEvents(body); alarmError.value = '' }
+    } catch (error) { if (!controller.signal.aborted) alarmError.value = error.message || '告警接口连接失败' }
+    finally { alarmRefreshing = false }
+  }
   async function refresh({ configuration = false } = {}) {
     if (refreshing.value || controller.signal.aborted) return
     refreshing.value = true
     try {
-      await Promise.all([telemetry.refreshModules(options), telemetry.refreshLatest(options), acoustic.refresh(options), (async () => {
-        try {
-          const body = await alarmApi.getAlarms({ limit: 1000 }, options)
-          if (!controller.signal.aborted) { receivedEvents.value = alarmEvents(body); alarmError.value = '' }
-        } catch (error) { if (!controller.signal.aborted) alarmError.value = error.message || '告警接口连接失败' }
-      })()])
+      await Promise.all([telemetry.refreshModules(options), telemetry.refreshLatest(options), acoustic.refresh(options), refreshAlarms()])
       const activeModules = telemetry.modules || []
       const activeIds = new Set(activeModules.map(module => module.moduleId))
       for (const id of Object.keys(points.value)) if (!activeIds.has(id)) { delete points.value[id]; delete pointErrors.value[id] }
@@ -65,12 +71,12 @@ export function useProductionLine() {
           } catch (error) { if (!controller.signal.aborted) pointErrors.value[module.moduleId] = error.message || '点位配置获取失败' }
         }))
       }
-    } finally { refreshing.value = false }
+    } finally { refreshing.value = false; initialLoading.value = false }
   }
   onMounted(() => {
     refresh({ configuration: true })
     clockTimer = window.setInterval(() => { now.value = Date.now() }, 1000)
-    sampleTimer = window.setInterval(() => { if (live.value) telemetry.refreshLatest(options) }, 2000)
+    sampleTimer = window.setInterval(() => { if (live.value) { telemetry.refreshLatest(options); refreshAlarms() } }, 2000)
     metadataTimer = window.setInterval(() => { if (live.value) refresh({ configuration: true }) }, 30000)
   })
   onBeforeUnmount(() => {
@@ -79,5 +85,5 @@ export function useProductionLine() {
     telemetry.clear()
     acoustic.clear()
   })
-  return { telemetry, acoustic, selectedId, selected, machines, readings, alarmsReady, events, alarmError, pointErrors, now, live, refreshing, refresh }
+  return { telemetry, acoustic, selectedId, selected, machines, readings, alarmsReady, events, alarmError, pointErrors, now, live, refreshing, initialLoading, refresh }
 }

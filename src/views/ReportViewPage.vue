@@ -66,7 +66,7 @@ onBeforeUnmount(cancel)
 </script>
 
 <template>
-  <div class="equipment-report-page report-view-page analysis-workspace" aria-label="报告查看">
+  <div :aria-busy="loading" class="equipment-report-page report-view-page analysis-workspace" aria-label="报告查看">
     <header class="report-page-heading">
       <div><h1>报告查看</h1></div>
       <div class="report-heading-actions"><button @click="router.push('/reports')"><Settings2 :size="16" />报告配置</button><button :disabled="!snapshot" @click="downloadReport(snapshot)"><ArrowDownToLine :size="16" />下载 HTML</button></div>

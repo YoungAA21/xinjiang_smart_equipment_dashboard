@@ -92,6 +92,9 @@ button { cursor: pointer; }
   overflow: hidden;
 }
 :root {
+  --alarm-color-red: #ff6565;
+  --alarm-color-orange: #ff862e;
+  --alarm-color-yellow: #f1e43b;
   --el-color-primary: #46907C;
   --el-color-primary-light-3: #A8FF7D;
   --el-color-primary-dark-2: #46907C;
@@ -107,6 +110,9 @@ button { cursor: pointer; }
   --el-bg-color-overlay: #111312;
 }
 :root.light-theme {
+  --alarm-color-red: #c73d3d;
+  --alarm-color-orange: #b84c00;
+  --alarm-color-yellow: #806c00;
   --el-text-color-primary: #10201c;
   --el-text-color-regular: #36534b;
   --el-text-color-secondary: #60766f;

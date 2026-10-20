@@ -30,6 +30,7 @@ const reportInformation = inject('reportInformation', () => {})
 watch(monitorError, error => { if (error) reportInformation('声纹服务', error) })
 const monitorTime = ref(null)
 const loadingMonitor = ref(false)
+const initialLoading = ref(true)
 const source = ref(['legacy', 'monitor'].includes(route.query.source) ? route.query.source : 'all')
 const selectedKey = ref(route.query.device ? JSON.stringify([route.query.source, route.query.device]) : '')
 const showingDetail = computed(() => Boolean(route.query.device))
@@ -148,10 +149,12 @@ async function loadPoints(preferredPointId = Number(route.query.pointId) || null
   if (!pageController.signal.aborted && !controller.signal.aborted) selectedPointId.value = points.value.find((point) => point.pointId === preferredPointId)?.pointId ?? points.value[0]?.pointId ?? null
 }
 async function refreshAll() {
-  const previousKey = selected.value?.key
-  await Promise.all([telemetry.refreshModules({ signal: pageController.signal }), loadMonitorDevices()])
-  if (pageController.signal.aborted) return
-  if (selected.value?.key === previousKey && isLegacy.value) await loadPoints(selectedPoint.value?.pointId)
+  try {
+    const previousKey = selected.value?.key
+    await Promise.all([telemetry.refreshModules({ signal: pageController.signal }), loadMonitorDevices()])
+    if (pageController.signal.aborted) return
+    if (selected.value?.key === previousKey && isLegacy.value) await loadPoints(selectedPoint.value?.pointId)
+  } finally { initialLoading.value = false }
 }
 function queryHistory() {
   if (!isLegacy.value || !selectedPoint.value || pageController.signal.aborted) return
@@ -207,7 +210,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page unified-monitor" :class="{ 'equipment-directory-page': !showingDetail, 'embedded-detail': embedded }">
+  <section :aria-busy="initialLoading" class="page unified-monitor" :class="{ 'equipment-directory-page': !showingDetail, 'embedded-detail': embedded }">
     <header v-if="!embedded" class="device-toolbar content-page-header"><div><h1 class="content-page-title">测点详情 </h1></div><el-button :icon="RefreshCcw" :loading="refreshing" @click="refreshAll">刷新设备</el-button></header>
     <div v-if="showingDetail && !embedded" class="source-summary"><span :class="telemetry.errors.modules ? 'warn' : ''">采集模块 · {{ telemetry.modules?.length ?? '—' }} 个 · {{ dateTime(telemetry.moduleTime) }}</span><span :class="monitorError ? 'warn' : ''">声纹设备 · {{ monitorDevices?.length ?? '—' }} 台 · {{ dateTime(monitorTime) }}</span></div>
     <div class="device-workspace" :class="{ 'directory-view': !showingDetail }">
@@ -215,7 +218,7 @@ onBeforeUnmount(() => {
         <header class="fleet-overview">
           <div class="fleet-intro"><h2>设备运行总览</h2><span class="fleet-sync">{{ refreshing ? '正在同步设备状态…' : '最近同步 · ' + dateTime(telemetry.moduleTime || monitorTime) }}</span></div>
           <div class="fleet-stats" aria-label="设备状态概览">
-            <button v-for="item in [{id: 'all', label: '全部设备', value: deviceStats.total}, {id: 'online', label: '在线设备', value: deviceStats.online}, {id: 'offline', label: '离线设备', value: deviceStats.offline}, {id: 'unknown', label: '状态未知', value: deviceStats.unknown}]" :key="item.id" :class="[item.id, {active: statusFilter === item.id}]" :aria-pressed="statusFilter === item.id" @click="statusFilter = item.id"><span>{{ item.label }}</span><strong>{{ telemetry.modules === null && monitorDevices === null ? '—' : item.value }}<small>台</small></strong></button>
+            <button v-for="item in [{id: 'all', label: '全部设备', value: deviceStats.total}, {id: 'online', label: '在线设备', value: deviceStats.online}, {id: 'offline', label: '离线设备', value: deviceStats.offline}, {id: 'unknown', label: '状态未知', value: deviceStats.unknown}]" :key="item.id" :class="[item.id, {active: statusFilter === item.id}]" :aria-pressed="statusFilter === item.id" @click="statusFilter = item.id"><span>{{ item.label }}</span><strong><DataLoading :loading="initialLoading" compact>{{ telemetry.modules === null && monitorDevices === null ? '—' : item.value }}<small>台</small></DataLoading></strong></button>
           </div>
         </header>
         <div class="fleet-controls">
@@ -223,7 +226,7 @@ onBeforeUnmount(() => {
           <label class="fleet-search"><Search :size="17" /><input v-model="deviceSearch" aria-label="搜索设备名称或编号" placeholder="搜索设备名称或编号" /><button v-if="deviceSearch" aria-label="清空搜索" @click="deviceSearch = ''">×</button></label>
         </div>
         <div class="fleet-result"><span>设备目录 <b>{{ visibleEntries.length }}</b></span><span>{{ statusFilter === 'all' ? '全部状态' : statusFilter === 'online' ? '仅在线设备' : statusFilter === 'offline' ? '仅离线设备' : '仅状态未知设备' }} · 点击卡片进入监测</span></div>
-        <div class="fleet-grid">
+        <div class="fleet-grid"><DataLoading :loading="initialLoading">
           <RouterLink v-for="entry in visibleEntries" :key="entry.key" class="fleet-card" :aria-label="(entry.source === 'legacy' ? '采集模块 ' : '声纹设备 ')+entry.id+' '+entry.name" :to="{ path: '/device/detail', query: { source: entry.source, device: entry.id, tab: availableTab(route.query.tab, entry.source) } }">
             <div class="fleet-card-top"><span class="fleet-kind"><component :is="entry.source === 'legacy' ? Server : Fan" :size="14" />{{ entry.source === 'legacy' ? '采集模块' : '声纹设备' }}</span><span class="fleet-status" :class="tone(entry.online)"><i></i>{{ status(entry.online) }}</span></div>
             <div class="fleet-stage">
@@ -235,17 +238,17 @@ onBeforeUnmount(() => {
             <div class="fleet-card-body"><span class="fleet-id">{{ entry.id }}</span><h3>{{ entry.name }}</h3><div class="fleet-card-metrics"><span>监测点位 <b>{{ entryPointCount(entry) }}<small> 个</small></b></span><span>{{ entry.source === 'legacy' ? '通讯协议' : '采集类型' }} <b>{{ entry.source === 'legacy' ? entry.raw.protocol || '—' : '声纹采集' }}</b></span></div></div>
             <footer><span>进入实时监测</span><span class="fleet-arrow" aria-hidden="true">↗</span></footer>
           </RouterLink>
-        </div>
-        <div v-if="!visibleEntries.length" class="fleet-empty"><Server :size="32" /><h3>{{ refreshing ? '正在加载设备…' : '暂无匹配设备' }}</h3><button @click="resetDeviceFilters">重置筛选</button></div>
+        </DataLoading></div>
+        <div v-if="!initialLoading && !visibleEntries.length" class="fleet-empty"><Server :size="32" /><h3>{{ refreshing ? '正在加载设备…' : '暂无匹配设备' }}</h3><button @click="resetDeviceFilters">重置筛选</button></div>
 
       </section>
       <aside v-if="showingDetail && selected" class="device-profile device-info-card">
         <RouterLink v-if="!embedded" class="back-link" :to="{ path: '/device', query: route.query.machine ? { machine: route.query.machine } : {} }">‹ {{ route.query.machine ? '返回整机监测' : '返回设备列表' }}</RouterLink>
         <h2>{{ profileName }}</h2><EquipmentVisual class="profile-equipment-visual" :name="profileName" :image-src="profileImage" :source="selected.source" :device-id="selected.id" :online="(isLegacy ? telemetry.errors.modules : monitorError) ? undefined : selected.online" :paused="true" />
-        <dl><div><dt>设备编号</dt><dd>{{ selected.id }}</dd></div><div><dt>设备来源</dt><dd>{{ isLegacy ? '采集模块' : '声纹设备' }}</dd></div><div><dt>设备状态</dt><dd :class="tone(selected.online)">{{ status(selected.online) }}</dd></div><div><dt>监测点位</dt><dd>{{ isLegacy ? points.length : channels.length }} 个</dd></div><div v-if="isLegacy"><dt>通讯协议</dt><dd>{{ selected.raw.protocol || '—' }}</dd></div></dl>
+        <dl><DataLoading :loading="initialLoading"><div><dt>设备编号</dt><dd>{{ selected.id }}</dd></div><div><dt>设备来源</dt><dd>{{ isLegacy ? '采集模块' : '声纹设备' }}</dd></div><div><dt>设备状态</dt><dd :class="tone(selected.online)">{{ status(selected.online) }}</dd></div><div><dt>监测点位</dt><dd>{{ isLegacy ? points.length : channels.length }} 个</dd></div><div v-if="isLegacy"><dt>通讯协议</dt><dd>{{ selected.raw.protocol || '—' }}</dd></div></DataLoading></dl>
       </aside>
       <main v-if="showingDetail" class="device-detail">
-        <div v-if="!selected" class="device-empty"><Server :size="38" /><p>正在加载设备，或该设备已不可用</p><RouterLink to="/device">返回设备列表</RouterLink></div>
+        <DataLoading v-if="initialLoading && !selected" label="正在加载设备详情" /><div v-else-if="!selected" class="device-empty"><Server :size="38" /><p>正在加载设备，或该设备已不可用</p><RouterLink to="/device">返回设备列表</RouterLink></div>
         <template v-else>
           <header v-if="!embedded" class="selection-summary"><div><h2>{{ profileName }} <span :class="tone(selected.online)">{{ status(selected.online) }}</span></h2><p>{{ selected.id }} · {{ isLegacy ? selected.raw.protocol || '采集模块' : '声纹设备' }}</p></div><span class="source-tag">{{ isLegacy ? '采集模块' : '声纹设备' }}</span></header>
           <div class="device-detail-tabs" role="tablist" aria-label="设备数据视图"><button v-for="tab in detailTabs" :id="'device-tab-'+tab.id" :key="tab.id" role="tab" :aria-selected="chartMode === tab.id" :aria-controls="'device-panel-'+tab.id" :class="{active: chartMode === tab.id}" @click="chartMode = tab.id">{{ tab.label }}</button></div>
@@ -254,7 +257,7 @@ onBeforeUnmount(() => {
             <template v-else><button v-for="channel in channels" :key="channel.channelId" :class="{active: selectedChannel?.channelId === channel.channelId}" :aria-pressed="selectedChannel?.channelId === channel.channelId" @click="selectedChannelId = channel.channelId">{{ acousticChannelDisplayName(selected?.raw, channel) }}</button></template>
           </div>
           <p v-if="isLegacy && chartMode !== 'live' && chartMode !== 'info'" class="point-meta">采集 IP：{{ selected.raw.host || '未提供' }}</p>
-          <section :id="'device-panel-'+chartMode" role="tabpanel" :aria-labelledby="'device-tab-'+chartMode" class="device-tab-content">
+          <section :id="'device-panel-'+chartMode" role="tabpanel" :aria-labelledby="'device-tab-'+chartMode" class="device-tab-content"><DataLoading :loading="initialLoading">
             <template v-if="chartMode === 'info'">
               <article class="device-info-card"><h3>设备信息</h3><dl><div><dt>设备名称</dt><dd>{{ selected.name }}</dd></div><div><dt>设备编号</dt><dd>{{ selected.id }}</dd></div><div><dt>设备来源</dt><dd>{{ isLegacy ? '采集模块' : '声纹设备' }}</dd></div><div><dt>运行状态</dt><dd :class="tone(selected.online)">{{ status(selected.online) }}</dd></div><div v-if="isLegacy"><dt>通讯协议</dt><dd>{{ selected.raw.protocol || '—' }}</dd></div><div v-if="isLegacy"><dt>连接地址</dt><dd>{{ selected.raw.host || '—' }}{{ selected.raw.port ? ':'+selected.raw.port : '' }}</dd></div><div><dt>监测点位</dt><dd>{{ isLegacy ? points.length : channels.length }} 个</dd></div></dl></article>
               <MonitorDeviceDetails v-if="!isLegacy" :device="selected.raw" />
@@ -292,7 +295,7 @@ onBeforeUnmount(() => {
               <SpectrumPage show-address v-else-if="chartMode === 'spectrum'" :key="selected.key" embedded :device="selected.raw" :channel-id="selectedChannel.channelId" :display-mode="chartMode" />
               <div v-else class="capability-empty"><Database :size="32" /><h3>当前声纹点位暂无历史采样列表</h3></div>
             </template>
-          </section>
+          </DataLoading></section>
         </template>
       </main>
     </div>

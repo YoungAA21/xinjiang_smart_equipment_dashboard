@@ -34,6 +34,7 @@ watch(pointErrors, errors => {
 }, { deep: true })
 const loadedAt = new Map()
 const busy = ref(false)
+const initialLoading = ref(true)
 const paused = ref(false)
 const headerControlsExpanded = inject('homeControlsExpanded', ref(false))
 const now = ref(Date.now())
@@ -154,7 +155,7 @@ async function refresh(force = false) {
         }
       }))
     }
-  } finally { busy.value = false }
+  } finally { busy.value = false; initialLoading.value = false }
 }
 onMounted(() => {
   refresh()
@@ -176,7 +177,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page machine-monitor">
+  <section :aria-busy="initialLoading" class="page machine-monitor">
     <header class="monitor-heading">
       <nav class="location-tabs" role="tablist" aria-label="监测点位">
         <button v-for="(location, index) in locationOptions" :id="'location-tab-'+location.id" :key="location.id" type="button" role="tab" :aria-selected="selected.id === location.id" :aria-controls="'location-panel-'+selected.id" :tabindex="selected.id === location.id ? 0 : -1" :class="{ active: selected.id === location.id }" :title="locationHierarchyLabel(location)" @click="selectLocation(location.id)" @keydown="navigateLocation($event, index)">{{ location.name }}</button>
@@ -193,8 +194,8 @@ onBeforeUnmount(() => {
 <!--    <HistoryCacheStatus />-->
 <!--    <p v-if="recentHistory.loading.value" class="pending-note" role="status">正在补齐近期历史采样…</p>-->
 <!--    <p v-if="recentHistory.failed.value" class="monitor-warning" role="alert">部分测点近期历史加载失败。<button type="button" @click="recentHistory.retry()">重试历史</button></p>-->
-    <p v-if="!selected.id" class="monitor-empty">暂无已展示的大点位，请在参数配置中设置顶部按钮。<RouterLink to="/settings/parameters">前往参数配置</RouterLink></p>
-    <div v-else :id="'location-panel-'+selected.id" :key="selected.id" role="tabpanel" :aria-label="selected.name" class="location-content">
+    <DataLoading v-if="initialLoading" label="正在加载测点" /><p v-else-if="!selected.id" class="monitor-empty">暂无已展示的大点位，请在参数配置中设置顶部按钮。<RouterLink to="/settings/parameters">前往参数配置</RouterLink></p>
+    <div v-else :id="'location-panel-'+selected.id" :key="selected.id" role="tabpanel" :aria-label="selected.name" class="location-content"><DataLoading :loading="initialLoading">
       <ConfigurableDashboard uniform :scope="'point-location:' + selected.id" :items="layoutItems" :default-span="2" :default-height="320">
         <template #toolbar="{ editing, toggleEditing, reset }">
           <Teleport to="#point-layout-actions" defer>
@@ -207,13 +208,13 @@ onBeforeUnmount(() => {
         </template>
         <template #card="{ item }">
           <article class="monitor-measurement" role="button" tabindex="0" :aria-label="rowName(item.row)+'详情'" aria-haspopup="dialog" @click="openPoint(item.row)" @keydown.enter.prevent="openPoint(item.row)" @keydown.space.prevent="openPoint(item.row)">
-            <HomePointCard v-if="item.row.member.source === 'legacy'" :point="item.row.point" :samples="telemetry.buffers[item.row.key] || []" :color="item.row.color" :now="now" :paused="paused" />
+            <HomePointCard v-if="item.row.member.source === 'legacy'" :loading="recentHistory.isLoading(item.row.point)" :point="item.row.point" :samples="telemetry.buffers[item.row.key] || []" :color="item.row.color" :now="now" :paused="paused" />
             <HomeSoundChart v-else :frame="soundFrames[item.row.key]" :name="rowName(item.row)" :status="soundCardStatus(item.row)" />
           </article>
         </template>
       </ConfigurableDashboard>
       <p v-if="!rows.length" class="monitor-empty">{{ busy ? '正在加载…' : '暂无数据' }}</p>
-    </div>
+    </DataLoading></div>
     <MonitorPointDetails v-if="selectedRow" :key="selectedRow.key" :row="selectedRow" :location="selected.id" @close="selectedKey = ''" />
   </section>
 </template>

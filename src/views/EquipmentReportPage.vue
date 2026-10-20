@@ -15,6 +15,7 @@ const owner = String(user?.id || user?.username || user?.name || 'default')
 const configuration = ref({ moduleId: '', metrics: reportMetricGroups.map(group => group.id) })
 const selection = ref(latestReportSelection())
 const catalog = ref(null), loading = ref(false), catalogLoading = ref(false), error = ref(''), saved = ref(false), snapshot = ref(null)
+const initialLoading = ref(true)
 const progress = ref({ completed: 0, total: 0 })
 const icons = { vibration: Activity, temperature: Thermometer, pressure: Gauge }
 let controller, catalogController, version = 0
@@ -49,7 +50,7 @@ async function readCatalog() {
   catalogLoading.value = true
   try { const result = await loadReportCatalog({ signal: request.signal }); if (!request.signal.aborted) catalog.value = result }
   catch (err) { if (!request.signal.aborted) error.value = err.message || '采集目录读取失败，请重试' }
-  finally { if (!request.signal.aborted) catalogLoading.value = false }
+  finally { if (!request.signal.aborted) catalogLoading.value = false; initialLoading.value = false }
 }
 onMounted(() => {
   try { configuration.value = loadReportConfiguration(owner) }
@@ -60,7 +61,7 @@ onBeforeUnmount(() => { cancel(); catalogController?.abort() })
 </script>
 
 <template>
-  <div class="equipment-report-page report-configuration-page analysis-workspace" aria-label="报告配置">
+  <div :aria-busy="initialLoading" class="equipment-report-page report-configuration-page analysis-workspace" aria-label="报告配置">
     <header class="report-page-heading">
       <div><h1>报告配置</h1></div>
       <button @click="router.push('/reports/view')"><FileText :size="16" />报告查看<ArrowRight :size="15" /></button>
@@ -74,7 +75,7 @@ onBeforeUnmount(() => { cancel(); catalogController?.abort() })
           <component :is="icons[group.id]" :size="24" /><span><strong>{{ group.label }}</strong><small>均值、极值、变化与异常</small></span><input v-model="configuration.metrics" type="checkbox" :value="group.id" :aria-label="group.label" />
         </label>
       </div>
-      <div class="report-config-scope"><label>采集范围<select v-model="configuration.moduleId" aria-label="采集范围"><option value="">全部采集模块</option><option v-for="module in catalog?.modules || []" :key="module.moduleId" :value="String(module.moduleId)">{{ module.moduleName || module.moduleId }}</option><option v-if="configuration.moduleId && !catalog?.modules.some(module => String(module.moduleId) === configuration.moduleId)" :value="configuration.moduleId">{{ configuration.moduleId }}（目录未获取）</option></select></label><span class="report-muted">{{ catalogLoading ? '正在读取测点目录…' : `当前范围 ${selectedPoints.length} 个重点测点` }}</span><button :disabled="loading" @click="save"><Save :size="15" />{{ saved ? '配置已保存' : '保存配置' }}</button></div>
+      <div class="report-config-scope"><label>采集范围<select v-model="configuration.moduleId" aria-label="采集范围"><option value="">全部采集模块</option><option v-for="module in catalog?.modules || []" :key="module.moduleId" :value="String(module.moduleId)">{{ module.moduleName || module.moduleId }}</option><option v-if="configuration.moduleId && !catalog?.modules.some(module => String(module.moduleId) === configuration.moduleId)" :value="configuration.moduleId">{{ configuration.moduleId }}（目录未获取）</option></select></label><span class="report-muted"><DataLoading :loading="initialLoading" compact>{{ catalogLoading ? '正在读取测点目录…' : `当前范围 ${selectedPoints.length} 个重点测点` }}</DataLoading></span><button :disabled="loading" @click="save"><Save :size="15" />{{ saved ? '配置已保存' : '保存配置' }}</button></div>
       <p v-if="catalog?.errors.length" class="report-warning">部分模块目录读取失败：{{ catalog.errors.join('；') }} <button @click="readCatalog">重试</button></p>
     </section>
     <section class="report-panel report-configuration-section">

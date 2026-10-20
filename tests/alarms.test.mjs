@@ -100,7 +100,7 @@ test('development alarm proxy only permits two read-only endpoints', async () =>
   await module.link((specifier) => specifier === './endpoints.js' ? endpointModule : Promise.reject(new Error(`Unexpected dependency: ${specifier}`))); await module.evaluate()
   await module.namespace.alarmApi.getAlarms()
   assert.equal(url, '/_alarm-api/api/analysis/alarms?limit=200')
-  const { default: config } = await import('../vite.config.js')
+  const { default: config } = await import('../vite.config.build.js')
   const proxies = config({ mode: 'test' }).server.proxy
   const key = Object.keys(proxies).find((key) => key.startsWith('^/_alarm-api/'))
   const pattern = new RegExp(key)

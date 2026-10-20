@@ -11,21 +11,56 @@ npm install
 npm run dev
 ```
 
-## 构建
+## 环境与构建
+
+使用 Node 22.12+（或满足 Vite 要求的更新版本）。参考项目的公共配置与构建配置分离方式，本项目使用三套环境：
+
+| 用途 | 命令 | 环境文件 | 产物 |
+|---|---|---|---|
+| 本地开发 | `npm run dev` | `.env.development` | 开发服务器 |
+| 联调 | `npm run debug` | `.env.debug` | 开发服务器 |
+| 调试打包 | `npm run build:debug` | `.env.debug` | `dist-debug/`，不压缩，包含源码映射 |
+| 调试产物预览 | `npm run preview:debug` | `.env.debug` | 预览 `dist-debug/` |
+| 生产打包 | `npm run build` | `.env.production` | `dist/`，压缩，无源码映射 |
+| 生产产物本地预览 | `npm run preview` | `.env.production` | 预览 `dist/`，通过 Vite 代理访问后端 |
+
+开发、调试、打包和预览统一使用一个 `vite.config.build.js`，通过 `--mode` 读取不同环境文件。
+
+生产环境将 `dist/` 部署到现有 Nginx 的站点目录，接口由 Nginx 转发。详细地址配置、覆盖优先级和部署步骤见 [环境与部署说明](docs/environments.md)。
 
 ```bash
 npm run build
 ```
 
+## 分级报警
+
+采集报警继续使用 `GET /api/analysis/alarms`，通过现有 `/_alarm-api` 同源代理访问，不携带声纹登录令牌或 Cookie。支持 `pointId`、`isActive`、`start`、`end`、`limit` 原查询参数。
+
+按 `alarmKey` 区分 `GradedLimit` 分级报警、`Composite:` 组合报警和空标识的传统上下限报警。分级严重度 `1/2/3` 对应损坏（红）、告警（橙）、提示（黄），优先展示后端 `levelName`，缺失时按严重度兼容。自定义显示颜色仍保留，并新增橙色选项。
+
+采集报警列表默认显示全部报警类型，不提供类型和方向筛选。等级使用“全部报警、损坏、告警、提示”四张卡片切换，数量对应本次查询已获取的记录，包含所选恢复状态。等级筛选不作为后端查询参数发送。列表和详情展示方向、触发阈值、恢复阈值，达到返回上限时在分页栏标记。传统报警的空字段正常显示为缺省值，仍展示原上下限。页面保留数据、筛选和实际错误信息，去除辅助提示小字。
+
+列表默认查询当前告警，未限定时间时每 3 秒自动刷新，不显示刷新勾选框或提示；历史、隐藏页签、浏览器后台、查询未结束及详情打开时暂停自动刷新。详情使用打开时的记录，关闭后恢复当前告警轮询。历史可选择全部状态或已恢复并指定时间范围。首页每 2 秒查询活动报警，按分级严重度优先展示；数据大屏同步展示分级信息。
+
+同一测点升降级产生的流水按 `alarmId` 分别保留，不按点位合并。时间按 ISO 日期解析并转为用户本地时间，触发数值与实时值分开展示，触发和恢复阈值不混用。
+
+## 首次加载状态
+
+首页、机组监测、测点列表及详情、采集/趋势报警、网关通讯、参数配置、监听、录音、趋势/频谱分析和报告配置，在首次读取各自的数据时，在列表、图表和统计数值所在位置显示骨架占位，不使用遮罩。首次请求无论成功或失败都会结束加载，失败继续使用原有错误与重试入口。
+
+加载状态按页面实例记录首次读取完成状态，后续手动刷新和定时轮询不会重新显示占位，也不会清空已显示内容。历史图表仅在尚无样本且正在首次预读时显示局部加载；已有样本时的实时更新不遮挡曲线。登录、保存限值、报告生成/读取等操作沿用按钮或进度条反馈；纯静态图纸和本地配置操作不增加人为等待。
+
+共用 `src/components/DataLoading.vue` 展示原位骨架，标题、筛选和操作栏保持可用；颜色跟随亮暗主题，并支持减少动画偏好。
+
 ## 登录 API 配置
 
-复制 `.env.example` 为 `.env.local`，通过 `VITE_LOGIN_API_URL` 指定完整登录接口地址（含路径），例如：
+直接修改对应的 `.env.development`、`.env.debug` 或 `.env.production`。个人覆盖配置可写入对应的 `.env.[mode].local`。默认登录通过同源 `/auth/login`，通常不需要设置独立地址。需要独立登录服务时，通过 `VITE_LOGIN_API_URL` 指定完整接口地址，例如：
 
 ```dotenv
 VITE_LOGIN_API_URL=http://66.66.66.4:18080/auth/login
 ```
 
-也可使用同源路径，例如 `VITE_LOGIN_API_URL=/auth/login`，由部署服务器转发请求。留空时沿用 `VITE_NEW_API_BASE_URL` 对应服务的 `/auth/login`；开发环境未配置该服务地址时使用 `VITE_DEV_NEW_API_BASE_URL`，生产环境未配置时跟随页面主机并使用 18080 端口。登录仍以 POST 表单提交账号和密码，不携带已有登录令牌。
+也可使用同源路径，例如 `VITE_LOGIN_API_URL=/auth/login`。留空时使用 `VITE_NEW_API_BASE_URL` 对应服务的 `/auth/login`；该基址也留空时，浏览器跟随页面源（不自行追加 18080 端口），由开发环境的 Vite 或生产环境的 Nginx 转发。登录仍以 POST 表单提交账号和密码，不携带已有登录令牌。
 
 开发环境修改 `.env` 后须重启 Vite。生产环境可通过 `.env.production` 设置部署地址，修改后须重新构建并部署；直接修改已部署静态文件旁的 `.env` 不会生效。不要将账号、密码或令牌放入 `VITE_*` 配置。
 
@@ -50,9 +85,9 @@ VITE_LOGIN_API_URL=http://66.66.66.4:18080/auth/login
 
 首页请求采集服务的 `GET /api/health`、`GET /api/health/detail`、`GET /api/health/table-maintenance`，同时复用声纹服务的 `GET /monitor/devices`。默认每 15 秒刷新，可暂停或手动刷新，离开首页即停止轮询并取消未完成请求。各业务独立处理，超时为 10 秒。健康详情返回 HTTP 503 时仍展示 JSON 检查结果；请求失败保留上次数据并明确提示。
 
-本地开发通过 `/_health-api` 同源代理连接 `http://66.66.66.4:5158`，代理仅匹配上述三个健康接口，不转发其他旧接口或 18080 接口。生产环境未配置 `VITE_API_BASE_URL` 时同样请求 `/_health-api`，由 Nginx 转发到 `66.66.66.4:5158`，浏览器不再跨域访问后端。需要直连其他服务器时可复制 `.env.example` 为 `.env.local` 并设置 `VITE_API_BASE_URL`。
+本地开发通过 `/_health-api` 同源代理连接 `API_PROXY_TARGET`，默认 `http://66.66.66.4:5158`，代理仅匹配上述三个健康接口，不转发其他旧接口或 18080 接口。生产环境同样请求 `/_health-api`，由 Nginx 转发到 `equipment_backend`。需更换开发后端时，在 `.env.development.local` 设置 `API_PROXY_TARGET`；需要浏览器直接访问独立服务时，才设置 `VITE_API_BASE_URL`。
 
-`src/services/health.js` 使用独立请求通道，不携带 18080 服务的登录令牌。首页的新设备列表通过现有 `api.getMonitorDevices` 使用 18080 的登录令牌；没有新增监听会话或音频连接。未配置 `VITE_NEW_API_BASE_URL` 时，开发环境通过 Vite、生产环境通过 Nginx 同源代理连接 `66.66.66.4:18080`，避免浏览器跨域请求；监听 WebSocket 和录音地址也使用同一入口。登录、鉴权和其他页面业务接口保持不变。其他旧接口继续由 `VITE_LEGACY_API_DISABLED` 控制，默认停用。
+`src/services/health.js` 使用独立请求通道，不携带 18080 服务的登录令牌。首页的新设备列表通过现有 `api.getMonitorDevices` 使用 18080 的登录令牌；没有新增监听会话或音频连接。未配置 `VITE_NEW_API_BASE_URL` 时，开发环境通过 Vite 的 `ACOUSTIC_PROXY_TARGET`、生产环境通过 Nginx 的 `soundvoice_backend` 同源转发，避免浏览器跨域请求；监听 WebSocket 和录音地址也使用同一入口。登录、鉴权和其他页面业务接口保持不变。其他旧接口继续由 `VITE_LEGACY_API_DISABLED` 控制，默认停用。
 
 首页展示心跳、检查明细、数据库及点位状态、模块在线状态、历史/聚合表分区、缓存、配置文件和表维护记录。首页不使用静态预览数据；系统健康与模块在线状态分别统计。
 
@@ -106,7 +141,7 @@ npm run build
 
 2026-09-03 曾对旧地址 `192.168.31.158:5158` 做只读联调：硬限值报警、每日限值趋势、趋势洞察和趋势报警接口均返回 HTTP 200。当前后端地址为 `66.66.66.4`。
 
-使用 `npm run preview` 运行生产构建时，Vite Preview 已配置与开发服务器相同的 5158 白名单代理。修改 `vite.config.js` 后必须停止并重新启动 Preview 进程，仅重新执行 `npm run build` 不会更新正在运行的代理配置。
+使用 `npm run preview` 运行生产构建时，Vite Preview 已配置与开发服务器相同的 5158 白名单代理。修改 `vite.config.build.js` 后必须停止并重新启动 Preview 进程，仅重新执行 `npm run build` 不会更新正在运行的代理配置。
 
 ## Nginx 生产代理
 
@@ -183,7 +218,7 @@ location ~ ^/_(?:health|telemetry|alarm|analysis)-api(?:/|$) {
 
 导航映射在 `src/charts/productionLineTargets.js`，可复用组件为 `src/components/SiteProductionLinePlan.vue`。SVG 源图在 `public/production-line/`，制图脚本和 PNG 预览在 `artifacts/production-line-real-layout/`。独立预览页保留直接跳转行为；首页使用同一组件的机组选择及报警联动模式。
 
-latest 返回业务 404 时请检查采集服务地址：`VITE_API_BASE_URL` 留空使用 `/_telemetry-api` 同源代理，`VITE_DEV_API_BASE_URL=http://66.66.66.4:5158`。`http://66.66.66.4` 的默认 80 端口不会提供该采集接口；不要将声纹服务或网关地址用作采集服务地址。修改 `.env.local` 后重启开发服务器。固定接口仍为 `GET /api/realtime/latest`，不添加前缀、不修改后端契约、不携带声纹令牌。
+latest 返回业务 404 时请检查采集服务地址：`VITE_API_BASE_URL` 留空使用 `/_telemetry-api` 同源代理，开发默认 `API_PROXY_TARGET=http://66.66.66.4:5158`。`http://66.66.66.4` 的默认 80 端口不会提供该采集接口；不要将声纹服务或网关地址用作采集服务地址。修改对应环境的 `.local` 文件后重启开发服务器。固定接口仍为 `GET /api/realtime/latest`，不添加前缀、不修改后端契约、不携带声纹令牌。
 
 
 ### 机组概览的班次详情
@@ -208,7 +243,9 @@ latest 返回业务 404 时请检查采集服务地址：`VITE_API_BASE_URL` 留
 
 参数配置中的“测点详情顶部按钮”控制大点位按钮的显示及前后顺序，至少保留一个按钮。设置随参数配置导入、导出并在同源标签页同步；隐藏不删除部位或参数，首页与告警的直接链接仍可打开隐藏部位。当前选中的按钮被隐藏时回退至第一个已展示部位。
 
-配置由前端保存在同源 localStorage 的 `equipment_dashboard_point_configuration_v1` 键中，同一浏览器中的所有账号共享，打开的同源标签页通过 storage 事件即时同步。关闭或刷新页面后保留，清除浏览器站点数据会删除配置。使用“导出配置”备份，使用“导入配置”替换当前配置并迁移到其他浏览器/电脑；导入前验证格式和两级归属，错误文件不覆盖现有配置。不同电脑之间目前通过配置文件迁移，没有自动同步接口。
+监测参数配置通过 5158 的 GET/PUT /api/frontend-files/监测参数配置.json 共享保存。应用启动只读取一次，配置就绪后才挂载数据页面；有效服务器配置优先，204 使用本机有效缓存或内置的 49 项配置，请求失败/格式错误回退缓存或内置配置。配置源文件为 src/config/monitoring-parameters.json。旧版空缓存不会屏蔽内置配置。
+
+“保存参数”、添加/删除归属、顶部按钮排序和“导入配置”先校验并保存本机修改，随后点击“上传配置”统一提交整份 JSON；只有接口成功才显示上传成功。刷新后仍保留待上传修改，服务器响应和其他标签页不会覆盖本机草稿。上传期间继续修改会保持待上传状态。导出用于备份，错误导入不覆盖有效配置。服务器无文件时不会自动 PUT，首次共享由用户点击上传完成。浏览器缓存键仍为 equipment_dashboard_point_configuration_v1；本机状态不写入服务器文件。
 
 采集参数按来源、模块、通道、参数编码识别，声纹通道按来源、设备编号、通道识别，名称变更不会串用配置。后端暂未返回已配置参数时保留对应关系。显示单位允许自定义和显式留空；修改单位只改标签，不换算采样值或阈值，也不修改后端的名称、身份或配置。所有采集接口仍使用原有 5158 代理且不携带声纹登录令牌；本次不增加后端接口。
 
@@ -257,3 +294,5 @@ latest 返回业务 404 时请检查采集服务地址：`VITE_API_BASE_URL` 留
 首页生产状态每 1 秒请求 GET /api/runtime-info/latest，仅展示 summary.brand（牌号）、checkCount（小盒产量）、checkNg（NG数）、ngP（NG率，直接添加 %，保留两位小数）。进入首页立即读取，慢请求不重叠，离开首页取消请求并停止轮询。失败保留上次数据并提示过期，离线、无数据和未启用状态单独提示。其他页面不接入。
 
 使用独立 /_runtime-api 同源代理，Vite 开发/预览与 nginx.conf 仅放行该端点并转发至 5158，不携带声纹登录令牌。可使用 VITE_API_BASE_URL 覆盖地址。生产部署需同步更新 Nginx 配置并重载。
+
+报警等级卡片按本次查询返回的同一批记录统计（当前、已恢复或全部状态）：全部报警 = 损坏 + 告警 + 提示 + 上下限告警 + 其他告警。只有 `GradedLimit` 且 `severity` 为 1/2/3 的记录归入对应等级；旧版上下限报警归入上下限告警；组合报警和无法识别等级的记录归入其他告警，该卡片仅在存在对应记录时显示。列表颜色可以自定义，颜色不作为等级判断依据。

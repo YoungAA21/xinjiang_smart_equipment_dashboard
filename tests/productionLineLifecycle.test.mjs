@@ -25,7 +25,7 @@ test('leaving the production home cancels requests, clears timers and ignores la
     '../stores/telemetry.js': { useTelemetryStore: () => telemetry },
     '../stores/homeDevices.js': { useHomeDevicesStore: () => acoustic },
     '../services/telemetry.js': { telemetryApi: { getModulePoints(_id, options) { signals.push(options.signal); return pointResponse } } },
-    '../services/alarms.js': { alarmApi: { async getAlarms(_query, options) { signals.push(options.signal); return [] } } },
+    '../services/alarms.js': { alarmApi: { async getAlarms(query, options) { assert.equal(query.isActive, true); assert.equal(query.limit, 1000); signals.push(options.signal); return [] } } },
     '../stores/alarms.js': { alarmEvents: body => body },
     '../charts/productionLine.js': line,
     '../charts/machineGroups.js': groups,
@@ -44,9 +44,11 @@ test('leaving the production home cancels requests, clears timers and ignores la
   })
   await module.evaluate()
   const state = module.namespace.useProductionLine()
+  assert.equal(state.initialLoading.value, true)
   mounted()
   for (let index = 0; index < 10; index++) await vue.nextTick()
   assert.equal(state.refreshing.value, true)
+  assert.equal(state.initialLoading.value, true, 'initial metadata is still pending')
   assert.equal(timers.length, 3)
   unmounted()
   assert.deepEqual(cleared, [1, 2, 3])
@@ -54,6 +56,7 @@ test('leaving the production home cancels requests, clears timers and ignores la
   resolvePoints({ moduleId: 'VSE03', points: [{ moduleId: 'VSE03', channelId: '1', pointCode: 'v', metricType: 'VibrationRms' }] })
   for (let index = 0; index < 10; index++) await vue.nextTick()
   assert.equal(state.refreshing.value, false)
+  assert.equal(state.initialLoading.value, false)
   assert.equal(state.machines.value[0].pointCount, 0)
   assert.equal(state.selected.value.state, 'unknown')
 })
@@ -89,13 +92,17 @@ test('SVG machine alarms and counts exclude unconfigured points and react immedi
   })
   await module.evaluate()
   const state = module.namespace.useProductionLine()
+  assert.equal(state.initialLoading.value, true)
   await state.refresh({ configuration: true })
+  assert.equal(state.initialLoading.value, false)
   assert.equal(state.events.value.length, 0)
   assert.equal(state.machines.value[0].alarmCount, 0)
   assert.notEqual(state.machines.value[0].health, 'alarm')
   assert.ok(state.machines.value[0].rows.every(row => !row.alarm))
   reply = [{ ...point, status: 'Active' }, ...reply]
-  await state.refresh()
+  const backgroundRefresh = state.refresh()
+  assert.equal(state.initialLoading.value, false, 'background refresh must not reopen the initial overlay')
+  await backgroundRefresh
   assert.equal(state.machines.value[0].alarmCount, 1)
   assert.equal(state.machines.value[0].health, 'alarm')
   assert.equal(state.events.value.length, 1)

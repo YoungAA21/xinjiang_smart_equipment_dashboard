@@ -26,6 +26,7 @@ const search = ref('')
 const source = ref('all')
 const autoRefresh = ref(true)
 const refreshing = ref(false)
+const initialLoading = ref(true)
 const now = ref(Date.now())
 const switchingAcoustic = ref(false)
 const controller = new AbortController()
@@ -272,7 +273,7 @@ async function refresh({ reloadPoints = true } = {}) {
         }
       }))
     }
-  } finally { refreshing.value = false }
+  } finally { refreshing.value = false; initialLoading.value = false }
 }
 async function toggleLive(value) {
   if (!value) await preview.stop().catch(() => {})
@@ -307,7 +308,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page home-monitor" :class="{ paused: !autoRefresh }" :style="homeCardSize">
+  <section :aria-busy="initialLoading" class="page home-monitor" :class="{ paused: !autoRefresh }" :style="homeCardSize">
     <div class="station-bar">
     <nav class="machine-tabs" role="tablist" aria-label="选择监测设备">
       <button v-for="(machine, index) in machineData.groups" :id="'machine-tab-'+machine.id" :key="machine.id" role="tab" :aria-selected="activeMachineId === machine.id" :aria-controls="'machine-panel-'+machine.id" :tabindex="activeMachineId === machine.id ? 0 : -1" :class="{ active: activeMachineId === machine.id }" :disabled="switchingAcoustic" @click="selectMachine(machine.id)" @keydown="navigateTab($event, index)"><span class="tab-number">0{{ index + 1 }}</span><span class="tab-title"><strong>{{ machine.name }}</strong></span><span class="tab-dot" :class="{ online: machineState(machine) === '采集在线', warning: ['部分离线', '采集离线'].includes(machineState(machine)) }"></span></button>
@@ -317,27 +318,27 @@ onBeforeUnmount(() => {
     <div v-if="homeControlsExpanded" class="home-controls"><label><Search :size="16"/><input v-model="search" aria-label="搜索当前设备点位" placeholder="搜索当前设备点位" /></label><select v-model="source" aria-label="点位来源"><option value="all">全部点位</option><option value="legacy">数值监测</option><option value="monitor">声纹通道</option></select><el-switch v-model="autoRefresh" aria-label="自动刷新" @change="toggleLive" /><span>自动刷新</span></div>
     <div class="machine-model-filter"><span>机型</span><button :class="{ active: !activeModel }" @click="activeModel = ''; closePointChart()">全部</button><button v-for="model in modelsForMachine(activeMachineId)" :key="model" :class="{ active: activeModel === model }" @click="activeModel = model; closePointChart()">{{ model }}</button></div>
     <Transition name="machine-fade" mode="out-in">
-      <main :ref="observePanel" :id="'machine-panel-'+activeMachineId" :key="activeMachineId" role="tabpanel" :aria-labelledby="'machine-tab-'+activeMachineId" class="machine-panel">
+      <main :ref="observePanel" :id="'machine-panel-'+activeMachineId" :key="activeMachineId" role="tabpanel" :aria-labelledby="'machine-tab-'+activeMachineId" class="machine-panel"><DataLoading :loading="initialLoading">
         <p v-if="historyFailed" class="home-warning">历史采样加载失败。<button @click="retryHistory">重试历史</button></p>
         <div v-if="isFanLayout" class="fan-layout">
           <section v-for="group in fanGroups" :key="group.id" class="fan-group" :class="group.id">
             <header class="fan-group-heading"><h2>{{ group.title }}</h2></header>
-            <div class="fan-grid"><HomeMonitorTile v-for="row in group.rows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+            <div class="fan-grid"><HomeMonitorTile v-for="row in group.rows" :key="row.key" :row="row" :loading="historyState[row.key] === 'loading'" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
           </section>
-          <div v-if="fanRemainderRows.length" class="monitor-grid"><HomeMonitorTile v-for="row in fanRemainderRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
-          <div v-if="fanPressureRows.length" class="pressure-grid"><HomeMonitorTile v-for="row in fanPressureRows" :key="row.key" class="point-tile" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+          <div v-if="fanRemainderRows.length" class="monitor-grid"><HomeMonitorTile v-for="row in fanRemainderRows" :key="row.key" :row="row" :loading="historyState[row.key] === 'loading'" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+          <div v-if="fanPressureRows.length" class="pressure-grid"><HomeMonitorTile v-for="row in fanPressureRows" :key="row.key" class="point-tile" :row="row" :loading="historyState[row.key] === 'loading'" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
         </div>
         <div v-else-if="isZb25Layout" class="zb25-layout">
-          <div class="monitor-grid zb25-grid"><HomeMonitorTile v-for="row in zb25Rows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
-          <div v-if="zb25PressureRows.length" class="pressure-grid"><HomeMonitorTile v-for="row in zb25PressureRows" :key="row.key" class="point-tile" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+          <div class="monitor-grid zb25-grid"><HomeMonitorTile v-for="row in zb25Rows" :key="row.key" :row="row" :loading="historyState[row.key] === 'loading'" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+          <div v-if="zb25PressureRows.length" class="pressure-grid"><HomeMonitorTile v-for="row in zb25PressureRows" :key="row.key" class="point-tile" :row="row" :loading="historyState[row.key] === 'loading'" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
         </div>
         <div v-else-if="isYb55Layout" class="yb55-layout">
-          <div class="monitor-grid yb55-grid"><HomeMonitorTile v-for="row in yb55Rows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
-          <div v-if="yb55PressureRows.length" class="pressure-grid"><HomeMonitorTile v-for="row in yb55PressureRows" :key="row.key" class="point-tile" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+          <div class="monitor-grid yb55-grid"><HomeMonitorTile v-for="row in yb55Rows" :key="row.key" :row="row" :loading="historyState[row.key] === 'loading'" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+          <div v-if="yb55PressureRows.length" class="pressure-grid"><HomeMonitorTile v-for="row in yb55PressureRows" :key="row.key" class="point-tile" :row="row" :loading="historyState[row.key] === 'loading'" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
         </div>
-        <div v-else class="monitor-grid" :class="{ 'yb55-grid': activeMachineId === 'YB55' }"><HomeMonitorTile v-for="row in displayRows" :key="row.key" :row="row" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
+        <div v-else class="monitor-grid" :class="{ 'yb55-grid': activeMachineId === 'YB55' }"><HomeMonitorTile v-for="row in displayRows" :key="row.key" :row="row" :loading="historyState[row.key] === 'loading'" :buffers="telemetry.buffers" :now="now" :paused="!autoRefresh" :sound-status="soundStatus" @details="openPointChart" /></div>
         <div v-if="!displayRows.length" class="home-empty"><Activity :size="32"/><h3>{{ refreshing ? '正在加载监测点位' : '暂无可展示的点位' }}</h3></div>
-      </main>
+      </DataLoading></main>
     </Transition>
     <HomePointExplorer v-if="selectedRow" :key="selectedRow.key" :row="selectedRow" :buffers="telemetry.buffers" :paused="!autoRefresh" @close="closePointChart" @live-change="explorerLive = $event" />
   </section>

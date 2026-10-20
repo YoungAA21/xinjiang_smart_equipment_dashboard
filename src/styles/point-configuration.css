@@ -1,4 +1,8 @@
 .parameter-settings { padding:24px; overflow-y:auto; background:var(--page-bg); font-size:14px; color:var(--text-main); }
+.parameter-sync-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 16px; border:1px solid var(--glass-border); border-radius:8px; background:var(--glass-card); }
+.parameter-sync-toolbar time { color:var(--text-muted); }.parameter-sync-toolbar button { margin-left:auto; }
+.parameter-save-feedback.el-message { --el-message-bg-color:#18221e; --el-message-border-color:#496358; --el-message-text-color:#f4f8f6; }
+.light-theme .parameter-save-feedback.el-message { --el-message-bg-color:#fff; --el-message-border-color:#c9dcd3; --el-message-text-color:#10201c; }
 .parameter-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; }
 .parameter-heading h1 { margin:0 0 8px; font-size:24px; }.parameter-heading p { margin:0; color:var(--text-muted); }
 .parameter-actions { display:flex; flex-wrap:wrap; gap:8px; }

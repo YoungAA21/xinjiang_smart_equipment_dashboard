@@ -16,6 +16,7 @@ const singleStatus = ref(null)
 let detailVersion = 0
 const selectedId = ref('')
 const loading = ref(false)
+const initialAcousticLoading = ref(true)
 const detailLoading = ref(false)
 const historyLoading = ref(false)
 const eventsLoading = ref(false)
@@ -259,8 +260,10 @@ function handleEventSizeChange(size) {
 }
 
 async function loadAll() {
-  await loadStatuses()
-  await Promise.all([loadSingleStatus(), loadHistory(), loadEvents()])
+  try {
+    await loadStatuses()
+    await Promise.all([loadSingleStatus(), loadHistory(), loadEvents()])
+  } finally { initialAcousticLoading.value = false }
 }
 
 function selectCollector(row) {
@@ -274,7 +277,7 @@ function selectCollector(row) {
 </script>
 
 <template>
-  <section class="page gateway-page configuration-workspace" aria-label="网关通讯">
+  <section :aria-busy="view === 'acoustic' && initialAcousticLoading" class="page gateway-page configuration-workspace" aria-label="网关通讯">
     <div class="gateway-controls configuration-toolbar" aria-label="通讯视图与操作">
       <nav class="gateway-view-tabs" aria-label="通讯视图"><button :class="{active: view === 'modules'}" :aria-pressed="view === 'modules'" @click="changeView('modules')">模块总览</button><button :class="{active: view === 'acoustic'}" :aria-pressed="view === 'acoustic'" @click="changeView('acoustic')">声纹通讯</button></nav>
       <div class="monitor-actions gateway-filter-actions">
@@ -290,7 +293,7 @@ function selectCollector(row) {
         <h2><Server :size="16" />实时网关列表</h2>
         <span>{{ statuses.length }} 个网关</span>
       </div>
-      <div v-if="!statuses.length" class="empty-state">暂无网关状态数据</div>
+      <DataLoading v-if="initialAcousticLoading" label="正在加载网关列表" /><div v-else-if="!statuses.length" class="empty-state">暂无网关状态数据</div>
       <div v-else class="gateway-card-grid">
         <button
           v-for="row in statuses"
@@ -332,12 +335,12 @@ function selectCollector(row) {
             </div>
             <el-tag :type="statusType(selectedRuntime.state)" effect="plain">{{ statusText(selectedRuntime.state) }}</el-tag>
           </div>
-          <div class="gateway-primary-metrics">
+          <div class="gateway-primary-metrics"><DataLoading :loading="initialAcousticLoading">
             <article v-for="[label, value] in primaryMetrics" :key="label">
               <span>{{ label }}</span>
               <strong>{{ value }}</strong>
             </article>
-          </div>
+          </DataLoading></div>
           <p class="gateway-last-error" :class="{ active: selectedRuntime.lastError }">
             {{ selectedRuntime.lastError || '当前无错误信息' }}
           </p>
@@ -345,10 +348,10 @@ function selectCollector(row) {
       </article>
 
       <section class="gateway-kpis">
-        <article class="panel"><span><Wifi :size="15" />在线网关</span><strong>{{ onlineCount }}</strong></article>
-        <article class="panel"><span><Activity :size="15" />离线/停止</span><strong>{{ stoppedCount }}</strong></article>
-        <article class="panel"><span><Cpu :size="15" />网关总数</span><strong>{{ statuses.length }}</strong></article>
-        <article class="panel"><span><Database :size="15" />累计接收</span><strong>{{ bytes(bytesTotal) }}</strong><small>录音 {{ recordingSavedTotal }} 条</small></article>
+        <article class="panel"><span><Wifi :size="15" />在线网关</span><strong><DataLoading :loading="initialAcousticLoading" compact>{{ onlineCount }}</DataLoading></strong></article>
+        <article class="panel"><span><Activity :size="15" />离线/停止</span><strong><DataLoading :loading="initialAcousticLoading" compact>{{ stoppedCount }}</DataLoading></strong></article>
+        <article class="panel"><span><Cpu :size="15" />网关总数</span><strong><DataLoading :loading="initialAcousticLoading" compact>{{ statuses.length }}</DataLoading></strong></article>
+        <article class="panel"><span><Database :size="15" />累计接收</span><strong><DataLoading :loading="initialAcousticLoading" compact>{{ bytes(bytesTotal) }}</DataLoading></strong><small>录音 {{ recordingSavedTotal }} 条</small></article>
       </section>
     </section>
 
@@ -357,12 +360,12 @@ function selectCollector(row) {
         <h2><Activity :size="16" />单网关通讯详情</h2>
         <span>{{ detailLoading ? '加载中' : formatTime(selectedRuntime.updatedAt) }}</span>
       </div>
-      <div class="gateway-detail-grid">
+      <div class="gateway-detail-grid"><DataLoading :loading="initialAcousticLoading">
         <article v-for="[label, value] in detailItems" :key="label">
           <span>{{ label }}</span>
           <strong :title="String(value)">{{ value }}</strong>
         </article>
-      </div>
+      </DataLoading></div>
     </section>
 
     <section class="panel gateway-history-card">
@@ -392,7 +395,7 @@ function selectCollector(row) {
         <el-table-column label="区间结束" width="180">
           <template #default="{ row }">{{ formatTime(row.periodEnd) }}</template>
         </el-table-column>
-      </el-table>
+      <template #empty><DataLoading :loading="initialAcousticLoading">暂无数据</DataLoading></template></el-table>
       <el-pagination
         v-model:current-page="historyFilter.page"
         v-model:page-size="historyFilter.pageSize"
@@ -442,7 +445,7 @@ function selectCollector(row) {
         </el-table-column>
         <el-table-column prop="eventType" label="事件类型" width="130" show-overflow-tooltip />
         <el-table-column prop="message" label="日志内容" min-width="260" show-overflow-tooltip />
-      </el-table>
+      <template #empty><DataLoading :loading="initialAcousticLoading">暂无数据</DataLoading></template></el-table>
       <el-pagination
         v-model:current-page="eventFilter.page"
         v-model:page-size="eventFilter.pageSize"

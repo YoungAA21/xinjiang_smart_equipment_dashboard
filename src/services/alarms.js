@@ -29,6 +29,7 @@ export function validateAlarmQuery(query = {}) {
 async function get(path, query, { signal } = {}) {
   const search = new URLSearchParams(query)
   const response = await fetch(`${BASE}${path}${search.size ? `?${search}` : ''}`, {
+    credentials: 'omit',
     headers: { Accept: 'application/json' },
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000),
   })

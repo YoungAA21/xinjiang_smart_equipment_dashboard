@@ -87,7 +87,7 @@ test('development proxy permits only the trend analysis endpoints', async () => 
   await module.namespace.analysisApi.getTrendAlarms()
   assert.equal(url, '/_analysis-api/api/analysis/trend-alarms?limit=200')
 
-  const { default: config } = await import('../vite.config.js')
+  const { default: config } = await import('../vite.config.build.js')
   const resolvedConfig = config({ mode: 'test' })
   const proxies = resolvedConfig.server.proxy
   assert.equal(resolvedConfig.preview.proxy, proxies)

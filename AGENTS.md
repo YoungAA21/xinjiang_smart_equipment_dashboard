@@ -10,8 +10,11 @@ Use Node 22.12+ on the 22 series or another version satisfying Vite's engine req
 
 - `npm ci --include=optional`: install locked dependencies, including platform-specific Rolldown bindings.
 - `npm run dev`: start the Vite development server with scoped API proxies.
-- `npm run build`: create the production bundle in `dist/`.
+- `npm run debug`: start the independent debug mode using `.env.debug`.
+- `npm run build`: build production with `vite.config.build.js` into `dist/`.
+- `npm run build:debug`: build unminified debug assets and source maps into `dist-debug/`.
 - `npm run preview`: serve the built bundle locally.
+- `npm run preview:debug`: serve the debug bundle locally.
 - `node --experimental-vm-modules --test tests/*.test.mjs`: run the regression suite. There is no `npm test` script.
 
 ## Coding Style & Naming Conventions
@@ -28,4 +31,4 @@ Recent commits use `fix`; no detailed commit convention is established. Prefer c
 
 ## Configuration & API Boundaries
 
-Copy `.env.example` to `.env.local` for local overrides. Never place secrets in `VITE_*` variables, which are exposed to the browser. Preserve the separation between collection services on port 5158 and authenticated acoustic services on port 18080; collection requests must not carry acoustic login tokens. Keep development proxy routes explicitly scoped and document endpoint changes in `README.md`.
+Edit `.env.development`, `.env.debug`, or `.env.production` for each environment. Personal overrides may be placed in `.env.development.local`, `.env.debug.local`, or `.env.production.local`. Use `API_PROXY_TARGET` and `ACOUSTIC_PROXY_TARGET` for Vite upstream addresses; leave browser base URLs blank for same-origin Vite/Nginx routing. Shared configuration lives in `vite.config.build.js`. Never place secrets in `VITE_*` variables, which are exposed to the browser. Preserve the separation between collection services on port 5158 and authenticated acoustic services on port 18080; collection requests must not carry acoustic login tokens. Keep development proxy routes explicitly scoped and document endpoint changes in `README.md` and `docs/environments.md`.

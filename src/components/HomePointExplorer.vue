@@ -25,6 +25,7 @@ const queryMode = ref('current')
 const queryRange = computed(() => ({ start: start.value, end: end.value }))
 const live = ref(false)
 const loading = ref(false)
+const initialLoading = ref(true)
 const error = ref('')
 const history = ref([])
 const capped = ref(false)
@@ -194,14 +195,14 @@ const option = computed(() => {
 const open = ref(true)
 onMounted(() => {
   emit('live-change', false)
-  query()
+  query().finally(() => { initialLoading.value = false })
 })
 onBeforeUnmount(() => { invalidate(); limitsVersion++; limitsController?.abort() })
 </script>
 
 <template>
   <component :is="embedded ? 'div' : ElDrawer" v-model="open" :title="title" :with-header="false" direction="rtl" size="100%" append-to=".dashboard-shell" modal-class="point-explorer-overlay" class="point-explorer-drawer" :class="{ 'embedded-explorer': embedded }" destroy-on-close :close-on-click-modal="false" @closed="emit('close')">
-    <section class="point-explorer">
+    <section :aria-busy="initialLoading" class="point-explorer">
       <header class="explorer-heading">
         <h2>{{ title }}</h2>
         <button v-if="!embedded" type="button" aria-label="关闭大图" @click="open = false">×</button>
@@ -228,7 +229,7 @@ onBeforeUnmount(() => { invalidate(); limitsVersion++; limitsController?.abort()
       </div>
       <p v-if="error" class="explorer-error" role="alert">{{ error }}</p>
       <p v-if="capped" class="explorer-error">已达 100000 条上限，请缩短日期范围</p>
-      <div class="explorer-chart" role="img" :aria-label="title + '数据图表'"><EChart :key="chartVersion" :option="option" preserve-zoom /></div>
+      <div class="explorer-chart" role="img" :aria-label="title + '数据图表'"><DataLoading :loading="initialLoading" chart><EChart :key="chartVersion" :option="option" preserve-zoom /></DataLoading></div>
     </section>
   </component>
 </template>

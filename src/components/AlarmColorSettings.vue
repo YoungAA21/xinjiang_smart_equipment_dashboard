@@ -41,7 +41,7 @@ function reset() {
     <div class="alarm-color-form">
       <label>设置范围<select v-model="scope" aria-label="颜色设置范围"><option value="kind">警种</option><option value="severity">报警级别</option><option value="alarm">单条报警</option></select></label>
       <label>{{ scope === 'alarm' ? '报警' : scope === 'kind' ? '警种' : '级别' }}<select v-if="scope === 'alarm'" v-model="target" aria-label="颜色配置对象"><option value="">请选择报警</option><option v-for="item in options" :key="item.value" :value="item.value">{{ item.label }}</option></select><input v-else v-model="target" list="alarm-color-options" aria-label="颜色配置对象" placeholder="选择或输入接口中的警种 / 级别" /><datalist id="alarm-color-options"><option v-for="item in options" :key="item.value" :value="item.value" /></datalist></label>
-      <div class="color-options" role="group" aria-label="报警颜色"><button type="button" class="yellow" :aria-pressed="selection === 'yellow'" @click="selection = 'yellow'">黄色</button><button type="button" class="red" :aria-pressed="selection === 'red'" @click="selection = 'red'">红色</button></div>
+      <div class="color-options" role="group" aria-label="报警颜色"><button type="button" class="yellow" :aria-pressed="selection === 'yellow'" @click="selection = 'yellow'">黄色</button><button type="button" class="orange" :aria-pressed="selection === 'orange'" @click="selection = 'orange'">橙色</button><button type="button" class="red" :aria-pressed="selection === 'red'" @click="selection = 'red'">红色</button></div>
       <p>单条报警优先于警种，警种优先于级别。配置仅影响显示颜色。</p>
       <p v-if="colors.error" role="alert">{{ colors.error }}</p>
       <p v-if="savedMessage" role="status">{{ savedMessage }}</p>
@@ -51,8 +51,6 @@ function reset() {
 </template>
 
 <style>
-:root { --alarm-color-yellow:#f3c45c; --alarm-color-red:#ff6565; }
-:root.light-theme { --alarm-color-yellow:#a56e00; --alarm-color-red:#c73d3d; }
 .alarm-colors-button { padding:5px 10px; font:inherit; color:var(--text-main); border:1px solid var(--glass-border); background:var(--control-bg); border-radius:4px; cursor:pointer; }
 .alarm-colors-dialog.el-dialog {
   --el-dialog-bg-color:var(--el-bg-color-overlay);
@@ -92,6 +90,7 @@ function reset() {
 .alarm-color-form button:disabled { opacity:.4; cursor:default; }
 .color-options button { flex:1; }
 .color-options .yellow { color:var(--alarm-color-yellow); }
+.color-options .orange { color:var(--alarm-color-orange); }
 .color-options .red { color:var(--alarm-color-red); }
 .color-options button[aria-pressed=true] { border-color:currentColor; box-shadow:inset 0 0 0 1px currentColor; background:color-mix(in srgb,currentColor 10%,var(--el-bg-color-overlay)); }
 .alarm-color-form .color-save-button { color:#fff; border-color:#46907c; background:#327667; }

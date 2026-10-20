@@ -31,5 +31,6 @@ export function useRecentHistory(points, telemetry, signal) {
     return warm()
   }
   watch(eligible, warm, { immediate: true })
-  return { loading, failed, retry }
+  const isLoading = point => states.value[identity(point)] === 'loading'
+  return { loading, failed, retry, isLoading }
 }

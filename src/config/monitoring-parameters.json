@@ -1,0 +1,672 @@
+{
+  "version": 1,
+  "locations": [
+    {
+      "id": "ve",
+      "name": "VE 风机",
+      "machine": "ZJ117",
+      "modules": [
+        "VSE03",
+        "TEMP02"
+      ]
+    },
+    {
+      "id": "max",
+      "name": "MAX 风机",
+      "machine": "ZJ117",
+      "modules": [
+        "VSE03",
+        "TEMP02"
+      ]
+    },
+    {
+      "id": "spider-pressure",
+      "name": "蜘蛛手负压",
+      "machine": "ZJ117",
+      "modules": [
+        "PRESS02"
+      ]
+    },
+    {
+      "id": "main-motor",
+      "name": "主电机",
+      "machine": "ZB25",
+      "modules": [
+        "VSE04",
+        "VSE05",
+        "TEMP03",
+        "SC01"
+      ]
+    },
+    {
+      "id": "cutter",
+      "name": "铝纸切刀",
+      "machine": "ZB25",
+      "modules": [
+        "VSE04"
+      ]
+    },
+    {
+      "id": "seal",
+      "name": "封签",
+      "machine": "ZB25",
+      "modules": [
+        "VSE05"
+      ]
+    },
+    {
+      "id": "paper-wheel",
+      "name": "齿轮箱",
+      "machine": "ZB25",
+      "modules": []
+    },
+    {
+      "id": "aux-motor",
+      "name": "辅机电机",
+      "machine": "YB55",
+      "modules": [
+        "VSE08",
+        "TEMP01",
+        "SC02"
+      ]
+    },
+    {
+      "id": "location-1403d640-28ce-4d3a-accf-bae664bef0c0",
+      "name": "主负压",
+      "machine": "ZB25",
+      "modules": []
+    },
+    {
+      "id": "location-85e6076e-8760-42d1-ab85-11c74462a669",
+      "name": "小盒透明纸吸取",
+      "machine": "YB55",
+      "modules": []
+    },
+    {
+      "id": "location-e7d54147-8e58-473b-825a-c448b9b0d698",
+      "name": "CH剔除状态",
+      "machine": "YB55",
+      "modules": []
+    },
+    {
+      "id": "location-690f5b1e-b763-4096-a524-be34ae4ffe57",
+      "name": "高低车速指示",
+      "machine": "ZJ117",
+      "modules": []
+    },
+    {
+      "id": "location-ba6ac568-f693-4286-b1ec-d0dc6b4a53a8",
+      "name": "小包外观",
+      "machine": "ZB25",
+      "modules": []
+    }
+  ],
+  "targets": [
+    {
+      "id": "target-74222bd0-a9b9-43ef-b12f-14e1b5be26b0",
+      "name": "负压",
+      "locationId": "spider-pressure"
+    },
+    {
+      "id": "target-2a8e3e01-5f36-4204-a515-33f4a5c37e3c",
+      "name": "电机",
+      "locationId": "ve"
+    },
+    {
+      "id": "target-ae846afe-090d-47d4-a9a6-fa984fd29efc",
+      "name": "风机轴承",
+      "locationId": "ve"
+    },
+    {
+      "id": "target-bd5d84cd-b2e9-4143-b153-94c8f4cceb62",
+      "name": "电机",
+      "locationId": "max"
+    },
+    {
+      "id": "target-2265245c-8f03-43db-b2ff-c2fda6f19f86",
+      "name": "风机轴承",
+      "locationId": "max"
+    },
+    {
+      "id": "target-9f49d055-5451-4a9f-be02-75b0ec9d6b94",
+      "name": "电机",
+      "locationId": "main-motor"
+    },
+    {
+      "id": "target-00744c23-afbd-41f9-a223-02692106c401",
+      "name": "皮带轮",
+      "locationId": "main-motor"
+    },
+    {
+      "id": "target-8ba48434-c20e-461b-8c5d-8b231ca01791",
+      "name": "电机",
+      "locationId": "aux-motor"
+    },
+    {
+      "id": "target-e7dbf56d-aa06-4f03-9536-1470f4b9851f",
+      "name": "车速",
+      "locationId": "main-motor"
+    },
+    {
+      "id": "target-cbb70a7c-3314-4cc7-998a-3d68c9c4843c",
+      "name": "电机电流",
+      "locationId": "main-motor"
+    },
+    {
+      "id": "target-64c0ac1b-0f5d-4000-9f61-22cf75303395",
+      "name": "主负压源",
+      "locationId": "location-1403d640-28ce-4d3a-accf-bae664bef0c0"
+    },
+    {
+      "id": "target-9b456a3d-e074-4173-8cd0-195171706f8a",
+      "name": "皮带轮",
+      "locationId": "aux-motor"
+    },
+    {
+      "id": "target-ed5487ec-c6c3-4212-8ec4-ca295e67b041",
+      "name": "车速",
+      "locationId": "aux-motor"
+    },
+    {
+      "id": "target-83afdea6-4a3f-4265-8548-adb00af71a82",
+      "name": "电机电流",
+      "locationId": "aux-motor"
+    },
+    {
+      "id": "target-41102736-5b67-4921-b770-9db72bf4e99c",
+      "name": "吸取负压",
+      "locationId": "location-85e6076e-8760-42d1-ab85-11c74462a669"
+    },
+    {
+      "id": "target-97cb191c-f0e1-4711-9be4-b91e5d489786",
+      "name": "CH剔除信号",
+      "locationId": "location-e7d54147-8e58-473b-825a-c448b9b0d698"
+    },
+    {
+      "id": "target-65463089-d7dd-4d7b-8365-c7d387fc034c",
+      "name": "CH补包器信号",
+      "locationId": "location-e7d54147-8e58-473b-825a-c448b9b0d698"
+    },
+    {
+      "id": "target-2e1edfaa-a75e-4835-8038-b48605b9087e",
+      "name": "车速信号",
+      "locationId": "location-690f5b1e-b763-4096-a524-be34ae4ffe57"
+    },
+    {
+      "id": "target-19d5e5e4-582d-4ea9-8a00-2ed3bfed4898",
+      "name": "小包外观检测器剔除信号",
+      "locationId": "location-ba6ac568-f693-4286-b1ec-d0dc6b4a53a8"
+    },
+    {
+      "id": "target-52be3ad6-31c3-42af-9b64-db7048d7bfde",
+      "name": "X轴",
+      "locationId": "seal"
+    },
+    {
+      "id": "target-000d42b9-241e-48a9-b212-2c0c73980d49",
+      "name": "Y轴",
+      "locationId": "seal"
+    },
+    {
+      "id": "target-d58c8092-b99b-4097-9f42-61077e95fd2a",
+      "name": "Z轴",
+      "locationId": "seal"
+    },
+    {
+      "id": "target-bfb832e4-2259-47fa-b92e-564522ecd474",
+      "name": "X轴",
+      "locationId": "cutter"
+    },
+    {
+      "id": "target-a1ff8a77-1ba0-4fe4-a95a-ecb45b5e52d9",
+      "name": "Y轴",
+      "locationId": "cutter"
+    },
+    {
+      "id": "target-9d4b3c2a-a604-42d4-a0e0-10f5e788380b",
+      "name": "Z轴",
+      "locationId": "cutter"
+    },
+    {
+      "id": "target-9327db26-d146-4f7a-ba77-e003ce2b8a8f",
+      "name": "齿轮箱",
+      "locationId": "paper-wheel"
+    }
+  ],
+  "parameters": {
+    "[\"legacy\",\"PRESS02\",\"PRESS02-AI01\",\"NEGATIVE_PRESSURE_03\"]": {
+      "displayName": "蜘蛛手负压值",
+      "unit": "kPa",
+      "locationId": "spider-pressure",
+      "targetId": "target-74222bd0-a9b9-43ef-b12f-14e1b5be26b0",
+      "backendName": "负压值",
+      "backendUnit": "kPa",
+      "pointId": 37
+    },
+    "[\"legacy\",\"PRESS01\",\"PRESS01-AI01\",\"NEGATIVE_PRESSURE_01\"]": {
+      "displayName": "小盒透明纸吸取负压值",
+      "unit": "kPa",
+      "locationId": "location-85e6076e-8760-42d1-ab85-11c74462a669",
+      "targetId": "target-41102736-5b67-4921-b770-9db72bf4e99c",
+      "backendName": "负压值",
+      "backendUnit": "kPa",
+      "pointId": 35
+    },
+    "[\"legacy\",\"SC01\",\"SC01-CH02\",\"MAIN_CURRENT\"]": {
+      "displayName": "主机主电机电流",
+      "unit": "A",
+      "locationId": "main-motor",
+      "targetId": "target-cbb70a7c-3314-4cc7-998a-3d68c9c4843c",
+      "backendName": "主机电流",
+      "backendUnit": "A",
+      "pointId": 2
+    },
+    "[\"legacy\",\"SC01\",\"SC01-CH03\",\"MAIN_TEMP\"]": {
+      "displayName": "主机变频器电源温度",
+      "unit": "℃",
+      "locationId": "main-motor",
+      "targetId": "target-9f49d055-5451-4a9f-be02-75b0ec9d6b94",
+      "backendName": "主机温度",
+      "backendUnit": "℃",
+      "pointId": 3
+    },
+    "[\"legacy\",\"PRESS03\",\"PRESS03-AI01\",\"NEGATIVE_PRESSURE_05\"]": {
+      "displayName": "主负压值",
+      "unit": "kPa",
+      "locationId": "location-1403d640-28ce-4d3a-accf-bae664bef0c0",
+      "targetId": "target-64c0ac1b-0f5d-4000-9f61-22cf75303395",
+      "backendName": "负压值",
+      "backendUnit": "kPa",
+      "pointId": 69
+    },
+    "[\"legacy\",\"SC01\",\"SC01-CH01\",\"MAIN_SPEED\"]": {
+      "displayName": "主机车速",
+      "unit": "RPM",
+      "locationId": "main-motor",
+      "targetId": "target-e7dbf56d-aa06-4f03-9536-1470f4b9851f",
+      "backendName": "主机车速",
+      "backendUnit": "m/min",
+      "pointId": 1
+    },
+    "[\"legacy\",\"SC02\",\"SC02-CH01\",\"AUX_SPEED\"]": {
+      "displayName": "辅机车速",
+      "unit": "RPM",
+      "locationId": "aux-motor",
+      "targetId": "target-ed5487ec-c6c3-4212-8ec4-ca295e67b041",
+      "backendName": "辅机车速",
+      "backendUnit": "m/min",
+      "pointId": 39
+    },
+    "[\"legacy\",\"SC02\",\"SC02-CH02\",\"AUX_CURRENT\"]": {
+      "displayName": "辅机主电机电流",
+      "unit": "A",
+      "locationId": "aux-motor",
+      "targetId": "target-83afdea6-4a3f-4265-8548-adb00af71a82",
+      "backendName": "辅机电流",
+      "backendUnit": "A",
+      "pointId": 40
+    },
+    "[\"legacy\",\"SC02\",\"SC02-CH03\",\"AUX_TEMP\"]": {
+      "displayName": "辅机变频器电源温度",
+      "unit": "℃",
+      "locationId": "aux-motor",
+      "targetId": "target-8ba48434-c20e-461b-8c5d-8b231ca01791",
+      "backendName": "辅机温度",
+      "backendUnit": "℃",
+      "pointId": 41
+    },
+    "[\"legacy\",\"TEMP01\",\"TEMP01-CH01\",\"BEARING_TEMP_01\"]": {
+      "displayName": "辅机主电机温度",
+      "unit": "℃",
+      "locationId": "aux-motor",
+      "targetId": "target-8ba48434-c20e-461b-8c5d-8b231ca01791",
+      "backendName": "轴承温度1",
+      "backendUnit": "℃",
+      "pointId": 12
+    },
+    "[\"legacy\",\"TEMP02\",\"TEMP01-CH01\",\"BEARING_TEMP_07\"]": {
+      "displayName": "MAX电机温度",
+      "unit": "℃",
+      "locationId": "max",
+      "targetId": "target-bd5d84cd-b2e9-4143-b153-94c8f4cceb62",
+      "backendName": "轴承温度7",
+      "backendUnit": "℃",
+      "pointId": 4
+    },
+    "[\"legacy\",\"TEMP02\",\"TEMP01-CH02\",\"BEARING_TEMP_08\"]": {
+      "displayName": "MAX风机温度",
+      "unit": "℃",
+      "locationId": "max",
+      "targetId": "target-2265245c-8f03-43db-b2ff-c2fda6f19f86",
+      "backendName": "轴承温度8",
+      "backendUnit": "℃",
+      "pointId": 5
+    },
+    "[\"legacy\",\"TEMP02\",\"TEMP01-CH03\",\"BEARING_TEMP_09\"]": {
+      "displayName": "VE电机温度",
+      "unit": "℃",
+      "locationId": "ve",
+      "targetId": "target-2a8e3e01-5f36-4204-a515-33f4a5c37e3c",
+      "backendName": "轴承温度9",
+      "backendUnit": "℃",
+      "pointId": 6
+    },
+    "[\"legacy\",\"TEMP02\",\"TEMP01-CH04\",\"BEARING_TEMP_10\"]": {
+      "displayName": "VE风机温度",
+      "unit": "℃",
+      "locationId": "ve",
+      "targetId": "target-ae846afe-090d-47d4-a9a6-fa984fd29efc",
+      "backendName": "轴承温度10",
+      "backendUnit": "℃",
+      "pointId": 7
+    },
+    "[\"legacy\",\"TEMP03\",\"TEMP03-CH01\",\"BEARING_TEMP_05\"]": {
+      "displayName": "主机电机温度",
+      "unit": "℃",
+      "locationId": "main-motor",
+      "targetId": "target-9f49d055-5451-4a9f-be02-75b0ec9d6b94",
+      "backendName": "轴承温度5",
+      "backendUnit": "℃",
+      "pointId": 8
+    },
+    "[\"legacy\",\"TEMP03\",\"TEMP03-CH02\",\"BEARING_TEMP_06\"]": {
+      "displayName": "主机皮带轮温度",
+      "unit": "℃",
+      "locationId": "main-motor",
+      "targetId": "target-00744c23-afbd-41f9-a223-02692106c401",
+      "backendName": "轴承温度6",
+      "backendUnit": "℃",
+      "pointId": 9
+    },
+    "[\"legacy\",\"VSE03\",\"VSE01-SE01\",\"SE01_v_08\"]": {
+      "displayName": "SE01 VE风机 轴承",
+      "unit": "mg",
+      "locationId": "ve",
+      "targetId": "target-ae846afe-090d-47d4-a9a6-fa984fd29efc",
+      "backendName": "SE01 VE风机_不平衡值",
+      "backendUnit": "mg",
+      "pointId": 49
+    },
+    "[\"legacy\",\"VSE03\",\"VSE01-SE01\",\"SE01_v_09\"]": {
+      "displayName": "SE01 VE电机 轴承",
+      "unit": "mg",
+      "locationId": "ve",
+      "targetId": "target-2a8e3e01-5f36-4204-a515-33f4a5c37e3c",
+      "backendName": "SE01 VE电机_不平衡值",
+      "backendUnit": "mg",
+      "pointId": 50
+    },
+    "[\"legacy\",\"VSE03\",\"VSE01-SE01\",\"SE01_v_10\"]": {
+      "displayName": "SE01 MAX风机 轴承",
+      "unit": "mg",
+      "locationId": "max",
+      "targetId": "target-2265245c-8f03-43db-b2ff-c2fda6f19f86",
+      "backendName": "SE01 MAX风机_不平衡值",
+      "backendUnit": "mg",
+      "pointId": 51
+    },
+    "[\"legacy\",\"VSE04\",\"VSE04-SE01\",\"SE04_v_08\"]": {
+      "displayName": "SE04 主机电机 轴承",
+      "unit": "mg",
+      "locationId": "main-motor",
+      "targetId": "target-9f49d055-5451-4a9f-be02-75b0ec9d6b94",
+      "backendName": "SE04 主机电机驱动_不平衡值",
+      "backendUnit": "mg",
+      "pointId": 60
+    },
+    "[\"legacy\",\"VSE03\",\"VSE01-SE01\",\"SE01_v_11\"]": {
+      "displayName": "SE01 MAX风机 轴承",
+      "unit": "mg",
+      "locationId": "max",
+      "targetId": "target-bd5d84cd-b2e9-4143-b153-94c8f4cceb62",
+      "backendName": "SE01 MAX风机_不平衡值",
+      "backendUnit": "mg",
+      "pointId": 52
+    },
+    "[\"legacy\",\"VSE08\",\"VSE08-SE01\",\"SE08_v_03\"]": {
+      "displayName": "辅机皮带轮轴承座 轴承",
+      "unit": "mm/s",
+      "locationId": "aux-motor",
+      "targetId": "target-9b456a3d-e074-4173-8cd0-195171706f8a",
+      "backendName": "SE08 辅机皮带轴_不平衡值",
+      "backendUnit": "mm/s",
+      "pointId": 30
+    },
+    "[\"legacy\",\"VSE08\",\"VSE08-SE01\",\"SE08_v_04\"]": {
+      "displayName": "辅机主电机 轴承",
+      "unit": "mm/s",
+      "locationId": "aux-motor",
+      "targetId": "target-8ba48434-c20e-461b-8c5d-8b231ca01791",
+      "backendName": "SE08 辅机电机驱动_不平衡值",
+      "backendUnit": "mm/s",
+      "pointId": 31
+    },
+    "[\"legacy\",\"PRESS03\",\"PRESS03-DI01\",\"PRESS03_DI01\"]": {
+      "displayName": "DI1状态",
+      "unit": "",
+      "locationId": "location-e7d54147-8e58-473b-825a-c448b9b0d698",
+      "targetId": "target-97cb191c-f0e1-4711-9be4-b91e5d489786",
+      "backendName": "DI1状态",
+      "backendUnit": "",
+      "pointId": 71
+    },
+    "[\"legacy\",\"PRESS03\",\"PRESS03-DI02\",\"PRESS03_DI02\"]": {
+      "displayName": "DI2状态",
+      "unit": "",
+      "locationId": "location-e7d54147-8e58-473b-825a-c448b9b0d698",
+      "targetId": "target-65463089-d7dd-4d7b-8365-c7d387fc034c",
+      "backendName": "DI2状态",
+      "backendUnit": "",
+      "pointId": 72
+    },
+    "[\"legacy\",\"PRESS02\",\"PRESS02-DI01\",\"PRESS02_DI01\"]": {
+      "displayName": "DI1状态",
+      "unit": "",
+      "locationId": "location-ba6ac568-f693-4286-b1ec-d0dc6b4a53a8",
+      "targetId": "target-19d5e5e4-582d-4ea9-8a00-2ed3bfed4898",
+      "backendName": "DI1状态",
+      "backendUnit": "",
+      "pointId": 75
+    },
+    "[\"legacy\",\"VSE03\",\"VSE01-SE01\",\"SE01_v_01\"]": {
+      "displayName": "VE 风机轴承座 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "ve",
+      "targetId": "target-ae846afe-090d-47d4-a9a6-fa984fd29efc",
+      "backendName": "SE01 VE风机_v-RMS频域",
+      "backendUnit": "mm/s",
+      "pointId": 42
+    },
+    "[\"legacy\",\"VSE03\",\"VSE01-SE01\",\"SE01_v_02\"]": {
+      "displayName": "VE 风机电机驱动端 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "ve",
+      "targetId": "target-2a8e3e01-5f36-4204-a515-33f4a5c37e3c",
+      "backendName": "SE01 VE电机v-RMS02频域",
+      "backendUnit": "mm/s",
+      "pointId": 43
+    },
+    "[\"legacy\",\"VSE03\",\"VSE01-SE01\",\"SE01_v_03\"]": {
+      "displayName": "MAX 风机轴承座 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "max",
+      "targetId": "target-2265245c-8f03-43db-b2ff-c2fda6f19f86",
+      "backendName": "SE01 MAX风机v-RMS03频域",
+      "backendUnit": "mm/s",
+      "pointId": 44
+    },
+    "[\"legacy\",\"VSE03\",\"VSE01-SE01\",\"SE01_v_04\"]": {
+      "displayName": "MAX 风机电机驱动端 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "max",
+      "targetId": "target-bd5d84cd-b2e9-4143-b153-94c8f4cceb62",
+      "backendName": "SE01 MAX电机v-RMS02频域",
+      "backendUnit": "mm/s",
+      "pointId": 45
+    },
+    "[\"legacy\",\"VSE04\",\"VSE04-SE01\",\"SE04_v_01\"]": {
+      "displayName": "主电机驱动端 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "main-motor",
+      "targetId": "target-9f49d055-5451-4a9f-be02-75b0ec9d6b94",
+      "backendName": "SE04 主机电机驱动v-RMS01频域",
+      "backendUnit": "mm/s",
+      "pointId": 53
+    },
+    "[\"legacy\",\"VSE04\",\"VSE04-SE01\",\"SE04_v_02\"]": {
+      "displayName": "封签部件 X 轴 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "seal",
+      "targetId": "target-52be3ad6-31c3-42af-9b64-db7048d7bfde",
+      "backendName": "SE04 封签部件Xv-RMS02频域",
+      "backendUnit": "mm/s",
+      "pointId": 54
+    },
+    "[\"legacy\",\"VSE04\",\"VSE04-SE01\",\"SE04_v_03\"]": {
+      "displayName": "封签部件 Y 轴 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "seal",
+      "targetId": "target-000d42b9-241e-48a9-b212-2c0c73980d49",
+      "backendName": "SE04 封签部件Yv-RMS03频域",
+      "backendUnit": "mm/s",
+      "pointId": 55
+    },
+    "[\"legacy\",\"VSE04\",\"VSE04-SE01\",\"SE04_v_04\"]": {
+      "displayName": "封签部件 Z 轴 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "seal",
+      "targetId": "target-d58c8092-b99b-4097-9f42-61077e95fd2a",
+      "backendName": "SE04 封签部件Zv-RMS02频域",
+      "backendUnit": "mm/s",
+      "pointId": 56
+    },
+    "[\"legacy\",\"VSE05\",\"VSE05-SE01\",\"SE05_v_02\"]": {
+      "displayName": "铝纸切刀 X 轴 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "cutter",
+      "targetId": "target-bfb832e4-2259-47fa-b92e-564522ecd474",
+      "backendName": "SE05 铝纸切刀Xv-RMS02频域",
+      "backendUnit": "mm/s",
+      "pointId": 62
+    },
+    "[\"legacy\",\"VSE05\",\"VSE05-SE01\",\"SE05_v_03\"]": {
+      "displayName": "铝纸切刀 Y 轴 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "cutter",
+      "targetId": "target-a1ff8a77-1ba0-4fe4-a95a-ecb45b5e52d9",
+      "backendName": "SE05 铝纸切刀Yv-RMS03频域",
+      "backendUnit": "mm/s",
+      "pointId": 63
+    },
+    "[\"legacy\",\"VSE05\",\"VSE05-SE01\",\"SE05_v_04\"]": {
+      "displayName": "铝纸切刀 Z 轴 · 振动速度 RMS",
+      "unit": "mm/s",
+      "locationId": "cutter",
+      "targetId": "target-9d4b3c2a-a604-42d4-a0e0-10f5e788380b",
+      "backendName": "SE05 铝纸切刀Zv-RMS02频域",
+      "backendUnit": "mm/s",
+      "pointId": 64
+    },
+    "[\"legacy\",\"VSE08\",\"VSE08-SE01\",\"SE08_v_02\"]": {
+      "displayName": "辅机电机驱动端 · 振动速度",
+      "unit": "mm/s",
+      "locationId": "aux-motor",
+      "targetId": "target-8ba48434-c20e-461b-8c5d-8b231ca01791",
+      "backendName": "SE08 辅机电机驱动v-RMS_Freq值",
+      "backendUnit": "mm/s",
+      "pointId": 29
+    },
+    "[\"legacy\",\"VSE08\",\"VSE08-SE01\",\"SE08_v_01\"]": {
+      "displayName": "辅机皮带轴 · 振动速度",
+      "unit": "mm/s",
+      "locationId": "aux-motor",
+      "targetId": "target-9b456a3d-e074-4173-8cd0-195171706f8a",
+      "backendName": "SE08 辅机皮带轴v-RMS_Freq值",
+      "backendUnit": "mm/s",
+      "pointId": 28
+    },
+    "[\"legacy\",\"VSE05\",\"VSE05-SE01\",\"SE05_v_01\"]": {
+      "displayName": "主机皮带轮轴承座 · 振动速度",
+      "unit": "mm/s",
+      "locationId": "main-motor",
+      "targetId": "target-00744c23-afbd-41f9-a223-02692106c401",
+      "backendName": "SE05 主机轴承座v-RMS01频域",
+      "backendUnit": "mm/s",
+      "pointId": 61
+    },
+    "[\"legacy\",\"VSE05\",\"VSE05-SE01\",\"SE05_v_08\"]": {
+      "displayName": "主机皮带轮轴承座 轴承",
+      "unit": "mg",
+      "locationId": "main-motor",
+      "targetId": "target-00744c23-afbd-41f9-a223-02692106c401",
+      "backendName": "SE08 主机轴承座_不平衡",
+      "backendUnit": "mg",
+      "pointId": 68
+    },
+    "[\"monitor\",\"2087109229625348096\",\"2089174435633434624\"]": {
+      "displayName": "MAX 风机电机声纹",
+      "unit": "dB",
+      "locationId": "max",
+      "targetId": "target-bd5d84cd-b2e9-4143-b153-94c8f4cceb62",
+      "backendName": "MAX风机-52-ch1",
+      "backendUnit": ""
+    },
+    "[\"monitor\",\"2087109229625348096\",\"2089174435637628928\"]": {
+      "displayName": "MAX 风机整体声纹",
+      "unit": "dB",
+      "locationId": "max",
+      "targetId": "target-2265245c-8f03-43db-b2ff-c2fda6f19f86",
+      "backendName": "MAX风机-52-ch2",
+      "backendUnit": ""
+    },
+    "[\"monitor\",\"2096866912700076032\",\"2089174505640562688\"]": {
+      "displayName": "主机主电机声纹 · 通道2",
+      "unit": "dB",
+      "locationId": "main-motor",
+      "targetId": "target-9f49d055-5451-4a9f-be02-75b0ec9d6b94",
+      "backendName": "主机主电机-53-ch2",
+      "backendUnit": ""
+    },
+    "[\"monitor\",\"2096867125284179968\",\"2088104072140951552\"]": {
+      "displayName": "VE 风机电机声纹",
+      "unit": "dB",
+      "locationId": "ve",
+      "targetId": "target-2a8e3e01-5f36-4204-a515-33f4a5c37e3c",
+      "backendName": "VE风机-52-ch1",
+      "backendUnit": ""
+    },
+    "[\"monitor\",\"2096867125284179968\",\"2088104072145145856\"]": {
+      "displayName": "VE 风机整体声纹",
+      "unit": "dB",
+      "locationId": "ve",
+      "targetId": "target-ae846afe-090d-47d4-a9a6-fa984fd29efc",
+      "backendName": "VE风机-52-ch2",
+      "backendUnit": ""
+    },
+    "[\"monitor\",\"2096867478532657152\",\"2089174473164066816\"]": {
+      "displayName": "辅机主电机声纹 · 通道1",
+      "unit": "dB",
+      "locationId": "aux-motor",
+      "targetId": "target-8ba48434-c20e-461b-8c5d-8b231ca01791",
+      "backendName": "辅机主电机-55-ch1",
+      "backendUnit": ""
+    },
+    "[\"monitor\",\"2108085623247212544\",\"2089174397226192896\"]": {
+      "displayName": "齿轮箱声纹 · 通道2",
+      "unit": "dB",
+      "locationId": "paper-wheel",
+      "targetId": "target-9327db26-d146-4f7a-ba77-e003ce2b8a8f",
+      "backendName": "齿轮箱-54-ch2",
+      "backendUnit": ""
+    },
+    "[\"legacy\",\"PRESS01\",\"PRESS01-DI02\",\"PRESS01_DI02\"]": {
+      "displayName": "车速信号",
+      "unit": "倍速",
+      "locationId": "location-690f5b1e-b763-4096-a524-be34ae4ffe57",
+      "targetId": "target-2e1edfaa-a75e-4835-8038-b48605b9087e",
+      "backendName": "DI2状态",
+      "backendUnit": "",
+      "pointId": 74
+    }
+  }
+}

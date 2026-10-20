@@ -14,12 +14,12 @@ export const useAlarmColorsStore = defineStore('alarmColors', {
       this.error = ''
       try {
         const saved = JSON.parse(localStorage.getItem(key) || '{}')
-        this.rules = Object.fromEntries(Object.entries(saved || {}).filter(([key, value]) => key.startsWith('[') && ['yellow', 'red'].includes(value)))
+        this.rules = Object.fromEntries(Object.entries(saved || {}).filter(([key, value]) => key.startsWith('[') && ['yellow', 'orange', 'red'].includes(value)))
       } catch { this.error = '颜色配置读取失败' }
     },
     color(event) { return `var(--alarm-color-${alarmColorName(event, this.rules)})` },
     save(key, color) {
-      if (!['yellow', 'red', ''].includes(color)) return
+      if (!['yellow', 'orange', 'red', ''].includes(color)) return
       if (color) this.rules[key] = color
       else delete this.rules[key]
       try { localStorage.setItem(this.storageKey, JSON.stringify(this.rules)); this.error = '' }

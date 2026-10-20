@@ -12,6 +12,7 @@ import { reportInformation, clearInformation } from './services/information.js'
 import { useTelemetryStore } from './stores/telemetry.js'
 import { useHomeDevicesStore } from './stores/homeDevices.js'
 import { workspaceSections, workspaceSectionFor, workspaceTabMatches } from './charts/workspaceNavigation.js'
+import { initializePointConfiguration, pointConfiguration } from './stores/pointConfiguration.js'
 import './styles/configuration-workspace.css'
 import './styles/machine-hierarchy.css'
 
@@ -20,6 +21,7 @@ const router = useRouter()
 const dashboard = useDashboardStore()
 const telemetry = useTelemetryStore()
 const homeDevices = useHomeDevicesStore()
+initializePointConfiguration()
 provide('reportInformation', reportInformation)
 watch(() => ({ ...telemetry.errors }), errors => {
   for (const [key, message] of Object.entries(errors)) if (message) reportInformation(`采集服务 · ${key}`, message)
@@ -51,8 +53,8 @@ const isFullscreen = ref(false)
 
 const pageTitle = computed(() => activeSection.value.label)
 const isLoginPage = computed(() => route.name === 'login')
-watch(isLoginPage, login => {
-  if (login || !auth.isAuthenticated()) { digitalAlarms.stop(); historyWarmup.stop() }
+watch([isLoginPage, () => pointConfiguration.ready], ([login, ready]) => {
+  if (login || !ready || !auth.isAuthenticated()) { digitalAlarms.stop(); historyWarmup.stop() }
   else {
     const user = auth.getUser()
     digitalAlarms.start(user?.id || user?.username || user?.name || 'default')
@@ -171,7 +173,8 @@ onBeforeUnmount(() => {
       </header>
 
       <section class="page-stage" :style="compactHeader ? { paddingTop: '0', ...(!homeControlsExpanded ? { height: '100vh' } : {}) } : undefined">
-        <router-view />
+        <router-view v-if="pointConfiguration.ready" />
+        <DataLoading v-else loading label="正在读取监测参数配置" />
       </section>
     </section>
     </main>

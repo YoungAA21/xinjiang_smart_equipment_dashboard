@@ -14,6 +14,7 @@ import '../styles/realtime-listening.css'
 
 const route = useRoute()
 const devices = ref([]), loading = ref(false), devicesError = ref(''), error = ref('')
+const initialLoading = ref(true)
 const locationId = ref(String(route.query.location || '')), channelKey = ref(''), refreshRate = ref(10)
 const volume = ref(68), muted = ref(false), signal = shallowRef(emptyListeningSignal())
 const state = reactive({ starting: false, monitoring: false, signalConnected: false, audioConnected: false, buffering: true })
@@ -72,7 +73,7 @@ async function refreshDevices() {
       devicesError.value = reason.name === 'TimeoutError' ? '声纹通道目录请求超时' : reason.message || '声纹通道目录获取失败'
       reportInformation('实时监听', devicesError.value)
     }
-  } finally { loading.value = false }
+  } finally { loading.value = false; initialLoading.value = false }
 }
 watch(locationId, () => { channelKey.value = channels.value[0]?.key || ''; void stop() })
 watch(() => selected.value?.key, () => { void stop() }, { flush: 'sync' })
@@ -94,7 +95,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page realtime-listening-page" aria-label="实时监听">
+  <section :aria-busy="initialLoading" class="page realtime-listening-page" aria-label="实时监听">
     <header class="listening-heading"><div><h1><Headphones :size="24" />实时监听</h1><p>选择大点位，查看现场信号并监听实时音频。</p></div><span class="listening-badge" :class="{ live: frameLive }">{{ connectionLabel }}</span></header>
     <section class="listening-controls listening-panel">
       <label><span>大点位</span><el-select v-model="locationId" filterable aria-label="监听大点位" placeholder="选择大点位" :loading="loading"><el-option v-for="location in locations" :key="location.id" :label="`${location.label}${location.count ? '' : '（暂无音频通道）'}`" :value="location.id" :disabled="!location.count" /></el-select></label>
@@ -105,14 +106,14 @@ onBeforeUnmount(() => {
     <p v-if="devicesError || error" class="listening-error" role="alert">{{ devicesError || error }}</p>
     <p v-if="!loading && !channels.length" class="listening-empty">当前大点位暂无可监听的音频通道，请检查声纹通道及参数点位归属。</p>
     <section class="listening-status-grid" aria-label="监听状态">
-      <article class="listening-panel"><span>采集连接</span><strong>{{ gatewayLabel }}</strong></article>
-      <article class="listening-panel"><span>现场音频</span><strong>{{ audioLabel }}</strong></article>
-      <article class="listening-panel"><span>有效采样率</span><strong>{{ signal.sampleRate ? `${signal.sampleRate / 1000} kHz` : '—' }}</strong></article>
-      <article class="listening-panel"><span>信号电平</span><strong>{{ signal.peakDb == null ? '—' : `${signal.peakDb.toFixed(1)} dBFS` }}</strong></article>
+      <article class="listening-panel"><span>采集连接</span><strong><DataLoading :loading="initialLoading" compact>{{ gatewayLabel }}</DataLoading></strong></article>
+      <article class="listening-panel"><span>现场音频</span><strong><DataLoading :loading="initialLoading" compact>{{ audioLabel }}</DataLoading></strong></article>
+      <article class="listening-panel"><span>有效采样率</span><strong><DataLoading :loading="initialLoading" compact>{{ signal.sampleRate ? `${signal.sampleRate / 1000} kHz` : '—' }}</DataLoading></strong></article>
+      <article class="listening-panel"><span>信号电平</span><strong><DataLoading :loading="initialLoading" compact>{{ signal.peakDb == null ? '—' : `${signal.peakDb.toFixed(1)} dBFS` }}</DataLoading></strong></article>
     </section>
     <section class="listening-panel listening-signal">
       <header><div><h2>{{ selectedLocation?.name || '未选择大点位' }}<span v-if="selected"> · {{ selected.name }}</span></h2><p>{{ selected?.deviceName || '等待选择音频通道' }}</p></div><span class="listening-badge" :class="{ live: frameLive }">{{ frameLive ? 'LIVE' : 'IDLE' }}</span></header>
-      <AudioVisualizationPanel :active="frameLive" :waveform="displayedWaveform" :waveform-envelope="envelope" :spectrum-data="signal.spectrum" :waterfall-data="signal.waterfall" :sample-rate="signal.sampleRate || 22000" :window-seconds="10" />
+      <DataLoading :loading="initialLoading" chart label="正在加载监听通道"><AudioVisualizationPanel :active="frameLive" :waveform="displayedWaveform" :waveform-envelope="envelope" :spectrum-data="signal.spectrum" :waterfall-data="signal.waterfall" :sample-rate="signal.sampleRate || 22000" :window-seconds="10" /></DataLoading>
     </section>
     <section class="listening-panel listening-audio"><div><h2>现场音频监听</h2><p>积累 1 秒音频后连续播放，切换点位或离开页面会停止监听。</p></div><label><Volume2 :size="20" /><input v-model.number="volume" type="range" min="0" max="100" aria-label="监听音量" :disabled="!state.monitoring || muted" /><span>{{ muted ? 0 : volume }}%</span></label><el-button :icon="muted ? VolumeX : Volume2" :disabled="!state.monitoring" @click="muted = !muted">{{ muted ? '恢复监听' : '静音' }}</el-button></section>
   </section>

@@ -92,7 +92,7 @@ test('development route uses dedicated telemetry prefix without widening health 
   await module.link((specifier)=>specifier === './endpoints.js' ? endpointModule : Promise.reject(new Error(`Unexpected dependency: ${specifier}`))); await module.evaluate()
   await module.namespace.telemetryApi.getLatest()
   assert.equal(url,'/_telemetry-api/api/realtime/latest')
-  const { default: config } = await import('../vite.config.js')
+  const { default: config } = await import('../vite.config.build.js')
   const proxies=config({mode:'test'}).server.proxy
   const pattern=new RegExp(Object.keys(proxies).find((key)=>key.startsWith('^/_telemetry-api/')))
   for (const path of ['/configuration/modules','/configuration/modules/A/points?includeLatest=false','/realtime/latest','/telemetry/history?pointId=35']) assert.equal(pattern.test('/_telemetry-api/api'+path),true)

@@ -38,17 +38,17 @@ const bytes = (value) => value == null ? '—' : value < 1024 ? `${value} B` : v
 </script>
 
 <template>
-  <div class="health-home health-grid">
+  <div :aria-busy="health.loading && !health.lastAttemptAt" class="health-home health-grid">
       <article class="panel health-wide">
         <h2>模块运行状态 <small>离线优先 · {{ health.modules.length }} 个状态</small></h2>
         <el-table :data="sortedModules" row-key="moduleId" class="dark-table" max-height="330" empty-text="暂无模块运行状态">
-          <el-table-column type="expand" width="42"><template #default="{ row }"><dl class="health-expanded"><dt>最近上线</dt><dd>{{ dateTime(row.lastOnlineAt) }}</dd><dt>最近离线</dt><dd>{{ dateTime(row.lastOfflineAt) }}</dd><dt>离线原因</dt><dd>{{ row.offlineReason || '无' }}</dd></dl></template></el-table-column>
+          <el-table-column type="expand" width="42"><template #default="{ row }"><dl class="health-expanded"><DataLoading :loading="health.loading && !health.lastAttemptAt"><dt>最近上线</dt><dd>{{ dateTime(row.lastOnlineAt) }}</dd><dt>最近离线</dt><dd>{{ dateTime(row.lastOfflineAt) }}</dd><dt>离线原因</dt><dd>{{ row.offlineReason || '无' }}</dd></DataLoading></dl></template></el-table-column>
           <el-table-column prop="moduleId" label="模块" width="120" />
           <el-table-column prop="protocol" label="协议" width="100" />
           <el-table-column label="状态" width="110"><template #default="{ row }"><span class="health-badge" :class="tone(row.isOnline)">{{ row.isOnline === true ? '在线' : row.isOnline === false ? '离线' : '未知' }}</span></template></el-table-column>
           <el-table-column label="最近更新" width="190"><template #default="{ row }">{{ dateTime(row.lastUpdatedAt) }}</template></el-table-column>
           <el-table-column label="离线原因" min-width="260" show-overflow-tooltip><template #default="{ row }"><span :class="row.isOnline === false ? 'bad' : 'muted'">{{ row.offlineReason || '—' }}</span></template></el-table-column>
-        </el-table>
+        <template #empty><DataLoading :loading="health.loading && !health.lastAttemptAt">暂无模块运行状态</DataLoading></template></el-table>
       </article>
 
       <article class="panel health-wide">
@@ -58,14 +58,14 @@ const bytes = (value) => value == null ? '—' : value < 1024 ? `${value} B` : v
           <el-table-column prop="name" label="检查项" min-width="290" show-overflow-tooltip />
           <el-table-column label="结果" width="100"><template #default="{ row }"><span class="health-badge" :class="statusTone(row.status)">{{ statusText(row.status) }}</span></template></el-table-column>
           <el-table-column prop="message" label="检查说明" min-width="380" show-overflow-tooltip />
-        </el-table>
+        <template #empty><DataLoading :loading="health.loading && !health.lastAttemptAt">{{ onlyIssues && health.detail ? '当前没有异常检查项' : '暂无健康检查数据' }}</DataLoading></template></el-table>
       </article>
 
       <article class="panel health-wide">
         <h2>数据表与分区状态</h2>
         <el-tabs v-model="tableTab" class="health-tabs"><el-tab-pane :label="`原始历史表（${detail.moduleTables?.length ?? 0}）`" name="moduleTables" /><el-tab-pane :label="`聚合表（${detail.aggregationTables?.length ?? 0}）`" name="aggregationTables" /></el-tabs>
         <el-table :data="tableRows" row-key="tableName" class="dark-table" max-height="320" empty-text="暂无数据表状态">
-          <el-table-column type="expand" width="42"><template #default="{ row }"><dl class="health-expanded"><dt>预期分区</dt><dd>{{ partitions(row.expectedPartitions) }}</dd><dt>缺失分区</dt><dd :class="row.missingPartitions?.length ? 'bad' : ''">{{ partitions(row.missingPartitions) }}</dd></dl></template></el-table-column>
+          <el-table-column type="expand" width="42"><template #default="{ row }"><dl class="health-expanded"><DataLoading :loading="health.loading && !health.lastAttemptAt"><dt>预期分区</dt><dd>{{ partitions(row.expectedPartitions) }}</dd><dt>缺失分区</dt><dd :class="row.missingPartitions?.length ? 'bad' : ''">{{ partitions(row.missingPartitions) }}</dd></DataLoading></dl></template></el-table-column>
           <el-table-column prop="moduleId" label="模块" width="110" />
           <el-table-column prop="tableName" label="数据表" min-width="310" show-overflow-tooltip />
           <el-table-column label="表状态" width="100"><template #default="{ row }"><span :class="tableReady(row) ? 'good' : 'bad'">{{ tableReady(row) ? '就绪' : '待检查' }}</span></template></el-table-column>
@@ -74,19 +74,19 @@ const bytes = (value) => value == null ? '—' : value < 1024 ? `${value} B` : v
           <el-table-column prop="partitionCount" label="分区数" width="85" />
           <el-table-column v-if="tableTab === 'aggregationTables'" label="聚合桶" width="90"><template #default="{ row }">{{ row.bucketMinutes }} 分钟</template></el-table-column>
           <el-table-column label="缺失分区" min-width="100"><template #default="{ row }"><span :class="row.missingPartitions?.length ? 'bad' : ''">{{ row.missingPartitions?.length ?? '—' }}</span></template></el-table-column>
-        </el-table>
+        <template #empty><DataLoading :loading="health.loading && !health.lastAttemptAt">暂无数据表状态</DataLoading></template></el-table>
       </article>
 
       <article class="panel">
         <h2>离线缓存</h2>
-        <div class="health-cache-metrics"><div><span>待回写文件</span><strong>{{ display(cache.fileCount) }}</strong></div><div><span>坏文件</span><strong :class="cache.badFileCount ? 'bad' : ''">{{ display(cache.badFileCount) }}</strong></div><div><span>临时文件</span><strong>{{ display(cache.temporaryFileCount) }}</strong></div><div><span>总大小</span><strong>{{ bytes(cache.totalBytes) }}</strong></div></div>
-        <dl class="health-info"><dt>缓存目录</dt><dd>{{ cache.directory || '—' }}</dd><dt>最早文件创建</dt><dd>{{ dateTime(cache.oldestFileCreatedAt) }}</dd></dl>
+        <div class="health-cache-metrics"><div><span>待回写文件</span><strong><DataLoading :loading="health.loading && !health.lastAttemptAt" compact>{{ display(cache.fileCount) }}</DataLoading></strong></div><div><span>坏文件</span><strong :class="cache.badFileCount ? 'bad' : ''"><DataLoading :loading="health.loading && !health.lastAttemptAt" compact>{{ display(cache.badFileCount) }}</DataLoading></strong></div><div><span>临时文件</span><strong><DataLoading :loading="health.loading && !health.lastAttemptAt" compact>{{ display(cache.temporaryFileCount) }}</DataLoading></strong></div><div><span>总大小</span><strong><DataLoading :loading="health.loading && !health.lastAttemptAt" compact>{{ bytes(cache.totalBytes) }}</DataLoading></strong></div></div>
+        <dl class="health-info"><dt>缓存目录</dt><dd><DataLoading :loading="health.loading && !health.lastAttemptAt" compact>{{ cache.directory || '—' }}</DataLoading></dd><dt>最早文件创建</dt><dd><DataLoading :loading="health.loading && !health.lastAttemptAt" compact>{{ dateTime(cache.oldestFileCreatedAt) }}</DataLoading></dd></dl>
         <details class="health-details"><summary>查看缓存运行记录</summary><div v-for="event in cacheEvents" :key="event.name" class="health-cache-event"><b>{{ event.name }}</b><span>{{ dateTime(event.time) }}</span><p>文件：{{ event.file || '无' }}<template v-if="event.count != null"> · 样本 {{ event.count }} 条</template></p><p v-if="event.movedFile">转移至：{{ event.movedFile }}</p><p v-if="event.error" class="bad">{{ event.error }}</p></div></details>
       </article>
 
       <article class="panel">
         <h2>配置文件</h2>
-        <div v-if="!detail.configFiles?.length" class="health-empty">暂无配置文件状态</div>
+        <DataLoading v-if="health.loading && !health.lastAttemptAt" label="正在加载配置状态" /><div v-else-if="!detail.configFiles?.length" class="health-empty">暂无配置文件状态</div>
         <div v-for="file in detail.configFiles || []" :key="file.file" class="health-config"><div><Database :size="17" /><strong>{{ file.file }}</strong><span class="health-badge" :class="tone(file.exists)">{{ file.exists === true ? '存在' : file.exists === false ? '缺失' : '未知' }}</span></div><p>{{ file.path || '—' }}</p></div>
 
       </article>
@@ -98,14 +98,14 @@ const bytes = (value) => value == null ? '—' : value < 1024 ? `${value} B` : v
         <dl class="health-maintenance-times"><div><dt>最近开始</dt><dd>{{ dateTime(maintenance.lastStartedAt) }}</dd></div><div><dt>最近成功</dt><dd>{{ dateTime(maintenance.lastSucceededAt) }}</dd></div><div><dt>最近失败</dt><dd>{{ dateTime(maintenance.lastFailedAt) }}</dd></div></dl>
         <div v-if="maintenance.lastError" class="health-error">最近维护错误：{{ maintenance.lastError }}</div>
         <el-table :data="maintenance.lastResults || []" row-key="tableName" class="dark-table" max-height="320" empty-text="暂无维护记录">
-          <el-table-column type="expand" width="42"><template #default="{ row }"><dl class="health-expanded"><dt>维护前分区</dt><dd>{{ partitions(row.existingPartitionsBefore) }}</dd><dt>新增分区</dt><dd>{{ partitions(row.missingPartitionsAdded) }}</dd><dt>清理过期分区</dt><dd>{{ partitions(row.expiredPartitionsDropped) }}</dd><dt>维护后分区</dt><dd>{{ partitions(row.existingPartitionsAfter) }}</dd></dl></template></el-table-column>
+          <el-table-column type="expand" width="42"><template #default="{ row }"><dl class="health-expanded"><DataLoading :loading="health.loading && !health.lastAttemptAt"><dt>维护前分区</dt><dd>{{ partitions(row.existingPartitionsBefore) }}</dd><dt>新增分区</dt><dd>{{ partitions(row.missingPartitionsAdded) }}</dd><dt>清理过期分区</dt><dd>{{ partitions(row.expiredPartitionsDropped) }}</dd><dt>维护后分区</dt><dd>{{ partitions(row.existingPartitionsAfter) }}</dd></DataLoading></dl></template></el-table-column>
           <el-table-column prop="moduleId" label="模块" width="110" />
           <el-table-column prop="tableName" label="数据表" min-width="270" show-overflow-tooltip />
           <el-table-column label="表已就绪" width="110"><template #default="{ row }"><span :class="tone(row.tableCreatedOrExists)">{{ exists(row.tableCreatedOrExists) }}</span></template></el-table-column>
           <el-table-column label="新增分区" width="110"><template #default="{ row }">{{ row.missingPartitionsAdded?.length ?? '—' }}</template></el-table-column>
           <el-table-column label="清理分区" width="110"><template #default="{ row }">{{ row.expiredPartitionsDropped?.length ?? '—' }}</template></el-table-column>
           <el-table-column label="维护后分区数" width="125"><template #default="{ row }">{{ row.existingPartitionsAfter?.length ?? '—' }}</template></el-table-column>
-        </el-table>
+        <template #empty><DataLoading :loading="health.loading && !health.lastAttemptAt">暂无维护记录</DataLoading></template></el-table>
       </article>
   </div>
 </template>
