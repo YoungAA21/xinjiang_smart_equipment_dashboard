@@ -26,6 +26,8 @@ npm run dev
 
 开发、调试、打包和预览统一使用一个 `vite.config.build.js`，通过 `--mode` 读取不同环境文件。
 
+地址只在对应环境配置 `API_PROXY_TARGET=http://66.66.66.4:5158` 和 `ACOUSTIC_PROXY_TARGET=http://66.66.66.4:18080`，浏览器基址默认留空。`0.0.0.0` 只用于后端监听，代理仍使用实际局域网 IP；旧 `VITE_DEV_*` 不再参与地址选择。运行 `npm run check:api` 检查开发环境的有效路由和 TCP 连通性，调试环境使用 `npm run check:api -- --mode debug`，离线仅看配置使用 `--offline`。
+
 生产环境将 `dist/` 部署到现有 Nginx 的站点目录，接口由 Nginx 转发。详细地址配置、覆盖优先级和部署步骤见 [环境与部署说明](docs/environments.md)。
 
 ```bash
@@ -145,60 +147,7 @@ npm run build
 
 ## Nginx 生产代理
 
-生产站点的 `server` 块需配置以下 5158 白名单。趋势接口使用精确匹配，因此即使现有 SPA 规则写成 `location ^~ /`，也不会把 API 请求回退为 `index.html`。查询参数不参与 Nginx `location` 匹配，无需写入规则。
-
-```nginx
-location = /_analysis-api/api/analysis/daily-limit-trends {
-    proxy_pass http://66.66.66.4:5158/api/analysis/daily-limit-trends;
-    include /etc/nginx/snippets/equipment-api-5158.conf;
-}
-
-location = /_analysis-api/api/analysis/trend-insights {
-    proxy_pass http://66.66.66.4:5158/api/analysis/trend-insights;
-    include /etc/nginx/snippets/equipment-api-5158.conf;
-}
-
-location = /_analysis-api/api/analysis/trend-alarms {
-    proxy_pass http://66.66.66.4:5158/api/analysis/trend-alarms;
-    include /etc/nginx/snippets/equipment-api-5158.conf;
-}
-
-location ~ ^/(?:_health-api/api/health(?:/detail|/table-maintenance)?|_telemetry-api/api/(?:configuration/modules(?:/[^/]+/points)?|realtime/latest|telemetry/history)|_alarm-api/api/analysis/(?:alarms|status))$ {
-    rewrite ^/_[^/]+(/api/.*)$ $1 break;
-    proxy_pass http://66.66.66.4:5158;
-    include /etc/nginx/snippets/equipment-api-5158.conf;
-}
-```
-
-新建 `/etc/nginx/snippets/equipment-api-5158.conf`，内容如下：
-
-```nginx
-    proxy_http_version 1.1;
-    proxy_set_header Host $proxy_host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header Authorization "";
-    proxy_set_header Cookie "";
-    proxy_cache off;
-    proxy_hide_header ETag;
-    proxy_hide_header Last-Modified;
-    add_header Cache-Control "no-store" always;
-    proxy_intercept_errors off;
-    proxy_connect_timeout 5s;
-    proxy_read_timeout 15s;
-    limit_except GET { deny all; }
-```
-
-然后在站点的 `server` 块中保留代理前缀兜底：
-
-```nginx
-location ~ ^/_(?:health|telemetry|alarm|analysis)-api(?:/|$) {
-    return 404;
-}
-```
-
-修改后依次执行 `nginx -t` 和 `nginx -s reload`。浏览器开发者工具中上述三个趋势接口应显示 `Content-Type: application/json`，响应体应分别包含 `days`、`insight`、`events`；若响应体是 `index.html`，说明请求仍被 SPA 静态规则接管。
+生产使用部署服务器实际的 Nginx 配置；Vite 代理变量只影响开发和本地预览，不会改写 Nginx。采集专用前缀转发至 equipment_backend（5158）并移除前缀，清除 Authorization/Cookie；声纹路径保留完整 URI，转发至 soundvoice_backend（18080），支持 WebSocket。保持采集白名单及点位限值 PATCH、配置文件 GET/PUT 路由。修改后执行 nginx -t，再执行 nginx -s reload。完整路由表和超时排查见 [环境与部署说明](docs/environments.md)。
 
 ### 产线状态监测首页
 
@@ -271,7 +220,7 @@ latest 返回业务 404 时请检查采集服务地址：`VITE_API_BASE_URL` 留
 
 趋势分析的上下限设置从当前模块点位配置读取 `minimumValue` / `maximumValue`，通过 `PATCH /_telemetry-api/api/configuration/points/{pointId}/limits` 保存到 5158 采集服务，同时提交两个字段。清空输入会传 `null` 取消该方向阈值；下限不能大于上限，允许相等；保存后重新查询趋势。纵轴范围使用图表自动计算。
 
-部署时必须将本仓库 `nginx.conf` 中专用的 `location ~ ^/_telemetry-api/api/configuration/points/[0-9]+/limits$` 同步到生产站点的 `server` 块，并放在专用 API 的 404 兜底规则之前。此路由仅允许 PATCH，移除 `/_telemetry-api` 前缀后转发到采集服务 5158，清除声纹 Authorization 和 Cookie。不要复用只允许 GET 的 `equipment-api-5158.conf` 片段。修改部署配置后先执行 `nginx -t`，通过后执行 `nginx -s reload`；只更新前端 dist 不会修复此代理 404。无需重启采集服务，新配置加载后用于后续样本分析。
+部署时必须将部署服务器 Nginx 中专用的 `location ~ ^/_telemetry-api/api/configuration/points/[0-9]+/limits$` 同步到生产站点的 `server` 块，并放在专用 API 的 404 兜底规则之前。此路由仅允许 PATCH，移除 `/_telemetry-api` 前缀后转发到采集服务 5158，清除声纹 Authorization 和 Cookie。不要复用只允许 GET 的 `equipment-api-5158.conf` 片段。修改部署配置后先执行 `nginx -t`，通过后执行 `nginx -s reload`；只更新前端 dist 不会修复此代理 404。无需重启采集服务，新配置加载后用于后续样本分析。
 
 ### 测点近期历史与整班缓存
 
@@ -297,6 +246,6 @@ latest 返回业务 404 时请检查采集服务地址：`VITE_API_BASE_URL` 留
 
 首页生产状态每 1 秒请求 GET /api/runtime-info/latest，仅展示 summary.brand（牌号）、checkCount（小盒产量）、checkNg（NG数）、ngP（NG率，直接添加 %，保留两位小数）。进入首页立即读取，慢请求不重叠，离开首页取消请求并停止轮询。失败保留上次数据并提示过期，离线、无数据和未启用状态单独提示。其他页面不接入。
 
-使用独立 /_runtime-api 同源代理，Vite 开发/预览与 nginx.conf 仅放行该端点并转发至 5158，不携带声纹登录令牌。可使用 VITE_API_BASE_URL 覆盖地址。生产部署需同步更新 Nginx 配置并重载。
+使用独立 /_runtime-api 同源代理，Vite 开发/预览与部署服务器 Nginx 仅放行该端点并转发至 5158，不携带声纹登录令牌。可使用 VITE_API_BASE_URL 覆盖地址。生产部署需同步更新 Nginx 配置并重载。
 
 报警等级卡片按本次查询返回的同一批记录统计（当前、已恢复或全部状态）：全部报警 = 损坏 + 告警 + 提示 + 上下限告警 + 其他告警。只有 `GradedLimit` 且 `severity` 为 1/2/3 的记录归入对应等级；旧版上下限报警归入上下限告警；组合报警和无法识别等级的记录归入其他告警，该卡片仅在存在对应记录时显示。列表颜色可以自定义，颜色不作为等级判断依据。

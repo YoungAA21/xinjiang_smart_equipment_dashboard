@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "check:api": "node scripts/check-api.mjs",
     "dev": "vite --config vite.config.build.js --mode development",
     "debug": "vite --config vite.config.build.js --mode debug",
     "build": "vite build --config vite.config.build.js --mode production",

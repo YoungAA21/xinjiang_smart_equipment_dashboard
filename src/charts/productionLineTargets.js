@@ -1,4 +1,3 @@
-// Display IDs are independent from existing data ownership identifiers.
 export const productionLineTargets = {
   ZJ17: { machine: 'ZJ17', name: '卷接机' },
   YB25: { machine: 'ZB25', model: 'YB25', name: '小盒包装机' },

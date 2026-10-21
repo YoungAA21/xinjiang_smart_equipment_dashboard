@@ -1,15 +1,10 @@
 import { auth } from './auth'
 import { reportInformation } from './information.js'
 import { healthApi } from './health'
-import { resolveServiceBase } from './endpoints.js'
+import { resolveProxiedServiceBase, resolveServiceBase } from './endpoints.js'
 
-const LEGACY_API_BASE = resolveServiceBase(import.meta.env?.VITE_API_BASE_URL, 80, {
-  development: Boolean(import.meta.env?.DEV),
-  developmentUrl: import.meta.env?.VITE_DEV_API_BASE_URL,
-})
-const NEW_API_BASE = resolveServiceBase(import.meta.env?.VITE_NEW_API_BASE_URL, 18080, {
-  sameOrigin: true,
-})
+const LEGACY_API_BASE = resolveProxiedServiceBase(import.meta.env?.VITE_API_BASE_URL, '/_telemetry-api')
+const NEW_API_BASE = resolveServiceBase(import.meta.env?.VITE_NEW_API_BASE_URL)
 const LOGIN_API_URL = String(import.meta.env?.VITE_LOGIN_API_URL || '').trim() || `${NEW_API_BASE}/auth/login`
 const LEGACY_API_DISABLED = import.meta.env.VITE_LEGACY_API_DISABLED !== 'false'
 
@@ -35,12 +30,13 @@ async function request(path, params, options = {}) {
   const headers = { ...(options.headers || {}) }
   const token = auth.getToken()
   const baseUrl = options.baseUrl ?? LEGACY_API_BASE
+  const legacy = options.baseUrl == null
 
-  if (LEGACY_API_DISABLED && baseUrl === LEGACY_API_BASE && path.startsWith('/api/')) {
+  if (LEGACY_API_DISABLED && legacy && path.startsWith('/api/')) {
     throw new Error('原接口请求已停止')
   }
 
-  if (token && !options.skipAuth) {
+  if (token && !legacy && !options.skipAuth) {
     headers.Authorization = authHeaderValue(token)
   }
 

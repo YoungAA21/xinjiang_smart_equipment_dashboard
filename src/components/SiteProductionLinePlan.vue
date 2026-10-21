@@ -3,9 +3,9 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { productionLineTarget } from '../charts/productionLineTargets.js'
 import { productionLineLayout, productionLineViewBox } from '../charts/productionLineLayout.js'
-import darkPlan from '../../public/production-line/01-real-dark.svg?raw'
-import lightPlan from '../../public/production-line/02-real-light.svg?raw'
-import flatPlan from '../../public/production-line/03-real-flat.svg?raw'
+import darkPlan from '../assets/production-line/01-real-dark.svg?raw'
+import lightPlan from '../assets/production-line/02-real-light.svg?raw'
+import flatPlan from '../assets/production-line/03-real-flat.svg?raw'
 
 const props = defineProps({ variant: { type: String, default: 'dark' }, navigate: { type: Boolean, default: true }, selected: String, machines: { type: Array, default: () => [] } })
 const emit = defineEmits(['select', 'alarm'])

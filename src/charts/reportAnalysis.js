@@ -225,7 +225,6 @@ export function reportEvidenceOption(row, ranges, selection, filter = 'ema') {
   const raw = row.clean.raw.filter(item => item.time >= Date.parse(selection.start) && item.time < Date.parse(selection.end))
   const digital = row.kind === 'digital'
   const filtered = digital ? [] : minuteReportSeries(row.clean.valid, filter).filter(item => item.time >= Date.parse(selection.start) && item.time < Date.parse(selection.end))
-  // Same elapsed time since period start; no stretching an 8h shift into an 8.5h shift.
   const baseline = (digital ? row.baseClean?.raw || [] : minuteReportSeries(row.baseClean?.valid || [], filter)).map(item => ({ ...item, time: currentStart + item.time - baseStart }))
     .filter(item => item.time >= Date.parse(selection.start) && item.time < Date.parse(selection.end))
   const series = (name, rows, color, width, extra = {}) => ({ name, type: 'line', data: gapData(rows.map(item => digital && ![0, 1].includes(item.value) ? { ...item, value: null } : item), digital ? 60000 : 90000), showSymbol: false, connectNulls: false, ...(digital ? { step: 'end' } : { sampling: 'lttb' }), lineStyle: { color, width, ...extra }, itemStyle: { color } })

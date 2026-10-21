@@ -7,12 +7,25 @@ import { fileURLToPath } from 'node:url'
 import { loadEnv, resolveConfig } from 'vite'
 import developmentConfig from '../vite.config.build.js'
 import buildConfig from '../vite.config.build.js'
-import { projectRoot } from '../vite.config.build.js'
+import { projectRoot, resolveProxyTargets } from '../vite.config.build.js'
+import { EventEmitter } from 'node:events'
 
 const execute = promisify(execFile)
 const collectionPath = '/_telemetry-api/api/realtime/latest'
 const proxyFor = (config, path) => Object.entries(config.server.proxy)
   .find(([pattern]) => new RegExp(pattern).test(path))?.[1]
+
+test('proxy targets use only server variables and reject wildcard listening addresses or URL paths', () => {
+  const targets = resolveProxyTargets({
+    API_PROXY_TARGET: ' http://127.0.0.1:15158/ ', ACOUSTIC_PROXY_TARGET: 'https://acoustic.example:18443/',
+    VITE_API_BASE_URL: 'https://browser.example', VITE_DEV_NEW_API_BASE_URL: 'http://obsolete.example:18080',
+  })
+  assert.deepEqual(targets, { collection: 'http://127.0.0.1:15158', acoustic: 'https://acoustic.example:18443' })
+  assert.equal(resolveProxyTargets({ VITE_API_BASE_URL: 'https://browser.example' }).collection, 'http://66.66.66.4:5158')
+  for (const address of ['http://0.0.0.0:18080', '/auth/login', 'ftp://server', 'http://server/api', 'http://user:secret@server', 'http://server?x=1']) {
+    assert.throws(() => resolveProxyTargets({ ACOUSTIC_PROXY_TARGET: address }), /ACOUSTIC_PROXY_TARGET/)
+  }
+})
 
 for (const mode of ['development', 'debug', 'production']) {
   test(`${mode} keeps browser requests same-origin and separates collection and acoustic upstreams`, () => {
@@ -35,6 +48,12 @@ for (const mode of ['development', 'debug', 'production']) {
     assert.equal(proxyFor(config, '/monitor/sessions').ws, true)
     assert.equal(proxyFor(config, '/_telemetry-api/api/modbus-writebacks/trigger'), undefined)
     assert.equal(config.preview.proxy, config.server.proxy)
+    const upstream = new EventEmitter()
+    collection.configure(upstream)
+    const removed = []
+    upstream.emit('proxyReq', { removeHeader: name => removed.push(name) })
+    assert.deepEqual(removed, ['Authorization', 'Cookie'])
+    assert.equal(proxyFor(config, '/auth/login').configure, undefined)
   })
 }
 

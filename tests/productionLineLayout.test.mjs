@@ -15,6 +15,7 @@ test('PDF generator reproduces all three shipped plans and retains approved navi
     const svg = await readFile(new URL(`../public/production-line/${name}.svg`, import.meta.url), 'utf8')
     assert.equal(svg, before[index], 'generation is deterministic')
     assert.equal(svg, await readFile(new URL(`../artifacts/production-line-real-layout/${name}.svg`, import.meta.url), 'utf8'))
+    assert.equal(svg, await readFile(new URL(`../src/assets/production-line/${name}.svg`, import.meta.url), 'utf8'), 'inline source and public plan stay synchronized')
     assert.ok(svg.includes(`viewBox="${productionLineViewBox}"`))
     for (const item of source.paths) assert.ok(svg.includes(`d="${item.d}"`), 'every original vector path survives')
     assert.equal((svg.match(/class="machine-link"/g) || []).length, 5)

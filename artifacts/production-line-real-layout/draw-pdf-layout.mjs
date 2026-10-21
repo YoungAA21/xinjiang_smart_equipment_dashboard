@@ -5,6 +5,7 @@ import { productionLineTarget } from '../../src/charts/productionLineTargets.js'
 
 const output = new URL('./', import.meta.url)
 const publicOutput = new URL('../../public/production-line/', import.meta.url)
+const sourceOutput = new URL('../../src/assets/production-line/', import.meta.url)
 const { paths } = JSON.parse(await fs.readFile(new URL('./pdf-layout-paths.json', import.meta.url), 'utf8'))
 const variants = [
   { file: '01-real-dark', title: '实际产线布局 · 深色机械线稿', bg: '#101c18', grid: '#20382e', stroke: '#9bb9a9', accent: '#78d4ad', text: '#edf6f0', muted: '#91ab9e' },
@@ -19,6 +20,7 @@ const pathMarkup = item => `<path d="${item.d}"${item.fill ? ' class="solid"' : 
 const flows = ['M 1270 391 H 1210', 'M 1025 390 H 960', 'M 825 390 H 755', 'M 80 310 V 375', 'M 80 565 V 630', 'M 80 755 V 810', 'M 140 837 H 205', 'M 283 805 V 745', 'M 81 244 H 145', 'M 295 310 V 355', 'M 413 390 H 350', 'M 260 390 H 225']
 
 await fs.mkdir(publicOutput, { recursive: true })
+await fs.mkdir(sourceOutput, { recursive: true })
 for (const variant of variants) {
   const assigned = new Set()
   const machines = productionLineLayout.map(machine => {
@@ -38,6 +40,7 @@ for (const variant of variants) {
 `
   await fs.writeFile(new URL(`${variant.file}.svg`, output), svg)
   await fs.writeFile(new URL(`${variant.file}.svg`, publicOutput), svg)
+  await fs.writeFile(new URL(`${variant.file}.svg`, sourceOutput), svg)
   console.log(fileURLToPath(new URL(`${variant.file}.svg`, publicOutput)))
 }
 

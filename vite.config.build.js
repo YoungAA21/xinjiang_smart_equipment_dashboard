@@ -4,11 +4,27 @@ import vue from '@vitejs/plugin-vue'
 
 export const projectRoot = fileURLToPath(new URL('./', import.meta.url))
 
+export function resolveProxyTargets(env) {
+  const target = (key, fallback) => {
+    const value = String(env[key] || fallback).trim()
+    let url
+    try { url = new URL(value) } catch { throw new Error(`${key} 必须是完整 HTTP(S) 服务地址`) }
+    if (!['http:', 'https:'].includes(url.protocol) || url.hostname === '0.0.0.0'
+      || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+      throw new Error(`${key} 必须是可访问的 HTTP(S) 服务地址，不含路径、凭据或查询参数；0.0.0.0 仅用于监听`)
+    }
+    return url.origin
+  }
+  return {
+    collection: target('API_PROXY_TARGET', 'http://66.66.66.4:5158'),
+    acoustic: target('ACOUSTIC_PROXY_TARGET', 'http://66.66.66.4:18080'),
+  }
+}
+
 export function createBaseConfig({ mode }) {
   const env = loadEnv(mode, projectRoot, ['VITE_', 'API_', 'ACOUSTIC_'])
   // Proxy targets stay in Node; VITE_* base URLs are optional browser-side overrides.
-  const api5158Target = env.API_PROXY_TARGET || env.VITE_DEV_API_BASE_URL || env.VITE_API_BASE_URL || 'http://66.66.66.4:5158'
-  const api18080Target = env.ACOUSTIC_PROXY_TARGET || env.VITE_DEV_NEW_API_BASE_URL || env.VITE_NEW_API_BASE_URL || 'http://66.66.66.4:18080'
+  const { collection: api5158Target, acoustic: api18080Target } = resolveProxyTargets(env)
   const proxy = {
     '^/_configuration-api/api/frontend-files/[^/?]+(?:\\?.*)?$': {
       target: api5158Target,
@@ -46,6 +62,16 @@ export function createBaseConfig({ mode }) {
       changeOrigin: true,
       rewrite: (path) => path.replace(/^\/_telemetry-api/, ''),
     },
+  }
+  // Same-origin browser cookies must not cross into collection services.
+  for (const [pattern, options] of Object.entries(proxy)) {
+    if (!pattern.startsWith('^/_')) continue
+    options.configure = (upstream) => {
+      upstream.on('proxyReq', (request) => {
+        request.removeHeader('Authorization')
+        request.removeHeader('Cookie')
+      })
+    }
   }
   return {
     root: projectRoot,

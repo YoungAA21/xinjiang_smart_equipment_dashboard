@@ -135,6 +135,22 @@ test('blank login override uses the explicit service base or the same-origin pro
   }
 })
 
+test('legacy collection requests never inherit acoustic tokens or a hardcoded backend', async () => {
+  const calls = []
+  const api = await loadApi(async (url, options) => { calls.push({ url, options }); return reply({}) }, {
+    VITE_LEGACY_API_DISABLED: 'false', DEV: true, VITE_DEV_API_BASE_URL: 'http://obsolete.example:5158',
+  }, { origin: 'http://localhost:5173' })
+  await api.getModules()
+  assert.equal(calls[0].url, '/_telemetry-api/api/configuration/modules')
+  assert.equal(calls[0].options.headers.Authorization, undefined)
+  await api.getMonitorDevices()
+  assert.equal(calls[1].options.headers.Authorization, 'Bearer test-token')
+  const relativeCalls = []
+  const withoutLocation = await loadApi(async url => { relativeCalls.push(url); return reply({ token: 'token' }) })
+  await withoutLocation.login({ username: 'user', password: 'password' })
+  assert.equal(relativeCalls[0], '/auth/login')
+})
+
 test('new API methods, auth, body, unwrapping and audio URLs remain unchanged', async () => {
   const calls = []
   const api = await loadApi(async (url, options) => { calls.push({ url, options }); return reply({ code: 200, data: { token: 'new-token', id: 1 } }) }, {}, { origin: 'http://localhost:5175' })
