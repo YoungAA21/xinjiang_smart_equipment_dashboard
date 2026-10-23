@@ -3,11 +3,11 @@ import { reportHtml } from '../charts/reportDocument.js'
 import { generateEquipmentReport, loadReportCatalog } from './reports.js'
 
 const key = (owner, kind) => `equipment_dashboard_reports_v2:${encodeURIComponent(owner)}:${kind}`
-const defaults = () => ({ moduleId: '', metrics: reportMetricGroups.map(group => group.id) })
+const defaults = () => ({ moduleId: '', metrics: reportMetricGroups.map(group => group.id), comparison: 'adjacent' })
 
 export function normalizeReportConfiguration(value = {}) {
   const metrics = reportMetricGroups.map(group => group.id).filter(id => value.metrics?.includes(id))
-  return { moduleId: String(value.moduleId || ''), metrics: metrics.length ? metrics : defaults().metrics }
+  return { moduleId: String(value.moduleId || ''), metrics: metrics.length ? metrics : defaults().metrics, comparison: value.comparison === 'same' ? 'same' : 'adjacent' }
 }
 
 function read(owner, kind, fallback, storage) {
@@ -44,16 +44,13 @@ export function saveReportSnapshot(owner, snapshot, { storage = globalThis.local
   return snapshot
 }
 
-// An ended period is materialized once. Viewing an existing snapshot never queries live data.
-export async function resolveReportSnapshot({ owner, selection, configuration, signal, onProgress, presentPoint = point => point, replace = false, storage = globalThis.localStorage, loadCatalog = loadReportCatalog, generate = generateEquipmentReport }) {
+// Querying builds an in-memory result. Persistence is an explicit, separate action.
+export async function queryReport({ owner, selection, configuration, signal, onProgress, presentPoint = point => point, storage = globalThis.localStorage, loadCatalog = loadReportCatalog, generate = generateEquipmentReport }) {
   signal?.throwIfAborted()
-  const ranges = reportRanges(selection)
-  const id = reportSelectionId(selection)
-  if (!replace) {
-    const existing = listReportSnapshots(owner, storage).find(item => item.id === id)
-    if (existing) return existing
-  }
   const config = normalizeReportConfiguration(configuration || loadReportConfiguration(owner, storage))
+  const appliedSelection = { ...selection, comparison: selection.comparison || config.comparison }
+  const ranges = reportRanges(appliedSelection)
+  const id = reportSelectionId(appliedSelection)
   const catalog = await loadCatalog({ signal })
   signal?.throwIfAborted()
   const points = catalog.points.map(presentPoint).filter(point => eligibleReportPoint(point)
@@ -61,14 +58,30 @@ export async function resolveReportSnapshot({ owner, selection, configuration, s
   if (!points.length) throw new Error('当前报告范围没有振动、温度或负压 / 压力测点，请调整报告配置')
   const report = await generate({ points, ranges, signal, onProgress })
   signal?.throwIfAborted()
-  if (!report.rows.some(row => row.current)) throw new Error('本期所有测点查询均失败，报告未保存，请稍后重试')
+  if (!report.rows.some(row => row.current)) throw new Error(`本期所有测点查询均失败：${report.rows[0]?.errors?.join('；') || '请稍后重试'}`)
   const module = catalog.modules.find(item => String(item.moduleId) === config.moduleId)
   const scope = `${config.moduleId ? module?.moduleName || config.moduleId : '全部采集模块'} · ${config.metrics.map(id => reportMetricGroups.find(group => group.id === id).label).join(' / ')}`
-  const title = reportTitle(selection)
-  const snapshot = { id, title, selection: { ...selection }, configuration: config, scope, ranges, generatedAt: report.generatedAt,
+  const title = reportTitle(appliedSelection)
+  const snapshot = { id, title, selection: appliedSelection, configuration: config, scope, ranges, generatedAt: report.generatedAt,
     html: reportHtml({ ...report, catalogErrors: catalog.errors }, { title, scope }) }
   signal?.throwIfAborted()
-  return saveReportSnapshot(owner, snapshot, { replace, storage })
+  return { snapshot, report: { ...report, catalogErrors: catalog.errors } }
+}
+
+// Compatibility for callers explicitly requesting a persisted snapshot.
+export async function resolveReportSnapshot(options) {
+  const { owner, selection, signal, replace = false, storage = globalThis.localStorage, onReport } = options
+  signal?.throwIfAborted()
+  reportRanges(selection)
+  if (!replace) {
+    const existing = listReportSnapshots(owner, storage).find(item => item.id === reportSelectionId(selection))
+    if (existing) return existing
+  }
+  const { snapshot, report } = await queryReport(options)
+  signal?.throwIfAborted()
+  const saved = saveReportSnapshot(owner, snapshot, { replace, storage })
+  onReport?.(report)
+  return saved
 }
 
 export function previousReportSelection(selection) {

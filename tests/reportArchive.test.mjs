@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { generateEquipmentReport } from '../src/services/reports.js'
-import { listReportSnapshots, loadReportConfiguration, previousReportSelection, resolveReportSnapshot, saveReportConfiguration, saveReportSnapshot } from '../src/services/reportArchive.js'
+import { listReportSnapshots, loadReportConfiguration, previousReportSelection, queryReport, resolveReportSnapshot, saveReportConfiguration, saveReportSnapshot } from '../src/services/reportArchive.js'
 
 function memoryStorage() {
   const data = new Map()
@@ -16,7 +16,7 @@ function setup(storage = memoryStorage()) {
     storage, owner: 'alice', selection,
     loadCatalog: async () => { reads++; return { modules: [{ moduleId: 'A' }, { moduleId: 'B' }], points: [temperature, pressure, { ...temperature, pointId: 3, metricType: 'DigitalInput' }], errors: [] } },
     generate: options => generateEquipmentReport({ ...options,
-      telemetry: { getHistory: async query => { calls.push(query.pointId); return { points: [{ collectedAt: query.start, quality: 'Good', value: query.pointId === 2 ? -10 : 0 }] } } },
+      telemetry: { getStoredAggregate: async query => { calls.push(query.pointId); const value = query.pointId === 2 ? -10 : 0; return { query, buckets: [{ bucketStart: query.start, quality: 'Good', minValue: value, maxValue: value, averageValue: value, lastValue: value, sampleCount: 1 }] } } },
       alarms: { getAlarms: async () => ({ events: [] }) }, analysis: { getTrendAlarms: async () => ({ events: [] }) },
     }),
     reads: () => reads, calls: () => calls,
@@ -26,7 +26,7 @@ function setup(storage = memoryStorage()) {
 test('saved report configuration and snapshots are isolated by user', async () => {
   const options = setup()
   saveReportConfiguration('alice', { moduleId: 'B', metrics: ['pressure'] }, options.storage)
-  assert.deepEqual(loadReportConfiguration('alice', options.storage), { moduleId: 'B', metrics: ['pressure'] })
+  assert.deepEqual(loadReportConfiguration('alice', options.storage), { moduleId: 'B', metrics: ['pressure'], comparison: 'adjacent' })
   assert.deepEqual(loadReportConfiguration('bob', options.storage).metrics, ['vibration', 'temperature', 'pressure'])
   const snapshot = await resolveReportSnapshot(options)
   assert.match(snapshot.html, /负压/)
@@ -82,4 +82,28 @@ test('retention preserves the newly requested historical report without storing 
   assert.equal(snapshots[0].id, result.id)
   assert.equal('rows' in snapshots[0], false)
   assert.match(result.html, /&lt;温度&gt;/)
+})
+
+
+test('querying always reads current data and never writes or reuses a saved report', async () => {
+  const options = setup()
+  const first = await queryReport(options)
+  assert.equal(listReportSnapshots('alice', options.storage).length, 0)
+  saveReportSnapshot('alice', first.snapshot, { storage: options.storage })
+  const second = await queryReport({ ...options, configuration: { moduleId: 'B', metrics: ['pressure'], comparison: 'same' } })
+  assert.equal(options.reads(), 2)
+  assert.equal(second.report.rows.length, 1)
+  assert.equal(second.snapshot.selection.comparison, 'same')
+  assert.equal(second.snapshot.ranges.baseline.start, '2026-10-15T18:00:00')
+  assert.equal(listReportSnapshots('alice', options.storage)[0].scope, first.snapshot.scope)
+})
+
+test('query remains usable without archive storage capacity and comparison defaults migrate', async () => {
+  const full = { getItem: () => null, setItem: () => { throw new Error('QuotaExceededError') } }
+  const options = setup(full)
+  const result = await queryReport(options)
+  assert.ok(result.snapshot.html)
+  assert.throws(() => saveReportSnapshot('alice', result.snapshot, { storage: full }), /保存失败/)
+  saveReportConfiguration('alice', { metrics: ['temperature'], comparison: 'same' }, options.storage = memoryStorage())
+  assert.equal(loadReportConfiguration('alice', options.storage).comparison, 'same')
 })

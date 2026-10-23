@@ -6,8 +6,7 @@ export const workspaceSections = [
     { label: '实时监听', path: '/realtime-listen' },
   ] },
   { id: 'analysis', label: '告警分析', path: '/alarm/list', tabs: [
-    { label: '报告查看', path: '/reports/view' },
-    { label: '报告配置', path: '/reports', exact: true },
+    { label: '设备报告', path: '/reports' },
     { label: '告警管理', path: '/alarm/list' },
   ] },
   { id: 'configuration', label: '数据配置', path: '/gateway/communication', tabs: [

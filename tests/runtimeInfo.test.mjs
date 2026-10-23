@@ -5,6 +5,23 @@ import vm from 'node:vm'
 import * as vue from 'vue'
 import * as endpoints from '../src/services/endpoints.js'
 
+test('production runtime APIs use the shared 5158 prefix route, including future endpoints', async () => {
+  const config = await readFile(new URL('../../nginx.conf', import.meta.url), 'utf8')
+  const locations = [...config.matchAll(/location ~ (\S+) \{([\s\S]*?)\n        \}/g)]
+  const entry = locations.find(([, pattern]) => new RegExp(pattern).test('/_runtime-api/api/runtime-info/latest'))
+  assert.ok(entry)
+  const [, pattern, route] = entry
+  assert.match(route, /proxy_pass http:\/\/127\.0\.0\.1:5158;/)
+  assert.ok(route.includes('rewrite ^/_[^/]+(/.*)$ $1 break;'))
+  assert.match(route, /proxy_set_header Authorization "";/)
+  assert.match(route, /proxy_set_header Cookie "";/)
+  assert.match(route, /proxy_cache off;/)
+  assert.doesNotMatch(route, /limit_except|try_files/)
+  assert.equal(new RegExp(pattern).test('/_runtime-api/api/runtime-info/future'), true)
+  assert.equal(new RegExp(pattern).test('/_runtime-apix/api/runtime-info/latest'), false)
+  assert.ok(config.indexOf(entry[0]) < config.indexOf('location / {', config.indexOf('listen 80;')))
+})
+
 async function load(file, dependencies, globals = {}) {
   const context = vm.createContext({ AbortController, AbortSignal, ...globals })
   const module = new vm.SourceTextModule(await readFile(new URL(file, import.meta.url), 'utf8'), { context })

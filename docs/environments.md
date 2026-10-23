@@ -58,12 +58,12 @@ Vite 变量覆盖优先级（从高到低）：启动进程的环境变量、`.e
 
 | 浏览器入口 | 转发服务 | 转发规则 |
 |---|---|---|
-| `/_health-api/api/health`、`/detail`、`/table-maintenance` | 采集 5158 | 移除 `/_health-api`，仅白名单路径 |
-| `/_telemetry-api/api/configuration/modules`、模块测点、实时值、历史、点位限值 | 采集 5158 | 移除 `/_telemetry-api`，仅白名单路径 |
-| `/_alarm-api/api/analysis/alarms`、`status` | 采集 5158 | 移除 `/_alarm-api` |
-| `/_analysis-api/api/analysis/daily-limit-trends`、`trend-insights`、`trend-alarms` | 采集 5158 | 移除 `/_analysis-api` |
-| `/_runtime-api/api/runtime-info/latest` | 采集 5158 | 移除 `/_runtime-api` |
-| `/_configuration-api/api/frontend-files/{文件名}` | 采集 5158 | 移除 `/_configuration-api` |
+| `/_health-api/` | 采集 5158 | 按前缀转发，移除 `/_health-api` |
+| `/_telemetry-api/` | 采集 5158 | 按前缀转发，移除 `/_telemetry-api` |
+| `/_alarm-api/` | 采集 5158 | 按前缀转发，移除 `/_alarm-api` |
+| `/_analysis-api/` | 采集 5158 | 按前缀转发，移除 `/_analysis-api` |
+| `/_runtime-api/` | 采集 5158 | 按前缀转发，移除 `/_runtime-api` |
+| `/_configuration-api/` | 采集 5158 | 按前缀转发，移除 `/_configuration-api` |
 | `/auth`、`/monitor`、`/alarm`、`/collectorManagement`、`/recordings`、`/api` | 声纹 18080 | 保留完整 URI，支持 WebSocket |
 
 采集代理会移除 Authorization 和 Cookie；声纹业务请求保留令牌，登录请求不主动携带已有令牌。未迁移旧接口仍默认禁用；即使手动启用，也使用采集专用入口，不能借用声纹 `/api` 代理。
@@ -72,24 +72,12 @@ Vite 变量覆盖优先级（从高到低）：启动进程的环境变量、`.e
 
 1. 执行 `npm run build`，读取 `.env.production` 及其本地覆盖文件。
 2. 将完整 `dist` 内容更新到部署服务器实际 Nginx 配置的站点根目录，路径以服务器配置为准。
-3. 浏览器访问 Nginx 地址。采集服务使用 `/_telemetry-api`、`/_health-api`、`/_alarm-api`、`/_analysis-api`、`/_runtime-api` 前缀；Nginx 去掉前缀后转发至采集服务。
+3. 浏览器访问 Nginx 地址。采集服务使用 `/_telemetry-api`、`/_health-api`、`/_alarm-api`、`/_analysis-api`、`/_runtime-api`、`/_configuration-api` 前缀；Nginx 去掉前缀后转发至采集服务。
 4. 声纹接口使用 `/auth`、`/monitor`、`/api` 等既有路径，保留完整 URI 转发至声纹服务。WebSocket 沿用现有 Upgrade 配置。
 
-现有 Nginx 配置集中定义两个上游：
+工作区上级目录 nginx.conf 是需要同步到服务器的配置。80 端口站点用一条前缀规则把上述六组采集请求转发到 127.0.0.1:5158；既有声纹路径仍转发到 localhost:18080，8080 站点保持原规则。如果后端与 Nginx 不在同机，修改对应 proxy_pass 地址。
 
-```nginx
-upstream equipment_backend {
-    server 127.0.0.1:5158;
-    keepalive 16;
-}
-
-upstream soundvoice_backend {
-    server 127.0.0.1:18080;
-    keepalive 32;
-}
-```
-
-这表示 Nginx 与两个后端运行在同一台服务器。若不在同机，修改对应 upstream 地址即可。保留现有采集接口白名单、PATCH 限值路由和 Authorization/Cookie 清除规则，采集请求不携带声纹登录凭据。
+现有前缀下新增普通 HTTP 接口不再修改 Nginx 或 Vite：GET、POST、PUT、PATCH、DELETE 等方法交由后端处理，保留查询参数和请求体；移除采集请求的 Authorization/Cookie，禁用代理缓存，读取/发送超时为 120 秒，上传上限 50 MB。不支持的后端接口保持后端错误码；未配置的服务前缀返回 404，不落入 index.html。后端自身的认证和方法约束仍由后端执行。
 
 生产 `.env` 中的代理目标只供本地 `preview` 使用，修改它不会改变已部署 Nginx 的 upstream。生产同源部署更换后端地址只需修改 Nginx；更改 `VITE_*` 则需要重新构建前端。
 
@@ -127,6 +115,18 @@ npm run check:api -- --offline
 
 浏览器通过 /_configuration-api/api/frontend-files/监测参数配置.json 调用 5158 的 GET/PUT 文件接口，不携带声纹 Authorization 或 Cookie，GET 禁用缓存，204 代表服务器尚无文件。Vite 开发/调试/预览由同一配置提供专用代理。
 
-生产部署需在服务器实际 Nginx 配置中添加专用 location，剥离 /_configuration-api，允许 GET/PUT/OPTIONS，禁用代理缓存，单文件上限 5 MB，并清除 Authorization 和 Cookie。仅更新 dist 而未更新 Nginx 会导致读取或上传失败。部署环境执行 nginx -t 后再重载；前端代码修改不自动重载生产 Nginx。
+生产配置已通过统一 /_configuration-api/ 前缀转发至 5158，剥离前缀、禁用缓存，并清除 Authorization 和 Cookie。Nginx 上传上限 50 MB，当前前端导入配置仍限制为 5 MB。仅更新 dist 而未更新 Nginx 会导致读取或上传失败。部署环境执行 nginx -t 后再重载；前端代码修改不自动重载生产 Nginx。
 
 首次服务器为空时自动使用内置配置，参数页点击“上传配置”后即可共享；同名文件按后端规则覆盖。导入文件不会自动上传，需点击上传配置。并发客户端的写入以服务器最后一次成功 PUT 为准。
+
+## 机台运行信息返回 200 但没有数据
+
+GET /_runtime-api/api/runtime-info/latest 应由生产 Nginx 的统一前缀规则转发到 http://127.0.0.1:5158/api/runtime-info/latest（Nginx 与采集后端部署在同一服务器）。若返回 200 且 Content-Type 为 text/html，说明可能落入 SPA 的 index.html 回退，HTTP 200 不代表接口调用成功。Vite 开发代理只在开发/预览时生效，不能代替服务器上的 Nginx 规则。
+
+工作区上级目录 nginx.conf 已将六个服务前缀统一转发到 5158，不再逐个枚举接口；不存在的接口由后端返回错误，未配置的服务前缀由 Nginx 返回 404。部署时合并到实际加载配置的 80 端口 server 块，然后在 Nginx 安装目录执行 nginx.exe -t，检查成功后再执行 nginx.exe -s reload。没有修改前端代码，无需为此次代理修复重建 dist。当前环境没有服务器的 Nginx 进程访问能力，仓库中的修改不会自动影响线上。
+
+验收：通过站点访问 /_runtime-api/api/runtime-info/latest，应得到 application/json，包含 status、summary 等字段；与直连 5158 的相同接口对照。若仍返回 HTML，可执行 nginx.exe -T 确认修改的是实际加载的配置文件及对应站点。
+
+## 报告聚合历史
+
+报告通过 `/_telemetry-api/api/telemetry/history/aggregate-stored` 访问 5158，固定 `bucketMinutes=5&limit=200`。沿用统一前缀转发，无需为新增路径添加 Nginx location。日报分段读取；HTTP 错误保留为失败提示，不转为无数据或零值。

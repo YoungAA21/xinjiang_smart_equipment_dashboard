@@ -8,6 +8,7 @@ const point = { pointId: 35, moduleId: 'TEMP01', channelId: 'AI01', pointCode: '
 const range = { start: '2026-10-16T00:00:00', end: '2026-10-16T01:00:00', hours: 1 }
 const start = Date.parse(range.start)
 const sample = (minute, value, extra = {}) => ({ collectedAt: new Date(start + minute * 60000).toISOString(), value, quality: 'Good', ...extra })
+const aggregate = (samples, extra = {}) => ({ buckets: samples.map(row => ({ bucketStart: row.collectedAt, minValue: row.value, maxValue: row.value, averageValue: row.value, lastValue: row.value, sampleCount: 1, quality: row.quality })), ...extra })
 const now = new Date('2026-10-18T12:00:00')
 
 test('report defaults always select the most recent completed shift, including the idle period', () => {
@@ -50,20 +51,20 @@ test('cleaning preserves zero/negative readings, rejects unknown quality, isolat
 })
 
 test('report generation accepts numeric Good quality from collection history without admitting bad or missing readings', async () => {
-  const readings = Array.from({ length: 60 }, (_, i) => sample(i, i - 1, { quality: 1 }))
+  const readings = Array.from({ length: 12 }, (_, i) => sample(i * 5, i - 1, { quality: 1 }))
   const rejected = [0, 2, 3, null, undefined, '1', 'Bad'].map((quality, i) => sample(i + 0.5, 999, { quality }))
   rejected.push(sample(7.5, null, { quality: 1 }), sample(8.5, '32.9', { quality: 1 }))
   const report = await generateEquipmentReport({ points: [point], ranges: { current: range, baseline: range },
-    telemetry: { getHistory: async () => ({ points: [...readings, ...rejected] }) },
+    telemetry: { getStoredAggregate: async () => aggregate([...readings, ...rejected]) },
     alarms: { getAlarms: async () => ({ events: [] }) }, analysis: { getTrendAlarms: async () => ({ events: [] }) },
   })
   const row = report.rows[0]
-  assert.equal(row.current.count, 60)
+  assert.equal(row.current.count, 12)
   assert.equal(row.current.invalid, rejected.length)
   assert.equal(row.current.coverage, 1)
   assert.equal(row.current.min, -1)
-  assert.equal(row.current.max, 58)
-  assert.equal(row.current.mean, 28.5)
+  assert.equal(row.current.max, 10)
+  assert.equal(row.current.mean, 4.5)
   assert.equal(row.change.percent, 0)
 })
 
@@ -140,10 +141,10 @@ test('report catalogs include only key measurements and reject mismatched catalo
 })
 
 test('report generation exposes partial errors and exports a standalone HTML report without IO', async () => {
-  const samples = Array.from({ length: 60 }, (_, i) => sample(i, i))
+  const samples = Array.from({ length: 12 }, (_, i) => sample(i * 5, i))
   const io = { ...point, pointId: 36, pointCode: 'DI01', metricType: 'DigitalInput' }
   const report = await generateEquipmentReport({ points: [point, io], ranges: { current: range, baseline: range },
-    telemetry: { getHistory: async query => ({ pointId: query.pointId, points: query.pointId === 35 ? samples : [sample(0, 0), sample(0.1, 1), sample(0.2, 1)] }) },
+    telemetry: { getStoredAggregate: async query => aggregate(samples, { query }) },
     alarms: { getAlarms: async () => { throw new Error('HTTP 500') } }, analysis: { getTrendAlarms: async () => ({ events: [] }) },
   })
   assert.equal(report.sources.hard.current.events, null); assert.match(report.sources.hard.current.error, /500/)
@@ -162,7 +163,7 @@ test('report generation exposes partial errors and exports a standalone HTML rep
 test('sparse and truncated histories never yield a period comparison', async () => {
   for (const truncated of [false, true]) {
     const report = await generateEquipmentReport({ points: [point], ranges: { current: range, baseline: range },
-      telemetry: { getHistory: async () => ({ points: truncated ? Array.from({ length: 60 }, (_, i) => sample(i, 1)) : [sample(0, 1)], truncated }) },
+      telemetry: { getStoredAggregate: async () => aggregate(truncated ? Array.from({ length: 12 }, (_, i) => sample(i * 5, 1)) : [sample(0, 1)], { truncated }) },
       alarms: { getAlarms: async () => ({ events: [] }) }, analysis: { getTrendAlarms: async () => ({ events: [] }) },
     })
     assert.equal(report.rows[0].change.delta, null); assert.equal(report.rows[0].current.slope, null)

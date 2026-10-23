@@ -10,16 +10,21 @@ export function configureHistoryReader(createReader) {
 }
 
 async function get(path, params = {}, { signal } = {}) {
-  const history = path === '/api/telemetry/history'
+  const history = path.startsWith('/api/telemetry/history')
   const timeout = AbortSignal.timeout(history ? 120000 : 10000)
   const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))
   try {
     const response = await fetch(`${BASE}${path}${query.size ? `?${query}` : ''}`, {
       headers: { Accept: 'application/json' },
+      credentials: 'omit',
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     })
     if (!response.ok) throw new Error(`采集接口请求失败（HTTP ${response.status}）`)
-    return await response.json()
+    try { return await response.json() }
+    catch (error) {
+      if (error.name === 'SyntaxError') throw new Error('采集接口未返回有效 JSON，请检查后端响应与代理配置', { cause: error })
+      throw error
+    }
   } catch (error) {
     if (history && error.name === 'TimeoutError') throw new Error('历史查询超时（120 秒），请缩短时间范围后重试', { cause: error })
     throw error
@@ -70,6 +75,12 @@ export const telemetryApi = {
   getModules: (options) => get('/api/configuration/modules', {}, options),
   getModulePoints,
   getLatest: (options) => get('/api/realtime/latest', {}, options),
+  getStoredAggregate: (query, options) => {
+    const validated = validateHistoryQuery(query)
+    const bucketMinutes = Number(query.bucketMinutes ?? 5)
+    if (!Number.isInteger(bucketMinutes) || bucketMinutes <= 0 || 1440 % bucketMinutes !== 0) throw new Error('聚合分钟数必须为 1440 的正整数因数')
+    return get('/api/telemetry/history/aggregate-stored', { ...validated, bucketMinutes }, options)
+  },
   getHistory: (query, options) => {
     const validated = validateHistoryQuery(query)
     return historyReader ? historyReader(validated, options) : get('/api/telemetry/history', validated, options)

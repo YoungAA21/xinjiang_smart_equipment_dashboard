@@ -1,7 +1,8 @@
 import { telemetryApi } from './telemetry.js'
 import { alarmApi } from './alarms.js'
 import { analysisApi } from './analysis.js'
-import { eligibleReportPoint, cleanReportSamples, reportEvents, summarizeReportSamples, reportChange } from '../charts/reportAnalysis.js'
+import { eligibleReportPoint, reportEvents, reportChange } from '../charts/reportAnalysis.js'
+import { reportAggregateQueries, summarizeReportBuckets } from '../charts/reportAggregates.js'
 
 const abort = signal => signal?.throwIfAborted()
 
@@ -47,11 +48,12 @@ export async function generateEquipmentReport({ points, ranges, signal, onProgre
   const results = await reportPool(jobs, async job => {
     const range = ranges[job.period]
     if (job.kind === 'history') {
-      const result = await telemetry.getHistory({ pointId: job.point.pointId, start: range.start, end: range.end, limit: 100000 }, { signal })
-      if (!Array.isArray(result?.points) || (result.pointId != null && String(result.pointId) !== String(job.point.pointId))) throw new Error('历史点位返回格式不正确')
-      const clean = cleanReportSamples(result.points, job.point, range)
-      const truncated = result.truncated === true || result.points.length >= 100000
-      return { clean, summary: summarizeReportSamples(clean, job.point, range, truncated) }
+      const chunks = []
+      for (const query of reportAggregateQueries(job.point.pointId, range)) {
+        abort(signal)
+        chunks.push(await telemetry.getStoredAggregate(query, { signal }))
+      }
+      return { summary: summarizeReportBuckets(chunks, job.point, range) }
     }
     const result = await (job.kind === 'hard' ? alarms.getAlarms : analysis.getTrendAlarms)({ start: range.start, end: range.end, limit: 1000 }, { signal })
     const events = Array.isArray(result) ? result : result?.events
@@ -76,11 +78,11 @@ export async function generateEquipmentReport({ points, ranges, signal, onProgre
     const comparable = row.kind === 'analog' && row.current?.count > 0 && row.baseline?.count > 0 && !row.current.truncated && !row.baseline.truncated
       && row.current.coverage >= 0.6 && row.baseline.coverage >= 0.6
     row.change = reportChange(comparable ? row.current.mean : null, comparable ? row.baseline.mean : null)
-    row.attention = row.errors.length > 0 || !row.current?.count || row.current.truncated || row.current.coverage < 0.6
-      || (row.current.overCount || 0) > 0 || (row.change.percent !== null && Math.abs(row.change.percent) >= 10)
-    row.priority = (row.current?.overCount ? 100 : 0) + (row.attention ? 10 : 0) + Math.min(Math.abs(row.change.percent || 0), 50)
+    row.attention = row.errors.length > 0 || !row.current?.count || row.current.truncated || row.current.missingBuckets > 0 || row.current.invalid > 0
+      || (row.current.overBuckets || 0) > 0 || (row.change.percent !== null && Math.abs(row.change.percent) >= 10)
+    row.priority = (row.current?.overBuckets ? 100 : 0) + (row.attention ? 10 : 0) + Math.min(Math.abs(row.change.percent || 0), 50)
   }
   rows.sort((a, b) => b.priority - a.priority)
-  return { rows, sources, ranges, generatedAt: new Date().toISOString() }
+  return { dataSource: 'aggregate-stored', rows, sources, ranges, generatedAt: new Date().toISOString() }
 }
 

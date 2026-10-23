@@ -91,7 +91,7 @@ test('event parsing rejects unknown envelopes and preserves alarm display helper
   assert.equal(alarmValue(null), '—')
 })
 
-test('development alarm proxy only permits two read-only endpoints', async () => {
+test('development alarm prefix forwards existing and future endpoints to collection', async () => {
   let url
   const context = vm.createContext({ URLSearchParams, AbortSignal, fetch: async (value) => { url = value; return reply({ events: [] }) } })
   const endpointModule = new vm.SourceTextModule(await readFile(new URL('../src/services/endpoints.js', import.meta.url), 'utf8'), { context })
@@ -102,10 +102,11 @@ test('development alarm proxy only permits two read-only endpoints', async () =>
   assert.equal(url, '/_alarm-api/api/analysis/alarms?limit=200')
   const { default: config } = await import('../vite.config.build.js')
   const proxies = config({ mode: 'test' }).server.proxy
-  const key = Object.keys(proxies).find((key) => key.startsWith('^/_alarm-api/'))
+  const key = Object.keys(proxies).find((key) => new RegExp(key).test('/_alarm-api/api/future'))
   const pattern = new RegExp(key)
   for (const path of ['/_alarm-api/api/analysis/alarms?isActive=false', '/_alarm-api/api/analysis/status']) assert.ok(pattern.test(path))
-  for (const path of ['/_alarm-api/api/analysis/alarms/confirm', '/_alarm-api/alarm/page', '/alarm/page', '/_alarm-api/api/modbus-writebacks/trigger']) assert.equal(pattern.test(path), false)
+  for (const path of ['/_alarm-api/api/analysis/alarms/confirm', '/_alarm-api/alarm/page', '/_alarm-api/api/future']) assert.equal(pattern.test(path), true)
+  for (const path of ['/alarm/page', '/_alarm-apix/api/anything']) assert.equal(pattern.test(path), false)
 })
 
 test('collection alarm panel uses the shared equipment point query and hierarchy selector', async () => {

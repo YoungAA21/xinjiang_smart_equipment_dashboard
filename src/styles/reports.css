@@ -139,6 +139,43 @@
 .report-view-page .report-archive-select { margin-left: auto; }
 .report-snapshot-label { margin-left: auto; }
 .report-document-frame { display: block; flex: 1 0 480px; width: 100%; border: 1px solid var(--report-border); border-radius: 7px; background: var(--report-surface); }
+.report-period-summary .report-bucket-expectation { margin-left: 24px; margin-right: 0; }
+.report-bucket-details { max-height: 380px; }
+.report-bucket-details thead { position: sticky; top: 0; background: var(--report-surface); }
+.report-bucket-dialog.el-dialog { height: auto; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; padding: 20px; background: var(--report-surface); border: 1px solid var(--report-border); border-radius: 8px; }
+.report-bucket-dialog .el-dialog__header { padding-bottom: 16px; border-bottom: 1px solid var(--report-border); margin-bottom: 16px; }
+.report-bucket-dialog .el-dialog__title { color: var(--report-text); font-size: 18px; font-weight: 600; }
+.report-bucket-dialog .el-dialog__headerbtn { border: 0; background: transparent; top: 12px; right: 12px; }
+.report-bucket-dialog .el-dialog__headerbtn .el-dialog__close { color: var(--report-muted); }
+.report-bucket-dialog .el-dialog__body { min-height: 0; overflow: auto; color: var(--report-text); }
+.report-bucket-dialog .el-dialog__footer { border-top: 1px solid var(--report-border); margin-top: 16px; padding-top: 16px; }
+.report-bucket-dialog .report-bucket-details { max-height: 36vh; }
+.report-bucket-dialog .report-bucket-chart svg { height: 160px; }
+.report-aggregate-metrics article { justify-content: flex-start; }
+.equipment-report-page .report-generate:hover:not(:disabled) { background: #b9ff96; color: #10201c; border-color: #b9ff96; }
+.report-bucket-chart { color: var(--report-accent); background: var(--report-surface-soft); border: 1px solid var(--report-border); border-radius: 5px; padding: 14px; margin-bottom: 16px; }
+.report-bucket-chart svg { display: block; width: 100%; height: 180px; }
+.report-bucket-chart .report-section-heading, .report-bucket-chart-axis { display: flex; justify-content: space-between; color: var(--report-muted); font-size: 12px; }
+.report-rule-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.report-rule-cards article { display: grid; gap: 7px; background: var(--report-surface-soft); border: 1px solid var(--report-border); border-radius: 6px; padding: 18px; }
+.report-rule-cards span { color: var(--report-muted); font-size: 13px; }
+.report-rule-cards strong { font-size: 20px; font-weight: 550; }
+.report-default-comparison { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+.report-configuration-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; margin-bottom: 16px; }
+.report-save-success { color: var(--report-accent); }
+.report-archive-bar, .report-archive-bar label { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+.report-archive-bar > span { margin-left: auto; }
+.report-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 4px 0 16px; }
+.report-result-heading p { font-size: 12px; }
+.report-document-details summary { cursor: pointer; }
+.report-document-details .report-document-frame { height: 660px; margin-top: 16px; }
+.report-view-page > .report-document-details { flex-shrink: 0; }
+.report-settings-panel { padding: 16px; margin-bottom: 14px; border: 1px solid var(--report-border); border-radius: 7px; background: var(--report-surface-soft); }
+.report-settings-panel > .report-section-heading { margin-bottom: 16px; }
+.report-settings-panel .report-configuration-section { padding: 16px; }
+.report-settings-panel .report-metric-choices { margin: 14px 0 20px; }
+.report-settings-panel .report-metric-choices label { padding: 14px 18px; }
+.report-heading-actions button[aria-expanded=true] { border-color: var(--report-accent); color: var(--report-accent); }
 @media (max-width: 1350px) {
   .report-metrics article { padding: 0 12px; gap: 9px; }
   .report-metrics small { font-size: 10px; }
@@ -146,6 +183,8 @@
   .report-query-controls label select { max-width: 190px; }
 }
 @media (max-width: 900px) {
+  .report-rule-cards { grid-template-columns: 1fr; }
+  .report-result-heading { flex-wrap: wrap; }
   .report-metric-choices { grid-template-columns: 1fr; gap: 10px; }
   .report-metric-choices label { padding: 14px; }
   .report-configuration-section { padding: 16px; }

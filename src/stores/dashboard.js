@@ -120,7 +120,7 @@ export const useDashboardStore = defineStore('dashboard', {
       { label: '网关通讯', icon: Router, path: '/gateway/communication' },
       { label: '实时监听', icon: RadioTower, path: '/realtime-listen' },
       { label: '告警管理', icon: AlarmClock, path: '/alarm/list' },
-      { label: '班报与日报', icon: ClipboardList, path: '/reports' },
+      { label: '设备报告', icon: ClipboardList, path: '/reports' },
       { label: '参数配置', icon: MonitorCog, path: '/settings/parameters' },
     ],
     apiStatus: 'error',

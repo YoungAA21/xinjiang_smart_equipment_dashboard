@@ -20,7 +20,7 @@ test('documented collection configuration sends latest through the original 5158
   const { default: config } = await import('../vite.config.build.js')
   const proxies=config({mode:'development'}).server.proxy
   const key=Object.keys(proxies).find(key=>new RegExp(key).test(calls[0]))
-  assert.ok(key.startsWith('^/_telemetry-api/'))
+  assert.ok(key.startsWith('^/_'))
   assert.equal(proxies[key].target,'http://66.66.66.4:5158')
   assert.equal(proxies[key].rewrite(calls[0]),'/api/realtime/latest')
 })

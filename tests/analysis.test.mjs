@@ -76,7 +76,7 @@ test('analysis query validation enforces endpoint constraints and complete time 
   assert.deepEqual(validateAnalysisQuery({ pointId: '', isActive: 'false' }, { pointRequired: false, includeStatus: true }), { isActive: false, limit: 200 })
 })
 
-test('development proxy permits only the trend analysis endpoints', async () => {
+test('development analysis prefix forwards existing and future endpoints without leaking to acoustic routes', async () => {
   let url
   const context = vm.createContext({ fetch: async (value) => { url = value; return reply({ events: [] }) }, URLSearchParams, AbortSignal })
   const endpointModule = new vm.SourceTextModule(await readFile(new URL('../src/services/endpoints.js', import.meta.url), 'utf8'), { context })
@@ -91,7 +91,7 @@ test('development proxy permits only the trend analysis endpoints', async () => 
   const resolvedConfig = config({ mode: 'test' })
   const proxies = resolvedConfig.server.proxy
   assert.equal(resolvedConfig.preview.proxy, proxies)
-  const pattern = new RegExp(Object.keys(proxies).find((key) => key.startsWith('^/_analysis-api/')))
+  const pattern = new RegExp(Object.keys(proxies).find((key) => new RegExp(key).test('/_analysis-api/api/future')))
   for (const path of [
     '/_analysis-api/api/analysis/daily-limit-trends?pointId=35',
     '/_analysis-api/api/analysis/trend-insights',
@@ -104,7 +104,8 @@ test('development proxy permits only the trend analysis endpoints', async () => 
     '/_analysis-api/api/configuration/points/35/limits',
     '/_analysis-api/api/configuration/points/35/limits/history',
     '/_analysis-api/api/modbus-writebacks/trigger',
-  ]) assert.equal(pattern.test(path), false)
+  ]) assert.equal(pattern.test(path), true)
+  for (const path of ['/api/analysis/trend-insights', '/monitor/devices', '/_analysis-apix/api/anything']) assert.equal(pattern.test(path), false)
 })
 
 test('trend chart helpers preserve zero values and map risk labels', () => {

@@ -26,41 +26,15 @@ export function createBaseConfig({ mode }) {
   // Proxy targets stay in Node; VITE_* base URLs are optional browser-side overrides.
   const { collection: api5158Target, acoustic: api18080Target } = resolveProxyTargets(env)
   const proxy = {
-    '^/_configuration-api/api/frontend-files/[^/?]+(?:\\?.*)?$': {
+    '^/_(?:telemetry|health|alarm|analysis|runtime|configuration)-api/': {
       target: api5158Target,
       changeOrigin: true,
-      rewrite: (path) => path.replace(/^\/_configuration-api/, ''),
-    },
-    '^/_runtime-api/api/runtime-info/latest$': {
-      target: api5158Target,
-      changeOrigin: true,
-      rewrite: (path) => path.replace(/^\/_runtime-api/, ''),
+      rewrite: (path) => path.replace(/^\/_[^/]+/, ''),
     },
     '^/(?:api|auth|monitor|alarm|collectorManagement|recordings)(?:/|$)': {
       target: api18080Target,
       changeOrigin: true,
       ws: true,
-    },
-    '^/_analysis-api/api/analysis/(?:daily-limit-trends|trend-insights|trend-alarms)(?:\\?.*)?$': {
-      target: api5158Target,
-      changeOrigin: true,
-      rewrite: (path) => path.replace(/^\/_analysis-api/, ''),
-    },
-    '^/_alarm-api/api/analysis/(?:alarms|status)(?:\\?.*)?$': {
-      target: api5158Target,
-      changeOrigin: true,
-      rewrite: (path) => path.replace(/^\/_alarm-api/, ''),
-    },
-    // Scope this migration to three read-only health endpoints.
-    '^/_health-api/api/health(?:/detail|/table-maintenance)?$': {
-      target: api5158Target,
-      changeOrigin: true,
-      rewrite: (path) => path.replace(/^\/_health-api/, ''),
-    },
-    '^/_telemetry-api/api/(?:configuration/modules(?:/[^/?]+/points)?|configuration/points/[0-9]+/limits|realtime/latest|telemetry/history)(?:\\?.*)?$': {
-      target: api5158Target,
-      changeOrigin: true,
-      rewrite: (path) => path.replace(/^\/_telemetry-api/, ''),
     },
   }
   // Same-origin browser cookies must not cross into collection services.

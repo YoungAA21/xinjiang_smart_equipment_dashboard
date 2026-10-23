@@ -76,7 +76,7 @@ VITE_LOGIN_API_URL=http://66.66.66.4:18080/auth/login
 
 ## 说明
 
-「报告配置」（`/#/reports`）设置采集范围与振动、温度、负压 / 压力三类重点指标，生成已结束班次或自然日的固定 HTML 报告。「报告查看」（`/#/reports/view`）默认打开最近已结束的上一班，可切换班次、日期、日报或已存报告，并下载可离线阅读、打印的 HTML 文件。首次查看未存档周期时按已保存配置汇总，已存报告直接读取快照；配置页可重新生成同周期报告。配置与最近 60 份报告按登录用户保存在当前浏览器，尚无服务端定时生成或跨浏览器共享。仅复用现有采集历史、告警与趋势接口，没有新增后端接口。缺数、失败和查询上限分别提示；当前阈值重算的越限不替代历史正式告警。详见 [设备报告说明](docs/equipment-reports.md)。
+「设备报告」（`/#/reports`）将报告配置、查询、查看和本机存档合并到一个页面。点击页头“报告配置”展开关注指标、采集范围、固定班次规则及默认对比方式；保存配置后在同页选择日期和班次，点击“查询报告”展示汇总、缺失桶、趋势和时间桶明细。进入页面、展开配置或切换条件均不自动查询；未保存的配置会提示并暂不可查询。查询结果按需保存或下载 HTML，旧存档仍直接读取固定快照。旧链接 `/#/reports/view?report=...` 自动转到合并页并保留存档参数。聚合接口固定 5 分钟粒度：白班 09:30–18:00（102 桶），夜班 18:00–次日 02:00（96 桶），日报 288 桶分段读取。详见 [设备报告说明](docs/equipment-reports.md)。
 
 - 页面入口：`src/App.vue`
 - 图表封装：`src/components/EChart.vue`
@@ -87,7 +87,7 @@ VITE_LOGIN_API_URL=http://66.66.66.4:18080/auth/login
 
 首页请求采集服务的 `GET /api/health`、`GET /api/health/detail`、`GET /api/health/table-maintenance`，同时复用声纹服务的 `GET /monitor/devices`。默认每 15 秒刷新，可暂停或手动刷新，离开首页即停止轮询并取消未完成请求。各业务独立处理，超时为 10 秒。健康详情返回 HTTP 503 时仍展示 JSON 检查结果；请求失败保留上次数据并明确提示。
 
-本地开发通过 `/_health-api` 同源代理连接 `API_PROXY_TARGET`，默认 `http://66.66.66.4:5158`，代理仅匹配上述三个健康接口，不转发其他旧接口或 18080 接口。生产环境同样请求 `/_health-api`，由 Nginx 转发到 `equipment_backend`。需更换开发后端时，在 `.env.development.local` 设置 `API_PROXY_TARGET`；需要浏览器直接访问独立服务时，才设置 `VITE_API_BASE_URL`。
+本地开发通过 `/_health-api` 同源代理连接 `API_PROXY_TARGET`，默认 `http://66.66.66.4:5158`，代理按 /_health-api/ 前缀统一转发，新增健康接口无需逐个修改代理；18080 接口继续使用独立路由。生产环境同样请求 /_health-api/，由 Nginx 转发到采集服务 5158。需更换开发后端时，在 `.env.development.local` 设置 `API_PROXY_TARGET`；需要浏览器直接访问独立服务时，才设置 `VITE_API_BASE_URL`。
 
 `src/services/health.js` 使用独立请求通道，不携带 18080 服务的登录令牌。首页的新设备列表通过现有 `api.getMonitorDevices` 使用 18080 的登录令牌；没有新增监听会话或音频连接。未配置 `VITE_NEW_API_BASE_URL` 时，开发环境通过 Vite 的 `ACOUSTIC_PROXY_TARGET`、生产环境通过 Nginx 的 `soundvoice_backend` 同源转发，避免浏览器跨域请求；监听 WebSocket 和录音地址也使用同一入口。登录、鉴权和其他页面业务接口保持不变。其他旧接口继续由 `VITE_LEGACY_API_DISABLED` 控制，默认停用。
 
@@ -127,7 +127,7 @@ npm run build
 
 “趋势报警”通过 `GET /api/analysis/trend-alarms` 查询趋势报警事件。页面支持上述设备点位层级、时间、活动状态和返回条数筛选，列表带分页；趋势变化折线图可单独选择参数，按参数身份和事件单位分组，避免温度、振动或历史不同单位的值混接成同一曲线。事件详情点击表格行后以浮层查看。分类使用当前配置，调整归属后历史事件也按当前归属展示；事件的阈值、数值、状态和已有单位保留后端数据。
 
-开发和生产环境中采集报警使用 `/_alarm-api`，趋势接口使用独立 `/_analysis-api` 白名单代理，均由服务器同源转发到采集服务，也可用 `VITE_API_BASE_URL` 覆盖。采集服务请求不携带声纹服务令牌。声纹告警接口方法保留供后续恢复，当前告警管理不调用。
+开发和生产环境中采集报警使用 `/_alarm-api`，趋势接口使用独立 `/_analysis-api` 前缀代理，均由服务器同源转发到采集服务，也可用 `VITE_API_BASE_URL` 覆盖。采集服务请求不携带声纹服务令牌。声纹告警接口方法保留供后续恢复，当前告警管理不调用。
 
 ## 实时监听
 
@@ -143,11 +143,11 @@ npm run build
 
 2026-09-03 曾对旧地址 `192.168.31.158:5158` 做只读联调：硬限值报警、每日限值趋势、趋势洞察和趋势报警接口均返回 HTTP 200。当前后端地址为 `66.66.66.4`。
 
-使用 `npm run preview` 运行生产构建时，Vite Preview 已配置与开发服务器相同的 5158 白名单代理。修改 `vite.config.build.js` 后必须停止并重新启动 Preview 进程，仅重新执行 `npm run build` 不会更新正在运行的代理配置。
+使用 `npm run preview` 运行生产构建时，Vite Preview 已配置与开发服务器相同的 5158 服务前缀代理。修改 `vite.config.build.js` 后必须停止并重新启动 Preview 进程，仅重新执行 `npm run build` 不会更新正在运行的代理配置。
 
 ## Nginx 生产代理
 
-生产使用部署服务器实际的 Nginx 配置；Vite 代理变量只影响开发和本地预览，不会改写 Nginx。采集专用前缀转发至 equipment_backend（5158）并移除前缀，清除 Authorization/Cookie；声纹路径保留完整 URI，转发至 soundvoice_backend（18080），支持 WebSocket。保持采集白名单及点位限值 PATCH、配置文件 GET/PUT 路由。修改后执行 nginx -t，再执行 nginx -s reload。完整路由表和超时排查见 [环境与部署说明](docs/environments.md)。
+生产使用工作区上级目录 nginx.conf。Vite 和 Nginx 均按 /_telemetry-api/、/_health-api/、/_alarm-api/、/_analysis-api/、/_runtime-api/、/_configuration-api/ 六个前缀统一转发到 5158，去掉前缀并清除 Authorization/Cookie。已有前缀下新增接口无需再修改代理；请求方法、请求体、查询参数和后端错误码正常透传。声纹接口保留完整 URI 转发到 18080，原有 8080 站点保持不变。部署更新后先执行 nginx -t，通过再执行 nginx -s reload。详细规则见 [环境与部署说明](docs/environments.md)。
 
 ### 产线状态监测首页
 
@@ -220,13 +220,13 @@ latest 返回业务 404 时请检查采集服务地址：`VITE_API_BASE_URL` 留
 
 趋势分析的上下限设置从当前模块点位配置读取 `minimumValue` / `maximumValue`，通过 `PATCH /_telemetry-api/api/configuration/points/{pointId}/limits` 保存到 5158 采集服务，同时提交两个字段。清空输入会传 `null` 取消该方向阈值；下限不能大于上限，允许相等；保存后重新查询趋势。纵轴范围使用图表自动计算。
 
-部署时必须将部署服务器 Nginx 中专用的 `location ~ ^/_telemetry-api/api/configuration/points/[0-9]+/limits$` 同步到生产站点的 `server` 块，并放在专用 API 的 404 兜底规则之前。此路由仅允许 PATCH，移除 `/_telemetry-api` 前缀后转发到采集服务 5158，清除声纹 Authorization 和 Cookie。不要复用只允许 GET 的 `equipment-api-5158.conf` 片段。修改部署配置后先执行 `nginx -t`，通过后执行 `nginx -s reload`；只更新前端 dist 不会修复此代理 404。无需重启采集服务，新配置加载后用于后续样本分析。
+点位限值 PATCH 已由统一 /_telemetry-api/ 前缀转发至 5158，无需单独添加接口规则或限制为只读。部署时同步上级目录 nginx.conf，通过 nginx -t 后重载。无需重启采集服务，新限值用于后续样本分析。
 
 ### 测点近期历史与整班缓存
 
 当班缓存补取与手动历史查询均向采集接口发送本地日期时间，不转换为 UTC；递归分段时保留毫秒边界。旧版 UTC 查询产生的缓存块不再复用，首次打开会重新补取。
 
-历史接口 `/api/telemetry/history` 的单次网络请求超时为 120 秒，前台查询和班次缓存补取使用相同设置；元数据及实时值请求仍为 10 秒。上级目录 `nginx.conf` 为历史接口单独配置 120 秒读取超时，部署时须同步该配置并重载 Nginx。切换查询或关闭页面仍会取消原查询，超过 120 秒显示历史查询超时提示。
+历史接口 `/api/telemetry/history` 的单次网络请求超时为 120 秒，前台查询和班次缓存补取使用相同设置；元数据及实时值请求仍为 10 秒。上级目录 `nginx.conf` 为采集服务前缀统一配置 120 秒读取超时，部署时须同步该配置并重载 Nginx。切换查询或关闭页面仍会取消原查询，超过 120 秒显示历史查询超时提示。
 
 测点详情独立页面及详情抽屉默认进入“历史曲线”，打开即查询当班完整区间的历史数据，支持当班、上一班及自定义时间，图表保留缩放与重置视图。采集点位直接使用历史接口结果，不依赖实时缓冲区、不受 300 个实时样本上限限制，也不追加每 2 秒的实时采样。离线设备仍可查询历史；错误、空结果和达到 100000 条上限会明确提示。声纹点位默认查询当班录音并展示历史波形；实时频谱只在主动切换频谱分析时启动。测点详情列表与机组概览的预览卡片仍保留近期采样展示。
 
@@ -246,6 +246,6 @@ latest 返回业务 404 时请检查采集服务地址：`VITE_API_BASE_URL` 留
 
 首页生产状态每 1 秒请求 GET /api/runtime-info/latest，仅展示 summary.brand（牌号）、checkCount（小盒产量）、checkNg（NG数）、ngP（NG率，直接添加 %，保留两位小数）。进入首页立即读取，慢请求不重叠，离开首页取消请求并停止轮询。失败保留上次数据并提示过期，离线、无数据和未启用状态单独提示。其他页面不接入。
 
-使用独立 /_runtime-api 同源代理，Vite 开发/预览与部署服务器 Nginx 仅放行该端点并转发至 5158，不携带声纹登录令牌。可使用 VITE_API_BASE_URL 覆盖地址。生产部署需同步更新 Nginx 配置并重载。
+使用独立 /_runtime-api 同源代理，Vite 开发/预览与部署服务器 Nginx 按 /_runtime-api/ 前缀统一转发至 5158，新增运行信息接口无需单独添加规则，不携带声纹登录令牌。可使用 VITE_API_BASE_URL 覆盖地址。生产部署需同步更新 Nginx 配置并重载。
 
 报警等级卡片按本次查询返回的同一批记录统计（当前、已恢复或全部状态）：全部报警 = 损坏 + 告警 + 提示 + 上下限告警 + 其他告警。只有 `GradedLimit` 且 `severity` 为 1/2/3 的记录归入对应等级；旧版上下限报警归入上下限告警；组合报警和无法识别等级的记录归入其他告警，该卡片仅在存在对应记录时显示。列表颜色可以自定义，颜色不作为等级判断依据。

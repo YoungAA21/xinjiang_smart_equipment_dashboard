@@ -83,7 +83,7 @@ test('history rejects invalid point IDs, times and limits before fetching', asyn
   assert.deepEqual(validateHistoryQuery({...query, pointId:'35',limit:'100'}),{...query, pointId:35,limit:100})
 })
 
-test('development route uses dedicated telemetry prefix without widening health or 18080 proxies', async () => {
+test('development telemetry prefix forwards future endpoints and isolates 18080 paths', async () => {
   let url
   const context = vm.createContext({ fetch: async (value)=>{url=value;return reply({})}, URLSearchParams, AbortSignal })
   const endpointModule = new vm.SourceTextModule(await readFile(new URL('../src/services/endpoints.js',import.meta.url),'utf8'),{context})
@@ -94,9 +94,9 @@ test('development route uses dedicated telemetry prefix without widening health 
   assert.equal(url,'/_telemetry-api/api/realtime/latest')
   const { default: config } = await import('../vite.config.build.js')
   const proxies=config({mode:'test'}).server.proxy
-  const pattern=new RegExp(Object.keys(proxies).find((key)=>key.startsWith('^/_telemetry-api/')))
+  const pattern=new RegExp(Object.keys(proxies).find((key)=>new RegExp(key).test('/_telemetry-api/api/future')))
   for (const path of ['/configuration/modules','/configuration/modules/A/points?includeLatest=false','/realtime/latest','/telemetry/history?pointId=35']) assert.equal(pattern.test('/_telemetry-api/api'+path),true)
-  for (const path of ['/configuration/modbus','/realtime/latest/A/B/C','/analysis/alarms','/telemetry/history/aggregate']) assert.equal(pattern.test('/_telemetry-api/api'+path),false)
+  for (const path of ['/configuration/modbus','/realtime/latest/A/B/C','/analysis/alarms','/telemetry/history/aggregate']) assert.equal(pattern.test('/_telemetry-api/api'+path),true)
   assert.equal(pattern.test('/monitor/devices'),false)
 })
 

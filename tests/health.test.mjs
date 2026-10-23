@@ -86,15 +86,15 @@ test('production uses same-origin proxies for both services', async () => {
   assert.equal(api.getNewApiBaseUrl(), 'http://equipment.example:8080')
 })
 
-test('proxy allowlist excludes unmigrated legacy routes and all new API routes', async () => {
+test('health service prefix accepts future endpoints and isolates acoustic routes', async () => {
   const { default: config } = await import('../vite.config.build.js')
   const proxies = config({ mode: 'test' }).server.proxy
-  const healthProxyKey = Object.keys(proxies).find((key) => key.startsWith('^/_health-api/'))
+  const healthProxyKey = Object.keys(proxies).find((key) => new RegExp(key).test('/_health-api/api/future'))
   const pattern = new RegExp(healthProxyKey)
-  for (const path of ['/api/health', '/api/health/detail', '/api/health/table-maintenance']) {
+  for (const path of ['/api/health', '/api/health/detail', '/api/health/table-maintenance', '/api/configuration/modules', '/api/health/other']) {
     assert.equal(pattern.test(`/_health-api${path}`), true)
   }
-  for (const path of ['/_health-api/api/configuration/modules', '/api/health', '/monitor/devices', '/auth/login', '/_health-api/api/health/other']) {
+  for (const path of ['/api/health', '/monitor/devices', '/auth/login', '/_health-apix/api/anything']) {
     assert.equal(pattern.test(path), false)
   }
   assert.equal(proxies[healthProxyKey].target, 'http://66.66.66.4:5158')

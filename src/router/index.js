@@ -26,8 +26,8 @@ export const routes = [
   { path: '/analysis/trend', name: 'trend', redirect: (to) => ({ path: '/device/detail', query: { ...to.query, tab: 'trend', source: 'legacy' } }) },
   { path: '/analysis/spectrum', name: 'spectrum', redirect: (to) => ({ path: '/device/detail', query: { ...to.query, tab: 'spectrum', source: 'monitor' } }) },
   { path: '/alarm/list', name: 'alarm-list', component: AlarmListPage, meta: { title: '告警管理' } },
-  { path: '/reports', name: 'equipment-reports', component: () => import('../views/EquipmentReportPage.vue'), meta: { title: '报告配置' } },
-  { path: '/reports/view', name: 'report-view', component: () => import('../views/ReportViewPage.vue'), meta: { title: '报告查看' } },
+  { path: '/reports', name: 'equipment-reports', component: () => import('../views/EquipmentReportPage.vue'), meta: { title: '设备报告' } },
+  { path: '/reports/view', name: 'report-view', redirect: to => ({ path: '/reports', query: to.query, hash: to.hash }) },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 

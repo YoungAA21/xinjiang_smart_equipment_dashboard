@@ -11,7 +11,11 @@ function rowStatus(row) {
   else if (row.current.coverage < 0.6) problems.push('本期数据稀疏，变化不可比')
   if (row.current?.count && !row.baseline?.count) problems.push('对比期无有效数据')
   else if (row.baseline?.coverage < 0.6) problems.push('对比期数据稀疏，变化不可比')
-  if (row.current?.invalid) problems.push(`${row.current.invalid} 条无效采样已剔除`)
+  if (row.current?.invalid) problems.push(`${row.current.invalid} 条无效数据已剔除`)
+  if (row.current?.aggregation) {
+    if (row.current.missingBuckets) problems.push(`缺失 ${row.current.missingBuckets} 个时间桶`)
+    if (row.current.overBuckets) problems.push(`${row.current.overBuckets} 个时间桶极值越限`)
+  }
   if (row.current?.overCount > 0) problems.push(`${row.current.overCount} 次采样越限`)
   if (row.change.percent !== null && Math.abs(row.change.percent) >= 10) problems.push('均值变化达到 10%，请复核')
   return problems.join('；') || '未发现需复核项'
@@ -26,12 +30,13 @@ function trendSvg(row, range) {
   values.forEach((item, index) => {
     const x = 2 + (item.time - Date.parse(range.start)) / duration * 176
     const y = 34 - (item.value - low) / (high - low || 1) * 28
-    paths.push(`${!index || item.time - values[index - 1].time > 90000 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`)
+    paths.push(`${!index || item.time - values[index - 1].time > (row.current?.aggregation ? row.current.bucketMinutes * 60000 : 90000) ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`)
   })
-  return `<svg viewBox="0 0 180 40" role="img" aria-label="本期滤波趋势，缺数处断开"><path d="${paths.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`
+  return `<svg viewBox="0 0 180 40" role="img" aria-label="本期趋势，缺数处断开"><path d="${paths.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`
 }
 
 export function reportHtml(report, { title, scope, notes = '' }) {
+  const aggregate = report.dataSource === 'aggregate-stored'
   const rows = report.rows.filter(row => reportMetricGroup(row.point))
   const attention = rows.filter(row => row.attention)
   const warnings = [...(report.catalogErrors || [])]
@@ -51,7 +56,7 @@ export function reportHtml(report, { title, scope, notes = '' }) {
   const sections = reportMetricGroups.map(group => {
     const selected = rows.filter(row => reportMetricGroup(row.point) === group.id)
     if (!selected.length) return ''
-    return `<section><h2>${group.label}<span>${selected.length} 个测点</span></h2><div class="table-wrap"><table><thead><tr><th>测点</th><th>本期均值</th><th>最小 / 最大</th><th>对比均值</th><th>均值变化</th><th>本期趋势</th><th>复核提示</th></tr></thead><tbody>${selected.map(row => `<tr><td><strong>${escape(row.point.name)}</strong><small>${escape(row.point.moduleId)} · ${escape(row.point.pointCode)} · ${escape(row.point.unit || '无单位')}</small></td><td>${number(row.current?.mean)}</td><td>${number(row.current?.min)} / ${number(row.current?.max)}</td><td>${number(row.baseline?.mean)}</td><td>${row.change.percent === null ? (row.change.delta === null ? '不可比' : `差值 ${number(row.change.delta)}`) : `${row.change.percent > 0 ? '+' : ''}${number(row.change.percent)}%`}</td><td class="trend">${trendSvg(row, report.ranges.current)}</td><td class="${row.attention ? 'warning' : 'muted'}">${escape(rowStatus(row))}</td></tr>`).join('')}</tbody></table></div></section>`
+    return `<section><h2>${group.label}<span>${selected.length} 个测点</span></h2><div class="table-wrap"><table><thead><tr><th>测点</th><th>本期${aggregate ? '加权' : ''}均值</th><th>最小 / 最大</th>${aggregate ? '<th>末值</th><th>样本数</th><th>有效时间桶</th>' : ''}<th>对比均值</th><th>均值变化</th><th>本期趋势</th><th>复核提示</th></tr></thead><tbody>${selected.map(row => `<tr><td><strong>${escape(row.point.name)}</strong><small>${escape(row.point.moduleId)} · ${escape(row.point.pointCode)} · ${escape(row.point.unit || '无单位')}</small></td><td>${number(row.current?.mean)}</td><td>${number(row.current?.min)} / ${number(row.current?.max)}</td>${aggregate ? `<td>${number(row.current?.last)}</td><td>${row.current?.count ?? '—'}</td><td>${row.current ? `${row.current.bucketCount}/${row.current.expectedBuckets}` : '—'}</td>` : ''}<td>${number(row.baseline?.mean)}</td><td>${row.change.percent === null ? (row.change.delta === null ? '不可比' : `差值 ${number(row.change.delta)}`) : `${row.change.percent > 0 ? '+' : ''}${number(row.change.percent)}%`}</td><td class="trend">${trendSvg(row, report.ranges.current)}</td><td class="${row.attention ? 'warning' : 'muted'}">${escape(rowStatus(row))}</td></tr>`).join('')}</tbody></table></div></section>`
   }).join('')
   return `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"><title>${escape(title)}</title>
@@ -65,5 +70,5 @@ export function reportHtml(report, { title, scope, notes = '' }) {
 ${sections}<section><h2>告警概况</h2><table><thead><tr><th>事件类型</th><th>本期</th><th>对比期</th></tr></thead><tbody>${eventSummary.join('')}</tbody></table><small>仅统计区间内新发且匹配本报告测点的事件，两类事件分别统计。</small></section>
 ${warnings.length ? `<section class="warning"><h2>数据完整性提示</h2><ul>${warnings.map(item => `<li>${escape(item)}</li>`).join('')}</ul></section>` : ''}
 ${notes.trim() ? `<section><h2>交班备注</h2><p class="notes">${escape(notes)}</p></section>` : ''}
-<section><details><summary>统计说明</summary><p>区间采用 [开始, 结束)，仅使用质量 Good（字符串 Good 或数字 1）的有限数值；0 与负数有效。均值和极值取自原始有效采样；趋势按分钟中位值、尾随 5 分钟中值及 EMA（α=0.3）处理，缺数处断开。</p><p>两期有数分钟占比均达到 60% 且未截断时才计算均值变化；占比不是设备在线率。基数为零时仅给绝对差。均值变化达到 10% 只作为复核提示。采样越限按生成时的当前阈值重算，不代替历史正式告警。</p></details></section><footer>固定 HTML 报告快照 · 可离线打开或通过浏览器打印。历史报告保留生成时的范围与结果。</footer></main></body></html>`
+<section><details><summary>统计说明</summary>${aggregate ? '<p>数据来源：存储聚合历史。区间包含开始、不包含结束；时间桶粒度为 5 分钟。均值按各桶 sampleCount 加权；极值取各桶 minValue / maxValue，末值取最后一个有效桶的 lastValue。仅统计质量 Good、样本数大于零且数值有效的桶，0 与负数有效。缺失桶不补零，趋势使用各桶平均值并在缺数处断开。</p><p>两期有效桶占比均达到 60% 且未截断时才比较均值；占比不是设备在线率。桶极值越限仅按当前上下限复核，不等同于正式告警次数或越限持续时间。</p>' : '<p>区间采用 [开始, 结束)，仅使用质量 Good（字符串 Good 或数字 1）的有限数值；0 与负数有效。均值和极值取自原始有效采样；趋势按分钟中位值、尾随 5 分钟中值及 EMA（α=0.3）处理，缺数处断开。</p><p>两期有数分钟占比均达到 60% 且未截断时才计算均值变化；占比不是设备在线率。基数为零时仅给绝对差。均值变化达到 10% 只作为复核提示。采样越限按生成时的当前阈值重算，不代替历史正式告警。</p>'}</details></section><footer>固定 HTML 报告快照 · 可离线打开或通过浏览器打印。历史报告保留生成时的范围与结果。</footer></main></body></html>`
 }

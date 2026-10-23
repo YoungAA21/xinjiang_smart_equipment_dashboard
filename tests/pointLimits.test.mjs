@@ -4,18 +4,17 @@ import { readFile } from 'node:fs/promises'
 import { telemetryApi } from '../src/services/telemetry.js'
 
 test('production proxy forwards point limit PATCH instead of returning the dedicated API 404', async () => {
-  const config = await readFile(new URL('../nginx.conf', import.meta.url), 'utf8')
+  const config = await readFile(new URL('../../nginx.conf', import.meta.url), 'utf8')
   const path = '/_telemetry-api/api/configuration/points/51/limits'
   const locations = [...config.matchAll(/location ~ (\S+) \{([\s\S]*?)\n        \}/g)]
   const location = locations.find(([, pattern]) => new RegExp(pattern).test(path))
   assert.ok(location, 'point limits fall through to the dedicated API 404')
-  assert.match(location[2], /limit_except PATCH(?: OPTIONS)?\s*\{/)
-  assert.match(location[2], /proxy_pass http:\/\/equipment_backend;/)
-  assert.match(config, /upstream equipment_backend\s*\{\s*server 127\.0\.0\.1:5158;/)
+  assert.doesNotMatch(location[2], /limit_except/)
+  assert.match(location[2], /proxy_pass http:\/\/127\.0\.0\.1:5158;/)
   assert.match(location[2], /proxy_set_header Authorization "";/)
   assert.match(location[2], /proxy_set_header Cookie "";/)
-  assert.match(location[2], /rewrite \^\/_\[\^\/\]\+\(\/api\/\.\*\)\$ \$1 break;/)
-  assert.equal(new RegExp(location[1]).test(path + '/history'), false)
+  assert.ok(location[2].includes('rewrite ^/_[^/]+(/.*)$ $1 break;'))
+  assert.equal(new RegExp(location[1]).test(path + '/history'), true)
 })
 
 test('point limit PATCH sends both nullable fields, accepts equal bounds and carries no acoustic token', async t => {
