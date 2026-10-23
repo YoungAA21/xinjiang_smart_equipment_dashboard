@@ -2,13 +2,22 @@
 import { computed, ref, watch } from 'vue'
 import { ElDialog } from 'element-plus'
 import { reportValue } from '../charts/reportAnalysis.js'
-import { reportBucketPath } from '../charts/reportAggregates.js'
+import { reportBucketPath, reportBucketHover } from '../charts/reportAggregates.js'
 const props = defineProps({ report: { type: Object, required: true } })
 const detailPointId = ref('')
 watch(() => props.report, () => { detailPointId.value = '' })
 const detailRow = computed(() => props.report.rows.find(row => String(row.point.pointId) === detailPointId.value))
 const detailOpen = computed({ get: () => Boolean(detailRow.value), set: value => { if (!value) detailPointId.value = '' } })
 const detailPath = computed(() => detailRow.value ? reportBucketPath(detailRow.value.current, props.report.ranges.current) : '')
+const hovered = ref(null)
+watch(detailPointId, () => { hovered.value = null })
+function hoverBucket(event) {
+  const svg = event.currentTarget, matrix = svg.getScreenCTM()
+  if (!matrix || !detailRow.value) { hovered.value = null; return }
+  const point = svg.createSVGPoint()
+  point.x = event.clientX; point.y = event.clientY
+  hovered.value = reportBucketHover(detailRow.value.current, props.report.ranges.current, point.matrixTransform(matrix.inverse()).x)
+}
 const bucketTime = bucket => new Date(bucket.time).toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' })
 const rangeText = range => `${range.start.replace('T', ' ').slice(0, 16)} — ${range.end.replace('T', ' ').slice(0, 16)}`
 const resultTotals = computed(() => props.report.rows.reduce((total, row) => ({
@@ -40,7 +49,7 @@ const resultTotals = computed(() => props.report.rows.reduce((total, row) => ({
       </section>
       <ElDialog v-model="detailOpen" :title="`${detailRow?.point.name || detailRow?.point.pointCode || '测点'} · 5 分钟明细`" width="min(1100px, 94vw)" align-center append-to-body destroy-on-close :close-on-click-modal="false" class="equipment-report-page report-bucket-dialog">
         <template v-if="detailRow">
-        <div class="report-bucket-chart"><div class="report-section-heading"><span>各时间桶平均值（{{ detailRow.point.unit || '无单位' }}）</span><span>{{ reportValue(Math.min(...detailRow.current.buckets.map(bucket => bucket.averageValue))) }} — {{ reportValue(Math.max(...detailRow.current.buckets.map(bucket => bucket.averageValue))) }}</span></div><svg viewBox="0 0 900 180" role="img" aria-label="5 分钟平均值趋势，缺数处断开"><path :d="detailPath" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" /></svg><div class="report-bucket-chart-axis"><span>{{ rangeText(report.ranges.current).split(' — ')[0] }}</span><span>{{ rangeText(report.ranges.current).split(' — ')[1] }}</span></div></div>
+        <div class="report-bucket-chart"><div class="report-section-heading"><span>各时间桶平均值（{{ detailRow.point.unit || '无单位' }}）</span><span>{{ reportValue(Math.min(...detailRow.current.buckets.map(bucket => bucket.averageValue))) }} — {{ reportValue(Math.max(...detailRow.current.buckets.map(bucket => bucket.averageValue))) }}</span></div><div class="report-bucket-plot"><svg viewBox="0 0 900 180" preserveAspectRatio="none" role="img" aria-label="5 分钟平均值趋势，缺数处断开" :aria-describedby="hovered ? 'report-bucket-tooltip' : undefined" @pointermove="hoverBucket" @pointerdown="hoverBucket" @pointerleave="hovered = null"><path :d="detailPath" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" /><template v-if="hovered"><line :x1="hovered.x" :x2="hovered.x" y1="8" y2="172" stroke="currentColor" stroke-dasharray="4 4" opacity="0.6" vector-effect="non-scaling-stroke" /><circle v-if="hovered.bucket" :cx="hovered.x" :cy="hovered.y" r="4" fill="currentColor" /></template></svg><div v-if="hovered" id="report-bucket-tooltip" class="report-bucket-tooltip" role="tooltip" :style="{ left: `${hovered.x / 900 * 100}%`, transform: hovered.x > 450 ? 'translateX(calc(-100% - 10px))' : 'translateX(10px)' }"><strong>{{ bucketTime(hovered) }}（北京时间）</strong><span v-if="hovered.bucket">平均值 {{ reportValue(hovered.bucket.averageValue) }} {{ detailRow.point.unit }}</span><span v-else>该时间桶无数据</span></div></div><div class="report-bucket-chart-axis"><span>{{ rangeText(report.ranges.current).split(' — ')[0] }}</span><span>{{ rangeText(report.ranges.current).split(' — ')[1] }}</span></div></div>
         <div class="report-table-scroll report-bucket-details"><table><thead><tr><th>时间桶开始（北京时间）</th><th>最小值</th><th>最大值</th><th>平均值</th><th>末值</th><th>样本数</th></tr></thead><tbody><tr v-for="bucket in detailRow.current.buckets" :key="bucket.time"><td>{{ bucketTime(bucket) }}</td><td>{{ reportValue(bucket.minValue) }}</td><td>{{ reportValue(bucket.maxValue) }}</td><td>{{ reportValue(bucket.averageValue) }}</td><td>{{ reportValue(bucket.lastValue) }}</td><td>{{ bucket.sampleCount }}</td></tr></tbody></table></div>
         </template>
         <template #footer><button @click="detailOpen = false">关闭</button></template>

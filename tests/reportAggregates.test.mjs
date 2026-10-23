@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test, afterEach } from 'node:test'
-import { reportAggregateQueries, summarizeReportBuckets } from '../src/charts/reportAggregates.js'
+import { reportAggregateQueries, summarizeReportBuckets, reportBucketHover } from '../src/charts/reportAggregates.js'
 import { reportRanges } from '../src/charts/reportAnalysis.js'
 import { telemetryApi, configureHistoryReader } from '../src/services/telemetry.js'
 import { generateEquipmentReport } from '../src/services/reports.js'
@@ -98,4 +98,22 @@ test('export uses weighted bucket statistics with disconnected gap paths and acc
   const path = html.match(/<path d="([^"]+)"/)[1]
   assert.equal((path.match(/M/g) || []).length, 2)
   assert.doesNotMatch(path, /L/)
+})
+
+
+test('bucket hover snaps to the actual five-minute slot and preserves missing buckets and zero values', () => {
+  const from = Date.parse(range.start)
+  const summary = { buckets: [{ time: from, averageValue: 0 }, { time: from + 600000, averageValue: -10 }] }
+  const first = reportBucketHover(summary, range, 12)
+  assert.equal(first.time, from)
+  assert.equal(first.bucket.averageValue, 0)
+  assert.equal(first.y, 12)
+  const gap = reportBucketHover(summary, range, 304)
+  assert.equal(gap.time, from + 300000)
+  assert.equal(gap.bucket, null)
+  assert.equal(gap.y, null)
+  assert.equal(reportBucketHover(summary, range, 888).time, from + 600000)
+  assert.equal(reportBucketHover(summary, range, 0), null)
+  assert.equal(reportBucketHover(summary, range, 901), null)
+  assert.equal(reportBucketHover({ buckets: [{ time: from, averageValue: 0 }] }, range, 12).y, 90)
 })

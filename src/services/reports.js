@@ -24,18 +24,19 @@ export async function reportPool(items, run, { signal, concurrency = 4, onProgre
   return results
 }
 
-export async function loadReportCatalog({ signal, api = telemetryApi } = {}) {
-  const result = await api.getModules({ signal })
+export async function loadReportCatalog({ signal, api = telemetryApi, moduleId = '' } = {}) {
+  const result = await api.getModules({ signal, timeoutMs: 30000 })
   abort(signal)
   if (!Array.isArray(result?.modules)) throw new Error('模块目录返回格式不正确')
   const errors = []
-  const results = await reportPool(result.modules, async module => {
+  const modules = result.modules.filter(module => !moduleId || String(module.moduleId) === String(moduleId))
+  const results = await reportPool(modules, async module => {
     if (/acoustic|audio|sound/i.test(module.protocol || '')) return []
-    const data = await api.getModulePoints(module.moduleId, { signal })
+    const data = await api.getModulePoints(module.moduleId, { signal, timeoutMs: 30000 })
     if (!Array.isArray(data?.points) || String(data.moduleId) !== String(module.moduleId)) throw new Error('参数目录身份或格式不正确')
     return data.points.map(point => ({ ...point, moduleId: module.moduleId, moduleName: module.moduleName || module.moduleId })).filter(eligibleReportPoint)
   }, { signal })
-  results.forEach((row, i) => { if (row.status === 'rejected') errors.push(`${result.modules[i].moduleId}：${row.reason.message}`) })
+  results.forEach((row, i) => { if (row.status === 'rejected') errors.push(`${modules[i].moduleId}：${row.reason.message}`) })
   return { modules: result.modules.filter(module => !/acoustic|audio|sound/i.test(module.protocol || '')), points: results.flatMap(row => row.status === 'fulfilled' ? row.value : []), errors }
 }
 

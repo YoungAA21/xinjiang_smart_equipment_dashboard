@@ -64,3 +64,15 @@ export function reportBucketPath(summary, range, width = 900, height = 180) {
     return `${!index || bucket.time - buckets[index - 1].time > STEP ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`
   }).join(' ')
 }
+
+export function reportBucketHover(summary, range, pointerX, width = 900, height = 180) {
+  const start = Date.parse(range.start), duration = Date.parse(range.end) - start
+  if (!Number.isFinite(pointerX) || pointerX < 12 || pointerX > width - 12 || duration <= 0) return null
+  const index = Math.min(Math.ceil(duration / STEP) - 1, Math.max(0, Math.round((pointerX - 12) / (width - 24) * duration / STEP)))
+  const time = start + index * STEP
+  const buckets = summary?.buckets || []
+  const bucket = buckets.find(item => item.time === time) || null
+  const low = Math.min(...buckets.map(item => item.averageValue)), high = Math.max(...buckets.map(item => item.averageValue))
+  return { time, bucket, x: 12 + (time - start) / duration * (width - 24),
+    y: bucket ? (high === low ? height / 2 : height - 12 - (bucket.averageValue - low) / (high - low) * (height - 24)) : null }
+}

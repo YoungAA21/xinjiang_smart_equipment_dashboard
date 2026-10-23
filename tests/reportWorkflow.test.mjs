@@ -19,17 +19,19 @@ async function mountReport({ query, routeQuery = {}, disk = storage() } = {}) {
     'vue-router': { useRoute: () => route, useRouter: () => ({ replace: value => { route.query = value.query || {} }, push() {} }) },
     'lucide-vue-next': Object.fromEntries(['ArrowDownToLine', 'ChevronLeft', 'FileText', 'Search', 'Save', 'Settings2'].map(name => [name, {}])),
     '../charts/reportAnalysis.js': analysis,
+    '../services/reports.js': { loadReportCatalog: async () => ({ modules: [], points: [], errors: [] }) },
     '../services/auth.js': { auth: { getUser: () => ({ username: 'test' }) } },
     '../stores/pointConfiguration.js': { presentPoint: point => point },
     '../services/reportArchive.js': {
       ...archive,
+      saveReportConfiguration: (owner, value) => archive.saveReportConfiguration(owner, value, disk),
       loadReportConfiguration: owner => archive.loadReportConfiguration(owner, disk),
       listReportSnapshots: owner => archive.listReportSnapshots(owner, disk),
       saveReportSnapshot: (owner, value, options) => archive.saveReportSnapshot(owner, value, { ...options, storage: disk }),
       queryReport: async options => {
         calls.push(options)
         if (query) return query(options)
-        return { snapshot: { id: archive.reportSelectionId(options.selection), selection: { ...options.selection }, ranges: analysis.reportRanges(options.selection), title: '测试班报', scope: '温度', html: '<html>查询结果</html>' }, report: { rows: [], ranges: analysis.reportRanges(options.selection) } }
+        return { snapshot: { id: archive.reportSelectionId(options.selection), selection: { ...options.selection }, configuration: { ...options.configuration, metrics: [...options.configuration.metrics] }, ranges: analysis.reportRanges(options.selection), title: '测试班报', scope: '温度', html: '<html>查询结果</html>' }, report: { rows: [], ranges: analysis.reportRanges(options.selection) } }
       },
     },
   }
@@ -130,39 +132,83 @@ test('query failures keep previous content and saving failures leave a downloada
 })
 
 
-test('inline configuration never navigates or queries and saving it cancels stale work', async t => {
+test('editing the unified scope applies directly without saving preferences or querying automatically', async t => {
+  const page = await mountReport()
+  t.after(() => page.app.unmount())
+  page.state.configuration.moduleId = 'B'
+  page.state.configuration.metrics = ['pressure']
+  page.state.selection.comparison = 'same'
+  assert.equal(page.calls.length, 0)
+  await page.state.readReport()
+  assert.equal(page.calls.length, 1)
+  assert.equal(page.calls[0].configuration.moduleId, 'B')
+  assert.deepEqual([...page.calls[0].configuration.metrics], ['pressure'])
+  assert.equal(page.calls[0].selection.comparison, 'same')
+  assert.equal(page.state.changed, false)
+  assert.equal(archive.loadReportConfiguration('test', page.disk).moduleId, '')
+  page.state.rememberFilters()
+  assert.equal(page.state.remembered, true)
+  assert.equal(archive.loadReportConfiguration('test', page.disk).moduleId, 'B')
+  assert.equal(page.calls.length, 1)
+  page.state.configuration.metrics = ['temperature']
+  assert.equal(page.state.changed, true)
+  assert.equal(page.state.remembered, false)
+})
+
+test('scope changes cancel pending results and query captures an immutable filter snapshot', async t => {
   let resolve
   const page = await mountReport({ query: () => new Promise(done => { resolve = done }) })
   t.after(() => page.app.unmount())
-  page.state.toggleSettings()
-  assert.equal(page.state.settingsOpen, true)
-  assert.equal(page.state.settingsLoaded, true)
-  assert.equal(page.calls.length, 0)
-  page.state.snapshot = { id: 'old', selection: { ...page.state.selection }, html: 'old scope' }
   const pending = page.state.readReport()
-  page.state.configurationSaved({ comparison: 'same' })
+  page.state.configuration.metrics.splice(0, 1)
   assert.equal(page.calls[0].signal.aborted, true)
-  assert.equal(page.state.settingsOpen, false)
-  assert.equal(page.state.selection.comparison, 'same')
-  assert.equal(page.state.changed, true)
-  resolve({ snapshot: { selection: { ...page.state.selection }, html: 'stale scope' }, report: { rows: [] } })
+  assert.equal(page.calls[0].configuration.metrics.length, 3)
+  resolve({ snapshot: { html: 'stale' }, report: { rows: [] } })
   await pending
-  assert.equal(page.state.snapshot.html, 'old scope')
-  page.state.save()
-  assert.equal(archive.listReportSnapshots('test', page.disk).length, 0)
+  assert.equal(page.state.snapshot, null)
+  page.state.configuration.metrics = []
+  await page.state.readReport()
+  assert.equal(page.calls.length, 1)
+  assert.match(page.state.error, /至少选择/)
+})
+
+test('opening an archive restores its scope without changing remembered defaults', async t => {
+  const page = await mountReport()
+  t.after(() => page.app.unmount())
+  const selection = { mode: 'shift', date: '2026-09-01', shift: 'night', comparison: 'same' }
+  page.state.snapshots = [{ id: 'archived', selection, configuration: { moduleId: 'B', metrics: ['pressure'], comparison: 'same' }, ranges: analysis.reportRanges(selection), html: 'fixed' }]
+  page.state.openArchived('archived')
+  assert.equal(page.state.configuration.moduleId, 'B')
+  assert.deepEqual([...page.state.configuration.metrics], ['pressure'])
+  assert.equal(page.state.changed, false)
+  assert.equal(page.calls.length, 0)
+  assert.equal(archive.loadReportConfiguration('test', page.disk).moduleId, '')
 })
 
 
-test('unsaved inline configuration blocks querying until explicitly saved', async t => {
-  const page = await mountReport()
+test('repeated query clicks share the active request and metadata is supplied to the query', async t => {
+  let resolve
+  const page = await mountReport({ query: () => new Promise(done => { resolve = done }) })
   t.after(() => page.app.unmount())
-  page.state.configurationEdited()
-  await page.state.readReport()
-  assert.equal(page.calls.length, 0)
-  assert.equal(page.state.settingsOpen, true)
-  assert.match(page.state.error, /先保存报告配置/)
-  page.state.configurationSaved({ comparison: 'same' })
+  const pending = page.state.readReport()
   await page.state.readReport()
   assert.equal(page.calls.length, 1)
-  assert.equal(page.state.configurationDirty, false)
+  assert.equal(page.calls[0].signal.aborted, false)
+  assert.ok(page.calls[0].catalog)
+  page.calls[0].onStage('aggregate')
+  assert.equal(page.state.queryStage, 'aggregate')
+  resolve({ snapshot: { selection: { ...page.state.selection }, html: 'done' }, report: { rows: [] } })
+  await pending
+  assert.equal(page.state.loading, false)
+})
+
+test('directory timeouts have a readable stage-specific message and remain retryable', async t => {
+  const page = await mountReport({ query: async () => { throw new DOMException('signal timed out', 'TimeoutError') } })
+  t.after(() => page.app.unmount())
+  await page.state.readReport()
+  assert.match(page.state.error, /测点目录读取超时/)
+  assert.doesNotMatch(page.state.error, /signal/)
+  assert.equal(page.state.loading, false)
+  await page.state.readReport()
+  assert.equal(page.calls.length, 2)
 })

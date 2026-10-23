@@ -9,9 +9,10 @@ export function configureHistoryReader(createReader) {
   historyReader = createReader?.((query, options) => get('/api/telemetry/history', query, options))
 }
 
-async function get(path, params = {}, { signal } = {}) {
+async function get(path, params = {}, { signal, timeoutMs } = {}) {
   const history = path.startsWith('/api/telemetry/history')
-  const timeout = AbortSignal.timeout(history ? 120000 : 10000)
+  const duration = timeoutMs ?? (history ? 120000 : 10000)
+  const timeout = AbortSignal.timeout(duration)
   const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))
   try {
     const response = await fetch(`${BASE}${path}${query.size ? `?${query}` : ''}`, {
@@ -26,7 +27,14 @@ async function get(path, params = {}, { signal } = {}) {
       throw error
     }
   } catch (error) {
-    if (history && error.name === 'TimeoutError') throw new Error('历史查询超时（120 秒），请缩短时间范围后重试', { cause: error })
+    if (signal?.aborted) throw signal.reason || error
+    if (history && (timeout.aborted || error.name === 'TimeoutError')) throw new Error(`历史查询超时（${duration / 1000} 秒），请缩短时间范围后重试`, { cause: error })
+    if (!history && (timeout.aborted || error.name === 'TimeoutError')) {
+      const label = path === '/api/configuration/modules' ? '采集模块列表' : path.startsWith('/api/configuration/modules/') ? '测点目录' : '采集数据'
+      const timeoutError = new Error(`${label}读取超时（${duration / 1000} 秒），请检查采集服务或网络连接`, { cause: error })
+      timeoutError.name = 'TimeoutError'
+      throw timeoutError
+    }
     throw error
   }
 }

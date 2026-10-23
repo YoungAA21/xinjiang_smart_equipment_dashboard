@@ -107,3 +107,24 @@ test('query remains usable without archive storage capacity and comparison defau
   saveReportConfiguration('alice', { metrics: ['temperature'], comparison: 'same' }, options.storage = memoryStorage())
   assert.equal(loadReportConfiguration('alice', options.storage).comparison, 'same')
 })
+
+
+test('an explicitly empty metric selection never falls back to querying every metric', async () => {
+  const options = setup()
+  await assert.rejects(queryReport({ ...options, configuration: { metrics: [] } }), /至少选择/)
+  assert.equal(options.reads(), 0)
+})
+
+
+test('report queries reuse a complete loaded catalog without repeating metadata requests', async () => {
+  const options = setup()
+  const catalog = await options.loadCatalog()
+  const stages = []
+  const result = await queryReport({ ...options, catalog, onStage: stage => stages.push(stage), loadCatalog: () => { throw new Error('must not reload catalog') } })
+  assert.equal(options.reads(), 1)
+  assert.equal(result.report.rows.length, 2)
+  assert.deepEqual(stages, ['catalog', 'aggregate'])
+  let reloads = 0
+  await queryReport({ ...options, catalog: { ...catalog, errors: ['partial'] }, configuration: { moduleId: 'B', metrics: ['pressure'] }, loadCatalog: async args => { reloads++; assert.equal(args.moduleId, 'B'); return catalog } })
+  assert.equal(reloads, 1)
+})

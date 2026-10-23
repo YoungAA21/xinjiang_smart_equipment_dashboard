@@ -45,17 +45,22 @@ export function saveReportSnapshot(owner, snapshot, { storage = globalThis.local
 }
 
 // Querying builds an in-memory result. Persistence is an explicit, separate action.
-export async function queryReport({ owner, selection, configuration, signal, onProgress, presentPoint = point => point, storage = globalThis.localStorage, loadCatalog = loadReportCatalog, generate = generateEquipmentReport }) {
+export async function queryReport({ owner, selection, configuration, catalog: suppliedCatalog, signal, onProgress, onStage = () => {}, presentPoint = point => point, storage = globalThis.localStorage, loadCatalog = loadReportCatalog, generate = generateEquipmentReport }) {
   signal?.throwIfAborted()
+  if (configuration && !configuration.metrics?.some(id => reportMetricGroups.some(group => group.id === id))) throw new Error('请至少选择一类指标')
   const config = normalizeReportConfiguration(configuration || loadReportConfiguration(owner, storage))
   const appliedSelection = { ...selection, comparison: selection.comparison || config.comparison }
   const ranges = reportRanges(appliedSelection)
   const id = reportSelectionId(appliedSelection)
-  const catalog = await loadCatalog({ signal })
+  onStage('catalog')
+  const reusable = Array.isArray(suppliedCatalog?.points) && Array.isArray(suppliedCatalog?.modules) && Array.isArray(suppliedCatalog?.errors) && !suppliedCatalog.errors.length
+  const catalog = reusable ? suppliedCatalog : await loadCatalog({ signal, moduleId: config.moduleId })
   signal?.throwIfAborted()
   const points = catalog.points.map(presentPoint).filter(point => eligibleReportPoint(point)
     && (!config.moduleId || String(point.moduleId) === config.moduleId) && config.metrics.includes(reportMetricGroup(point)))
+  if (!points.length && catalog.errors?.length) throw new Error(`测点目录读取不完整：${catalog.errors.slice(0, 3).join('；')}`)
   if (!points.length) throw new Error('当前报告范围没有振动、温度或负压 / 压力测点，请调整报告配置')
+  onStage('aggregate')
   const report = await generate({ points, ranges, signal, onProgress })
   signal?.throwIfAborted()
   if (!report.rows.some(row => row.current)) throw new Error(`本期所有测点查询均失败：${report.rows[0]?.errors?.join('；') || '请稍后重试'}`)

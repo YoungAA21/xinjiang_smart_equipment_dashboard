@@ -73,7 +73,7 @@ test('point configuration stops after two network failures and never retries nav
   const controller = new AbortController()
   attempts = 0
   globalThis.fetch = async () => { attempts++; controller.abort(); throw new DOMException('Timed out', 'TimeoutError') }
-  await assert.rejects(telemetryApi.getModulePoints('PRESS01', { signal: controller.signal }), { name: 'TimeoutError' })
+  await assert.rejects(telemetryApi.getModulePoints('PRESS01', { signal: controller.signal }), { name: 'AbortError' })
   assert.equal(attempts, 1)
 })
 
@@ -240,4 +240,16 @@ test('current thresholds preserve zero, support one-sided limits and stay visibl
   const equal = telemetryLine(samples, { minimumValue: 0, maximumValue: 0 }, { showLimits: true })
   assert.equal(equal.series[0].markLine.data.length, 2)
   assert.equal(telemetryLine(samples, point).series[0].markLine, undefined)
+})
+
+
+test('report directory requests allow 30 seconds and normalize timeout errors without retrying cancellation', async t => {
+  const durations = []
+  const originalTimeout = AbortSignal.timeout
+  t.mock.method(AbortSignal, 'timeout', ms => { durations.push(ms); return originalTimeout(ms) })
+  globalThis.fetch = async () => reply({ modules: [] })
+  await telemetryApi.getModules({ timeoutMs: 30000 })
+  assert.deepEqual(durations, [30000])
+  globalThis.fetch = async () => { throw new DOMException('signal timed out', 'TimeoutError') }
+  await assert.rejects(telemetryApi.getModules({ timeoutMs: 30000 }), error => error.name === 'TimeoutError' && /采集模块列表读取超时（30 秒）/.test(error.message))
 })
